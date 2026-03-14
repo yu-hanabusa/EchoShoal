@@ -13,8 +13,10 @@ from app.core.job_manager import JobManager, JobStatus
 from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
 from app.simulation.engine import SimulationEngine
+from app.simulation.events.scheduler import EventScheduler
 from app.simulation.factory import create_default_agents
 from app.simulation.models import ScenarioInput
+from app.simulation.scenario_analyzer import ScenarioAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +46,24 @@ async def _run_simulation_task(
         llm = LLMRouter()
         agents = create_default_agents(llm)
 
+        # シナリオ解析（NLPでスキル・業界を自動検出）
+        analyzer = ScenarioAnalyzer()
+        enriched = analyzer.analyze(scenario)
+        logger.info(
+            "シナリオ解析: スキル%d件, 業界%d件検出",
+            len(enriched.detected_skills), len(enriched.detected_industries),
+        )
+
+        # イベントスケジュール生成
+        event_scheduler = EventScheduler(llm=llm)
+        await event_scheduler.generate_from_scenario(scenario)
+
         async def on_progress(current: int, total: int) -> None:
             await job_manager.update_progress(job_id, current, total)
 
         engine = SimulationEngine(
-            agents=agents, llm=llm, scenario=scenario, on_progress=on_progress
+            agents=agents, llm=llm, scenario=scenario,
+            on_progress=on_progress, event_scheduler=event_scheduler,
         )
 
         results = await engine.run()

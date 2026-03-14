@@ -10,6 +10,9 @@ from typing import Any
 from app.config import settings
 from app.core.llm.router import LLMRouter
 from app.simulation.agents.base import BaseAgent
+from app.simulation.events.effects import apply_active_events
+from app.simulation.events.models import MarketEvent
+from app.simulation.events.scheduler import EventScheduler
 from app.simulation.models import (
     MarketState,
     RoundResult,
@@ -40,6 +43,7 @@ class SimulationEngine:
         llm: LLMRouter,
         scenario: ScenarioInput | None = None,
         on_progress: ProgressCallback | None = None,
+        event_scheduler: EventScheduler | None = None,
     ):
         self.agents = agents
         self.llm = llm
@@ -48,6 +52,7 @@ class SimulationEngine:
         self.results: list[RoundResult] = []
         self._llm_call_count = 0
         self._on_progress = on_progress
+        self._event_scheduler = event_scheduler
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -99,8 +104,13 @@ class SimulationEngine:
         # Update market state based on aggregate actions
         self._update_market(all_actions)
 
-        # Apply scenario effects
-        if self.scenario:
+        # Apply events (replaces old _apply_scenario_effects)
+        if self._event_scheduler:
+            event_msgs = apply_active_events(
+                self._event_scheduler.events, round_number, self.market
+            )
+            events.extend(event_msgs)
+        elif self.scenario:
             self._apply_scenario_effects(round_number)
 
         return RoundResult(
