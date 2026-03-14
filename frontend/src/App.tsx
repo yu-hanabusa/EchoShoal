@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import NavBar from "./components/NavBar";
 import DocumentsPage from "./pages/DocumentsPage";
+import GraphPage from "./pages/GraphPage";
 import HomePage from "./pages/HomePage";
 import SimulationPage from "./pages/SimulationPage";
 import ReportPage from "./pages/ReportPage";
@@ -18,9 +20,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <NavBar />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/graph" element={<GraphPage />} />
           <Route path="/simulation/:jobId" element={<SimulationPage />} />
           <Route path="/simulation/:jobId/report" element={<ReportPage />} />
         </Routes>

@@ -20,28 +20,36 @@ export default function HomePage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold tracking-tight mb-4">
-            Echo<span className="text-blue-400">Shoal</span>
+    <div className="min-h-screen bg-surface-1">
+      <header className="bg-surface-0 border-b border-border">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+          <h1 className="text-lg font-semibold text-brand tracking-tight">
+            EchoShoal
           </h1>
-          <p className="text-gray-400 text-lg">
-            AI-powered IT Labor Market Prediction Simulator
-          </p>
+          <span className="text-text-tertiary text-sm">
+            IT人材市場シミュレーター
+          </span>
         </div>
+      </header>
 
+      <main className="max-w-3xl mx-auto px-4 py-8">
         {error && (
-          <div className="mb-6 p-4 rounded-lg bg-red-900/30 border border-red-700 text-red-300 text-center">
+          <div
+            className="mb-6 px-4 py-3 rounded-md bg-negative-light border border-negative/20 text-negative text-sm"
+            role="alert"
+          >
             {error}
           </div>
         )}
 
         <ScenarioForm
-          onSubmit={(scenario) => mutation.mutate(scenario)}
+          onSubmit={(scenario) => {
+            setError(null);
+            mutation.mutate(scenario);
+          }}
           isLoading={mutation.isPending}
         />
-      </div>
+      </main>
     </div>
   );
 }

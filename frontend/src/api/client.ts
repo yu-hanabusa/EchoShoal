@@ -93,3 +93,10 @@ export async function getDocumentDetail(
 ): Promise<Record<string, unknown>> {
   return request(`/documents/${docId}`);
 }
+
+/** 知識グラフ可視化データを取得 */
+export async function getGraphVisualization(): Promise<{
+  elements: Array<{ data: Record<string, string> }>;
+}> {
+  return request("/graph/visualization");
+}

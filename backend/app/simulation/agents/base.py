@@ -303,8 +303,18 @@ class BaseAgent(ABC):
             "name": self.name,
             "type": self.profile.agent_type,
             "industry": self.profile.industry.value,
+            "description": self.profile.description,
             "headcount": self.state.headcount,
             "revenue": self.state.revenue,
             "satisfaction": self.state.satisfaction,
             "reputation": self.state.reputation,
+            "personality": {
+                "conservatism": self.personality.conservatism,
+                "bandwagon": self.personality.bandwagon,
+                "overconfidence": self.personality.overconfidence,
+                "sunk_cost_bias": self.personality.sunk_cost_bias,
+                "info_sensitivity": self.personality.info_sensitivity,
+                "noise": self.personality.noise,
+                "description": self.personality.description,
+            },
         }

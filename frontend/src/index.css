@@ -1,1 +1,98 @@
 @import "tailwindcss";
+
+/*
+ * EchoShoal Design System
+ *
+ * Color roles (each color has ONE meaning):
+ *   --brand:       Logo, primary identity (#1e293b slate-800)
+ *   --interactive:  Buttons, links, clickable (#4f46e5 indigo-600)
+ *   --positive:    Increase, growth, good   (#059669 emerald-600)
+ *   --negative:    Decrease, shortage, bad  (#e11d48 rose-600)
+ *   --caution:     Warning, threshold       (#d97706 amber-600)
+ *   --neutral:     No change, inactive      (#64748b slate-500)
+ *   --surface-*:   Background layers
+ */
+
+:root {
+  --color-brand: #1e293b;
+  --color-interactive: #4f46e5;
+  --color-interactive-hover: #4338ca;
+  --color-interactive-light: #eef2ff;
+  --color-positive: #059669;
+  --color-positive-light: #ecfdf5;
+  --color-negative: #e11d48;
+  --color-negative-light: #fff1f2;
+  --color-caution: #d97706;
+  --color-caution-light: #fffbeb;
+  --color-neutral: #64748b;
+
+  --color-surface-0: #ffffff;
+  --color-surface-1: #f8fafc;
+  --color-surface-2: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94a3b8;
+}
+
+@theme {
+  --color-brand: var(--color-brand);
+  --color-interactive: var(--color-interactive);
+  --color-interactive-hover: var(--color-interactive-hover);
+  --color-interactive-light: var(--color-interactive-light);
+  --color-positive: var(--color-positive);
+  --color-positive-light: var(--color-positive-light);
+  --color-negative: var(--color-negative);
+  --color-negative-light: var(--color-negative-light);
+  --color-caution: var(--color-caution);
+  --color-caution-light: var(--color-caution-light);
+  --color-neutral: var(--color-neutral);
+  --color-surface-0: var(--color-surface-0);
+  --color-surface-1: var(--color-surface-1);
+  --color-surface-2: var(--color-surface-2);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+}
+
+/* Base */
+body {
+  font-family:
+    "Inter",
+    "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP",
+    system-ui,
+    sans-serif;
+  color: var(--color-text-primary);
+  background: var(--color-surface-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus ring — interactive color only */
+:focus-visible {
+  outline: 2px solid var(--color-interactive);
+  outline-offset: 2px;
+}
+
+/* Range slider accent */
+input[type="range"] {
+  accent-color: var(--color-interactive);
+}
+
+/* Scrollbar (subtle) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}

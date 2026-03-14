@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSimulation } from "../api/client";
+import ActionTimeline from "../components/ActionTimeline";
 import ProgressBar from "../components/ProgressBar";
 import MarketChart from "../components/MarketChart";
 import AgentTable from "../components/AgentTable";
@@ -20,18 +21,18 @@ export default function SimulationPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center">
-        <p className="text-gray-400">読み込み中...</p>
+      <div className="min-h-screen bg-surface-1 flex items-center justify-center">
+        <p className="text-text-tertiary text-sm">読み込み中...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 mb-4">{(error as Error).message}</p>
-          <Link to="/" className="text-blue-400 hover:text-blue-300">
+      <div className="min-h-screen bg-surface-1 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-negative text-sm">{(error as Error).message}</p>
+          <Link to="/" className="text-interactive hover:underline text-sm">
             ホームに戻る
           </Link>
         </div>
@@ -46,24 +47,19 @@ export default function SimulationPage() {
   const result = data.result;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <header className="border-b border-gray-800 px-4 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link to="/" className="text-2xl font-bold tracking-tight">
-            Echo<span className="text-blue-400">Shoal</span>
-          </Link>
-          {isCompleted && (
+    <div className="min-h-screen bg-surface-1">
+      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {isCompleted && (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Link
               to={`/simulation/${jobId}/report`}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+              className="px-4 py-1.5 rounded-md bg-interactive hover:bg-interactive-hover text-white text-sm font-medium transition-colors"
             >
-              レポート表示
+              View Report
             </Link>
-          )}
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+          </div>
+        )}
+        {/* Running state: progress is the hero */}
         {isRunning && (
           <ProgressBar
             percentage={data.progress?.percentage ?? 0}
@@ -73,51 +69,93 @@ export default function SimulationPage() {
           />
         )}
 
+        {/* Error state */}
         {data.status === "failed" && (
-          <div className="p-4 rounded-lg bg-red-900/30 border border-red-700 text-red-300 text-center">
-            シミュレーション失敗: {data.error}
+          <div
+            className="px-4 py-3 rounded-md bg-negative-light border border-negative/20 text-negative text-sm"
+            role="alert"
+          >
+            シミュレーション失敗
+            {data.error && (
+              <span className="block mt-1 text-text-secondary">
+                {data.error}
+              </span>
+            )}
           </div>
         )}
 
+        {/* Completed: results with visual hierarchy */}
         {isCompleted && result && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Stat label="実行ラウンド" value={`${result.summary.total_rounds}ヶ月`} />
-              <Stat label="エージェント" value={`${result.summary.agents.length}体`} />
-              <Stat label="LLM呼び出し" value={`${result.summary.llm_calls}回`} />
-              <Stat
-                label="失業率"
-                value={`${(result.summary.final_market.unemployment_rate * 100).toFixed(1)}%`}
+            {/* Hero metric: unemployment rate — the single most important number */}
+            <div className="bg-surface-0 rounded-lg border border-border p-6">
+              <div className="flex flex-col md:flex-row md:items-end gap-6">
+                <div className="flex-1">
+                  <p className="text-sm text-text-tertiary mb-1">
+                    最終失業率
+                  </p>
+                  <p className="text-4xl font-bold text-text-primary tabular-nums tracking-tight">
+                    {(
+                      result.summary.final_market.unemployment_rate * 100
+                    ).toFixed(1)}
+                    <span className="text-lg font-normal text-text-secondary ml-0.5">
+                      %
+                    </span>
+                  </p>
+                </div>
+                {/* Secondary metrics */}
+                <div className="flex gap-8 text-sm">
+                  <div>
+                    <p className="text-text-tertiary">実行期間</p>
+                    <p className="text-text-primary font-medium tabular-nums">
+                      {result.summary.total_rounds}ヶ月
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-text-tertiary">エージェント</p>
+                    <p className="text-text-primary font-medium tabular-nums">
+                      {result.summary.agents.length}体
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-text-tertiary">LLM呼び出し</p>
+                    <p className="text-text-primary font-medium tabular-nums">
+                      {result.summary.llm_calls.toLocaleString()}回
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Comparison zone: charts side by side on desktop */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <MarketChart
+                rounds={result.rounds}
+                dataKey="skill_demand"
+                title="スキル別需要推移"
+                skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]}
+              />
+              <MarketChart
+                rounds={result.rounds}
+                dataKey="unit_prices"
+                title="スキル別単価推移（万円/月）"
+                skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]}
               />
             </div>
 
-            <MarketChart
-              rounds={result.rounds}
-              dataKey="skill_demand"
-              title="スキル別需要推移"
-              skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]}
-            />
-
-            <MarketChart
-              rounds={result.rounds}
-              dataKey="unit_prices"
-              title="スキル別単価推移（万円/月）"
-              skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]}
-            />
-
+            {/* Detail: agent table (click name for persona) */}
             <AgentTable agents={result.summary.agents} />
+
+            {/* Action Timeline */}
+            <div className="bg-surface-0 rounded-lg border border-border p-5">
+              <h3 className="text-sm font-medium text-text-primary mb-4">
+                Action Timeline
+              </h3>
+              <ActionTimeline rounds={result.rounds} />
+            </div>
           </>
         )}
       </main>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 text-center">
-      <p className="text-gray-400 text-sm">{label}</p>
-      <p className="text-2xl font-bold text-gray-100 mt-1">{value}</p>
     </div>
   );
 }

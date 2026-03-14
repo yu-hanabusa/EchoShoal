@@ -36,15 +36,30 @@ export interface MarketState {
   overseas_outsource_rate: number;
 }
 
+export type ActionVisibility = "public" | "private" | "partial";
+
+export interface ActionTaken {
+  agent: string;
+  type: string;
+  description: string;
+  visibility: ActionVisibility;
+}
+
 export interface RoundResult {
   round_number: number;
   market_state: MarketState;
-  actions_taken: Array<{
-    agent: string;
-    type: string;
-    description: string;
-  }>;
+  actions_taken: ActionTaken[];
   events: string[];
+}
+
+export interface AgentPersonality {
+  conservatism: number;
+  bandwagon: number;
+  overconfidence: number;
+  sunk_cost_bias: number;
+  info_sensitivity: number;
+  noise: number;
+  description: string;
 }
 
 export interface AgentSummary {
@@ -52,10 +67,12 @@ export interface AgentSummary {
   name: string;
   type: string;
   industry: string;
+  description?: string;
   headcount: number;
   revenue: number;
   satisfaction: number;
   reputation: number;
+  personality?: AgentPersonality;
 }
 
 export interface SimulationResult {

@@ -12,7 +12,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from app.config import settings
-from app.core.graph.agent_memory import AgentMemoryStore
+from app.core.graph.agent_memory import AgentMemoryStore, get_visibility
 from app.core.graph.rag import GraphRAGRetriever
 from app.core.llm.router import LLMRouter
 from app.simulation.agents.base import BaseAgent
@@ -138,6 +138,7 @@ class SimulationEngine:
                         "agent": agent.name,
                         "type": action.action_type,
                         "description": action.description,
+                        "visibility": get_visibility(action.action_type),
                     })
                     if self._memory:
                         try:

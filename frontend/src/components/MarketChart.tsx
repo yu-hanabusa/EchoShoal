@@ -18,8 +18,24 @@ interface Props {
   skills?: string[];
 }
 
-export default function MarketChart({ rounds, dataKey, title, skills }: Props) {
+export default function MarketChart({
+  rounds,
+  dataKey,
+  title,
+  skills,
+}: Props) {
   const allSkills = skills || Object.keys(SKILL_LABELS);
+
+  if (rounds.length === 0) {
+    return (
+      <div className="bg-surface-0 rounded-lg border border-border p-5">
+        <h3 className="text-sm font-medium text-text-primary mb-3">{title}</h3>
+        <p className="text-sm text-text-tertiary py-8 text-center">
+          データがありません
+        </p>
+      </div>
+    );
+  }
 
   const chartData = rounds.map((r) => {
     const point: Record<string, number> = { round: r.round_number };
@@ -31,31 +47,56 @@ export default function MarketChart({ rounds, dataKey, title, skills }: Props) {
   });
 
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-      <h3 className="text-lg font-medium text-gray-200 mb-4">{title}</h3>
-      <ResponsiveContainer width="100%" height={300}>
+    <div className="bg-surface-0 rounded-lg border border-border p-5">
+      <h3 className="text-sm font-medium text-text-primary mb-4">{title}</h3>
+      <ResponsiveContainer width="100%" height={260}>
         <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis
             dataKey="round"
-            stroke="#9ca3af"
-            label={{ value: "ラウンド", position: "insideBottom", offset: -5, fill: "#9ca3af" }}
+            stroke="#94a3b8"
+            fontSize={12}
+            tickLine={false}
+            axisLine={{ stroke: "#e2e8f0" }}
+            label={{
+              value: "月",
+              position: "insideBottomRight",
+              offset: -5,
+              fill: "#94a3b8",
+              fontSize: 12,
+            }}
           />
-          <YAxis stroke="#9ca3af" />
+          <YAxis
+            stroke="#94a3b8"
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+          />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1f2937", border: "1px solid #374151", borderRadius: "8px" }}
-            labelStyle={{ color: "#d1d5db" }}
+            contentStyle={{
+              backgroundColor: "#ffffff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "6px",
+              fontSize: "13px",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            }}
+            labelStyle={{ color: "#475569", fontWeight: 500 }}
+            labelFormatter={(v) => `${v}ヶ月目`}
           />
-          <Legend />
+          <Legend
+            iconType="plainline"
+            wrapperStyle={{ fontSize: "12px", color: "#475569" }}
+          />
           {allSkills.map((skill) => (
             <Line
               key={skill}
               type="monotone"
               dataKey={skill}
               name={SKILL_LABELS[skill] || skill}
-              stroke={SKILL_COLORS[skill] || "#8884d8"}
+              stroke={SKILL_COLORS[skill] || "#94a3b8"}
               strokeWidth={2}
               dot={false}
+              activeDot={{ r: 3, strokeWidth: 0 }}
             />
           ))}
         </LineChart>
