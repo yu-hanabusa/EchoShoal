@@ -108,7 +108,7 @@ export default function NewSimulationPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.pdf"
+              accept=".txt,.pdf,text/plain,application/pdf"
               multiple
               onChange={handleFileChange}
               className="block w-full text-sm text-text-primary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-surface-2 file:text-text-secondary hover:file:bg-border file:cursor-pointer file:transition-colors"

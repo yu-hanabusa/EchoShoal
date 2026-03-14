@@ -1,11 +1,13 @@
-"""シナリオ解析サービス — NLP解析と知識グラフを連携してシナリオを強化する."""
+"""シナリオ解析サービス — NLP解析とLLMを使ってシナリオを強化する."""
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.llm.router import LLMRouter, TaskType
 from app.core.nlp.analyzer import AnalysisResult, JapaneseAnalyzer
 from app.simulation.models import Industry, ScenarioInput, SkillCategory
 
@@ -67,8 +69,38 @@ class EnrichedScenario:
 class ScenarioAnalyzer:
     """シナリオテキストを解析し、シミュレーションに必要な情報を抽出する."""
 
-    def __init__(self):
+    def __init__(self, llm: LLMRouter | None = None):
         self._analyzer = JapaneseAnalyzer()
+        self._llm = llm
+
+    async def analyze_async(self, scenario: ScenarioInput) -> EnrichedScenario:
+        """シナリオを非同期で解析する（LLMパラメータ推定あり）."""
+        enriched = self.analyze(scenario)
+
+        # LLMでパラメータを推定
+        if self._llm and (scenario.ai_acceleration == 0 and scenario.economic_shock == 0):
+            estimated = await self._estimate_params_with_llm(scenario.description)
+            if estimated:
+                enriched.original.ai_acceleration = estimated.get("ai_acceleration", 0.0)
+                enriched.original.economic_shock = estimated.get("economic_shock", 0.0)
+                if not scenario.policy_change and estimated.get("policy_change"):
+                    enriched.original.policy_change = estimated["policy_change"]
+                logger.info(
+                    "LLMパラメータ推定: AI=%.1f, 経済=%.1f, 政策=%s",
+                    enriched.original.ai_acceleration,
+                    enriched.original.economic_shock,
+                    enriched.original.policy_change or "なし",
+                )
+
+            # context_summaryを再構築（推定値を反映）
+            enriched.context_summary = self._build_context_summary(
+                enriched.original,
+                enriched.detected_skills,
+                enriched.detected_industries,
+                enriched.detected_policies,
+            )
+
+        return enriched
 
     def analyze(self, scenario: ScenarioInput) -> EnrichedScenario:
         """シナリオを解析して強化情報を返す."""
@@ -110,48 +142,50 @@ class ScenarioAnalyzer:
             len(merged_skills), len(merged_industries), len(analysis.policies),
         )
 
-        # パラメータ自動推定（ユーザー未指定の場合）
-        if scenario.ai_acceleration == 0:
-            enriched.original.ai_acceleration = self._estimate_ai_acceleration(analysis)
-        if scenario.economic_shock == 0:
-            enriched.original.economic_shock = self._estimate_economic_shock(analysis)
+        # ポリシー自動検出（NLPルールベース、LLM不要）
         if not scenario.policy_change and analysis.policies:
             enriched.original.policy_change = ", ".join(analysis.policies)
 
-        # context_summaryを再構築（推定値を反映）
-        enriched.context_summary = self._build_context_summary(
-            enriched.original, merged_skills, merged_industries, analysis.policies,
-        )
-
         return enriched
 
-    def _estimate_ai_acceleration(self, analysis: AnalysisResult) -> float:
-        """NLP解析結果からAI加速度を推定する."""
-        ai_keywords = {"LLM", "ChatGPT", "GPT-4", "Claude", "Gemini", "生成AI", "機械学習",
-                        "深層学習", "PyTorch", "TensorFlow"}
-        ai_count = sum(1 for t in analysis.technologies if t in ai_keywords)
-        ai_text_signals = sum(1 for kw in analysis.keywords if "AI" in kw or "人工知能" in kw)
-        total = ai_count + ai_text_signals
-        if total >= 3:
-            return 0.8
-        if total >= 1:
-            return 0.4
-        return 0.0
+    async def _estimate_params_with_llm(self, description: str) -> dict[str, Any] | None:
+        """LLMにシナリオテキストを渡してパラメータを推定させる."""
+        if not self._llm:
+            return None
 
-    def _estimate_economic_shock(self, analysis: AnalysisResult) -> float:
-        """NLP解析結果から経済ショックを推定する."""
-        negative_keywords = {"不況", "景気後退", "リストラ", "縮小", "減少", "削減", "低迷"}
-        positive_keywords = {"好景気", "成長", "拡大", "増加", "投資拡大", "活況"}
+        prompt = (
+            "以下のシナリオテキストを分析し、日本のIT人材市場シミュレーションのパラメータを推定してください。\n\n"
+            f"シナリオ:\n{description}\n\n"
+            "以下のJSON形式で回答してください:\n"
+            "{\n"
+            '  "ai_acceleration": <-1.0〜1.0の数値。AI技術の普及加速度。正=AI普及が加速、負=停滞>,\n'
+            '  "economic_shock": <-1.0〜1.0の数値。経済ショック。正=好景気、負=不況>,\n'
+            '  "policy_change": <関連する政策変更があれば文字列、なければnull>,\n'
+            '  "reasoning": <判断の根拠を1-2文で説明>\n'
+            "}"
+        )
 
-        text_lower = " ".join(analysis.keywords)
-        neg = sum(1 for kw in negative_keywords if kw in text_lower)
-        pos = sum(1 for kw in positive_keywords if kw in text_lower)
+        try:
+            response = await self._llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt="あなたは日本のIT市場の専門アナリストです。シナリオテキストからシミュレーションパラメータを客観的に推定してください。",
+            )
+            # 値を -1.0〜1.0 にクランプ
+            ai = max(-1.0, min(1.0, float(response.get("ai_acceleration", 0))))
+            econ = max(-1.0, min(1.0, float(response.get("economic_shock", 0))))
+            reasoning = response.get("reasoning", "")
+            if reasoning:
+                logger.info("LLMパラメータ推定根拠: %s", reasoning)
 
-        if neg > pos:
-            return -0.3 * min(neg, 3)
-        if pos > neg:
-            return 0.3 * min(pos, 3)
-        return 0.0
+            return {
+                "ai_acceleration": ai,
+                "economic_shock": econ,
+                "policy_change": response.get("policy_change"),
+            }
+        except Exception:
+            logger.warning("LLMパラメータ推定失敗、デフォルト値を使用")
+            return None
 
     def _build_context_summary(
         self,

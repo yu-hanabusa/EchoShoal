@@ -266,8 +266,8 @@ async def _run_simulation_task(
         llm = LLMRouter()
         agents = create_default_agents(llm)
 
-        analyzer = ScenarioAnalyzer()
-        enriched = analyzer.analyze(scenario)
+        analyzer = ScenarioAnalyzer(llm=llm)
+        enriched = await analyzer.analyze_async(scenario)
         logger.info(
             "シナリオ解析: スキル%d件, 業界%d件, AI加速度%.1f, 経済ショック%.1f",
             len(enriched.detected_skills), len(enriched.detected_industries),
