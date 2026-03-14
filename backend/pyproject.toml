@@ -1,0 +1,53 @@
+[project]
+name = "echoshoal"
+version = "0.1.0"
+description = "AI-powered IT labor market prediction simulator for Japan"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.28.0",
+    "neo4j>=5.0.0",
+    "redis>=5.0.0",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+nlp = [
+    "ginza>=5.2.0",
+    "ja-ginza>=5.2.0",
+    "spacy>=3.7.0",
+    "sudachipy>=0.6.0",
+    "sudachidict-core>=20240716",
+]
+ml = [
+    "sentence-transformers>=3.0.0",
+    "torch>=2.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests (require external services)",
+    "e2e: End-to-end tests",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
