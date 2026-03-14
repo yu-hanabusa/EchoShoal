@@ -70,6 +70,11 @@ class LLMRouter:
     def _select_client(self, task_type: TaskType) -> OllamaClient | ClaudeClient | OpenAIClient:
         if task_type in LIGHT_TASKS:
             return self.ollama
+        # APIキー未設定の場合はOllamaにフォールバック
+        if self._heavy_provider == "claude" and not settings.claude_api_key:
+            return self.ollama
+        if self._heavy_provider == "openai" and not settings.openai_api_key:
+            return self.ollama
         return self.heavy_client
 
     async def generate(
