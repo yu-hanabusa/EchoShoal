@@ -37,72 +37,74 @@ export default function DocumentUpload({ onUploaded }: Props) {
   };
 
   return (
-    <div style={{ marginBottom: "2rem" }}>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "500px" }}>
-        <div>
-          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600 }}>
-            File (.txt, .pdf)
-          </label>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".txt,.pdf"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
-        </div>
+    <div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <label htmlFor="doc-file" className="block text-sm text-text-secondary mb-1.5">
+              ファイル（.txt, .pdf）
+            </label>
+            <input
+              ref={inputRef}
+              id="doc-file"
+              type="file"
+              accept=".txt,.pdf"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-text-primary file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-surface-2 file:text-text-secondary hover:file:bg-border file:cursor-pointer file:transition-colors"
+            />
+          </div>
 
-        <div>
-          <label style={{ display: "block", marginBottom: "0.25rem", fontWeight: 600 }}>
-            Source (optional)
-          </label>
-          <input
-            type="text"
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            placeholder="e.g. IPA IT人材白書2024"
-            style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
-          />
+          <div className="flex-1">
+            <label htmlFor="doc-source" className="block text-sm text-text-secondary mb-1.5">
+              ソース名<span className="text-text-tertiary ml-1">（任意）</span>
+            </label>
+            <input
+              id="doc-source"
+              type="text"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="例: IPA IT人材白書2024"
+              className="w-full rounded-md bg-surface-0 border border-border px-3 py-1.5 text-sm text-text-primary placeholder-text-tertiary focus:border-interactive focus:ring-1 focus:ring-interactive outline-none"
+            />
+          </div>
         </div>
 
         <button
           type="submit"
           disabled={!file || uploading}
-          style={{
-            padding: "0.75rem",
-            borderRadius: "4px",
-            border: "none",
-            backgroundColor: uploading ? "#9ca3af" : "#3b82f6",
-            color: "white",
-            fontWeight: 600,
-            cursor: uploading ? "wait" : "pointer",
-          }}
+          className="px-5 py-2 rounded-md bg-interactive hover:bg-interactive-hover disabled:bg-border-strong disabled:text-text-tertiary text-white text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
         >
-          {uploading ? "Uploading..." : "Upload & Analyze"}
+          {uploading ? "解析中..." : "アップロード & 解析"}
         </button>
       </form>
 
       {error && (
-        <div style={{ marginTop: "1rem", padding: "0.75rem", backgroundColor: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "4px", color: "#dc2626" }}>
+        <div className="mt-4 px-4 py-3 rounded-md bg-negative-light border border-negative/20 text-negative text-sm" role="alert">
           {error}
         </div>
       )}
 
       {result && (
-        <div style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "#f0fdf4", border: "1px solid #86efac", borderRadius: "4px" }}>
-          <h4 style={{ margin: "0 0 0.5rem" }}>Extraction Result</h4>
-          <p>Entities found: {result.entities_found}</p>
-          {result.technologies.length > 0 && (
-            <p>Technologies: {result.technologies.join(", ")}</p>
-          )}
-          {result.organizations.length > 0 && (
-            <p>Organizations: {result.organizations.join(", ")}</p>
-          )}
-          {result.policies.length > 0 && (
-            <p>Policies: {result.policies.join(", ")}</p>
-          )}
-          {result.new_nodes_created > 0 && (
-            <p>New graph nodes created: {result.new_nodes_created}</p>
-          )}
+        <div className="mt-4 px-4 py-3 rounded-md bg-positive-light border border-positive/20 text-sm">
+          <p className="font-medium text-text-primary mb-1">
+            抽出完了: {result.entities_found}件のエンティティ
+          </p>
+          <div className="space-y-0.5 text-text-secondary">
+            {result.technologies.length > 0 && (
+              <p>技術: {result.technologies.join(", ")}</p>
+            )}
+            {result.organizations.length > 0 && (
+              <p>組織: {result.organizations.join(", ")}</p>
+            )}
+            {result.policies.length > 0 && (
+              <p>政策: {result.policies.join(", ")}</p>
+            )}
+            {result.new_nodes_created > 0 && (
+              <p className="text-positive font-medium">
+                新規グラフノード: {result.new_nodes_created}件作成
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
