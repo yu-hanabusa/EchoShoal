@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.simulation.agents.base import AgentAction, AgentProfile, AgentState, BaseAgent
+from app.simulation.agents.base import AgentAction, AgentPersonality, AgentProfile, AgentState, BaseAgent
 from app.simulation.agents.ses_company import SESCompanyAgent
 from app.simulation.engine import SimulationEngine
 from app.simulation.events.effects import apply_active_events
@@ -28,7 +28,10 @@ class StubAgent(BaseAgent):
 def make_stub_agent(llm=None) -> StubAgent:
     profile = AgentProfile(name="Stub", agent_type="stub", industry=Industry.SES)
     state = AgentState(headcount=5)
-    return StubAgent(profile=profile, state=state, llm=llm or MagicMock())
+    return StubAgent(
+        profile=profile, state=state, llm=llm or MagicMock(),
+        personality=AgentPersonality(noise=0.0),
+    )
 
 
 class TestLLMFallback:

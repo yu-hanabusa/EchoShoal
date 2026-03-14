@@ -164,6 +164,7 @@ class SimulationEngine:
                 for action in actions:
                     all_actions.append({
                         "agent": agent.name,
+                        "agent_id": agent.id,
                         "type": action.action_type,
                         "description": action.description,
                         "visibility": get_visibility(action.action_type),
@@ -213,7 +214,22 @@ class SimulationEngine:
                 events.append(f"Agent {agent.name} encountered an error")
 
         # Update market state based on aggregate actions
-        self._update_market(all_actions)
+        market_effects = self._update_market(all_actions)
+
+        # 因果チェーンをグラフに記録
+        if self._memory and market_effects:
+            for effect in market_effects:
+                try:
+                    await self._memory.record_market_effect(
+                        agent_id=effect["agent_id"],
+                        round_number=round_number,
+                        action_type=effect["action_type"],
+                        skill=effect["skill"],
+                        demand_delta=effect["demand_delta"],
+                        supply_delta=effect["supply_delta"],
+                    )
+                except Exception:
+                    pass
 
         # Apply events (replaces old _apply_scenario_effects)
         if self._event_scheduler:
@@ -281,11 +297,13 @@ class SimulationEngine:
                 ", ".join(enriched.detected_policies),
             )
 
-    def _update_market(self, actions: list[dict[str, Any]]) -> None:
+    def _update_market(self, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Update market state based on aggregate agent actions.
 
         すべてのアクションが市場に影響を与える。
+        因果チェーン記録用のeffectsリストを返す。
         """
+        market_effects: list[dict[str, Any]] = []
         # アクション → 市場影響のマッピング
         # (demand_delta, supply_delta) per action
         _ACTION_EFFECTS: dict[str, tuple[float, float]] = {
@@ -341,6 +359,14 @@ class SimulationEngine:
                     self.market.skill_supply[sc] = max(
                         0.0, min(1.0, self.market.skill_supply[sc] + supply_delta)
                     )
+                    # 因果チェーン記録用
+                    market_effects.append({
+                        "agent_id": action.get("agent_id", ""),
+                        "action_type": action_type,
+                        "skill": skill_str,
+                        "demand_delta": demand_delta,
+                        "supply_delta": supply_delta,
+                    })
                 except ValueError:
                     pass
             else:
@@ -360,6 +386,8 @@ class SimulationEngine:
                 self.market.unit_prices[skill] *= 1.0 + (ratio - 1.0) * 0.05
             elif ratio < 0.9:
                 self.market.unit_prices[skill] *= 1.0 - (1.0 - ratio) * 0.05
+
+        return market_effects
 
     def _apply_scenario_effects(self, round_number: int) -> None:
         """Apply scenario-specific effects to the market."""

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { listSimulations } from "../api/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { listSimulations, deleteSimulation } from "../api/client";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   created: { label: "作成済み", color: "text-text-tertiary" },
@@ -11,10 +11,16 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function HomePage() {
+  const queryClient = useQueryClient();
   const { data: simulations, isLoading } = useQuery({
     queryKey: ["simulations"],
     queryFn: listSimulations,
     refetchInterval: 10000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (jobId: string) => deleteSimulation(jobId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["simulations"] }),
   });
 
   return (
@@ -88,6 +94,19 @@ export default function HomePage() {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (confirm("このシミュレーションを削除しますか？")) {
+                              deleteMutation.mutate(sim.job_id);
+                            }
+                          }}
+                          className="text-xs text-text-tertiary hover:text-negative transition-colors"
+                        >
+                          削除
+                        </button>
                       </td>
                     </tr>
                   );

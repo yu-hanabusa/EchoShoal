@@ -139,6 +139,45 @@ class AgentMemoryStore:
             },
         )
 
+    async def record_market_effect(
+        self,
+        agent_id: str,
+        round_number: int,
+        action_type: str,
+        skill: str,
+        demand_delta: float,
+        supply_delta: float,
+    ) -> None:
+        """行動が市場に与えた影響を因果チェーンとして記録する.
+
+        ActionRecord -[CAUSED]-> MarketEffect -[AFFECTS_SKILL]-> Skill
+        """
+        if abs(demand_delta) < 0.001 and abs(supply_delta) < 0.001:
+            return  # 影響が微小なら記録しない
+        try:
+            await self.graph.execute_write(
+                "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
+                "-[:PERFORMED]->(ar:ActionRecord {round: $round, action_type: $action_type}) "
+                "WITH ar LIMIT 1 "
+                "CREATE (me:MarketEffect {"
+                "  simulation_id: $sim_id, round: $round, "
+                "  skill: $skill, demand_delta: $demand_delta, "
+                "  supply_delta: $supply_delta"
+                "}) "
+                "CREATE (ar)-[:CAUSED]->(me)",
+                {
+                    "agent_id": agent_id,
+                    "sim_id": self.simulation_id,
+                    "round": round_number,
+                    "action_type": action_type,
+                    "skill": skill,
+                    "demand_delta": round(demand_delta, 4),
+                    "supply_delta": round(supply_delta, 4),
+                },
+            )
+        except Exception:
+            pass  # 因果記録失敗は致命的ではない
+
     async def get_visible_actions(
         self,
         observer_id: str,

@@ -84,6 +84,11 @@ export async function getSimulationGraph(jobId: string): Promise<{
   return request(`/simulations/${jobId}/graph`);
 }
 
+/** シミュレーションを削除 */
+export async function deleteSimulation(jobId: string): Promise<void> {
+  await request(`/simulations/${jobId}`, { method: "DELETE" });
+}
+
 /** ヘルスチェック */
 export async function healthCheck(): Promise<{ status: string; app: string }> {
   return request("/health");

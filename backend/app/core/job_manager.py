@@ -75,7 +75,7 @@ class JobManager:
         )
         # インデックスに追加
         try:
-            client = await self.redis._get_client()
+            client = await self.redis._ensure_connected()
             await client.zadd(_KEY_INDEX, {job_id: time.time()})
         except Exception:
             logger.warning("ジョブインデックス更新失敗: %s", job_id)
@@ -173,7 +173,7 @@ class JobManager:
     async def list_jobs(self, limit: int = 20) -> list[JobInfo]:
         """過去のジョブ一覧を取得する（新しい順）."""
         try:
-            client = await self.redis._get_client()
+            client = await self.redis._ensure_connected()
             job_ids = await client.zrevrange(_KEY_INDEX, 0, limit - 1)
         except Exception:
             logger.warning("ジョブ一覧取得失敗")
@@ -186,6 +186,22 @@ class JobManager:
             if info:
                 jobs.append(info)
         return jobs
+
+    async def delete_job(self, job_id: str) -> bool:
+        """ジョブとその関連データをRedisから削除する."""
+        try:
+            await self.redis.delete(_KEY_STATUS.format(job_id=job_id))
+            await self.redis.delete(_KEY_RESULT.format(job_id=job_id))
+            await self.redis.delete(_KEY_PROGRESS.format(job_id=job_id))
+            await self.redis.delete(_KEY_SCENARIO.format(job_id=job_id))
+            # インデックスから削除
+            client = await self.redis._ensure_connected()
+            await client.zrem(_KEY_INDEX, job_id)
+            logger.info("ジョブ削除: %s", job_id)
+            return True
+        except Exception:
+            logger.warning("ジョブ削除失敗: %s", job_id)
+            return False
 
     async def _get_status_raw(self, job_id: str) -> dict[str, Any] | None:
         return await self.redis.get_json(_KEY_STATUS.format(job_id=job_id))

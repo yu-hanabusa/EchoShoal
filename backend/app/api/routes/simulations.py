@@ -357,6 +357,35 @@ async def get_simulation_progress(job_id: str) -> dict[str, Any]:
     return {"job_id": job_id, "status": info.status.value, "progress": info.progress}
 
 
+# ─── 削除 ───
+
+@router.delete("/{job_id}")
+async def delete_simulation(job_id: str) -> dict[str, str]:
+    """シミュレーションを削除する（Redis + Neo4jのデータをクリーンアップ）."""
+    job_manager = _get_job_manager()
+    info = await job_manager.get_job_info(job_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+
+    # Redis削除
+    await job_manager.delete_job(job_id)
+
+    # Neo4j削除（このシミュレーションのデータ）
+    graph_client = await _get_graph_client()
+    if graph_client:
+        try:
+            await graph_client.execute_write(
+                "MATCH (n) WHERE n.simulation_id = $sim_id DETACH DELETE n",
+                {"sim_id": job_id},
+            )
+        except Exception:
+            logger.warning("Neo4jデータ削除失敗: %s", job_id)
+        finally:
+            await graph_client.close()
+
+    return {"status": "deleted", "job_id": job_id}
+
+
 # ─── グラフ可視化（シミュレーションスコープ） ───
 
 @router.get("/{job_id}/graph")
