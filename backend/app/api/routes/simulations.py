@@ -12,6 +12,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.core.graph.agent_memory import AgentMemoryStore
+from app.core.graph.client import GraphClient
+from app.core.graph.rag import GraphRAGRetriever
 from app.core.job_manager import JobManager, JobStatus
 from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
@@ -67,11 +70,31 @@ def _check_rate_limit() -> None:
     _request_timestamps.append(now)
 
 
+async def _setup_graph_components() -> tuple[GraphRAGRetriever | None, AgentMemoryStore | None, GraphClient | None]:
+    """知識グラフ関連コンポーネントをセットアップする.
+
+    Neo4jが利用不可の場合はNoneを返す（グレースフルデグラデーション）。
+    """
+    try:
+        graph_client = GraphClient()
+        if not await graph_client.is_available():
+            logger.warning("Neo4j利用不可、GraphRAGなしでシミュレーション実行")
+            return None, None, None
+
+        agent_memory = AgentMemoryStore(graph_client)
+        rag = GraphRAGRetriever(graph_client, agent_memory)
+        return rag, agent_memory, graph_client
+    except Exception:
+        logger.warning("GraphClient初期化失敗、GraphRAGなしで続行")
+        return None, None, None
+
+
 async def _run_simulation_task(
     job_id: str, scenario: ScenarioInput, job_manager: JobManager
 ) -> None:
     """バックグラウンドでシミュレーションを実行する."""
     global _active_simulations
+    graph_client: GraphClient | None = None
     try:
         await job_manager.set_running(job_id)
 
@@ -90,12 +113,16 @@ async def _run_simulation_task(
         event_scheduler = EventScheduler(llm=llm)
         await event_scheduler.generate_from_scenario(scenario)
 
+        # 知識グラフコンポーネント（Neo4j利用不可時はNone）
+        rag, agent_memory, graph_client = await _setup_graph_components()
+
         async def on_progress(current: int, total: int) -> None:
             await job_manager.update_progress(job_id, current, total)
 
         engine = SimulationEngine(
             agents=agents, llm=llm, scenario=scenario,
             on_progress=on_progress, event_scheduler=event_scheduler,
+            rag=rag, agent_memory=agent_memory,
         )
 
         results = await engine.run()
@@ -112,6 +139,11 @@ async def _run_simulation_task(
         await job_manager.set_failed(job_id, str(exc))
     finally:
         _active_simulations -= 1
+        if graph_client:
+            try:
+                await graph_client.close()
+            except Exception:
+                pass
 
 
 @router.post("/")

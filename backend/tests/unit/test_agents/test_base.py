@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.simulation.agents.base import AgentAction, AgentProfile, AgentState, BaseAgent
+from app.simulation.agents.base import AgentAction, AgentPersonality, AgentProfile, AgentState, BaseAgent
 from app.simulation.models import Industry, MarketState, SkillCategory
 
 
@@ -32,7 +32,10 @@ def make_agent(llm=None) -> ConcreteAgent:
         cost=50.0,
         headcount=10,
     )
-    return ConcreteAgent(profile=profile, state=state, llm=llm or MagicMock())
+    return ConcreteAgent(
+        profile=profile, state=state, llm=llm or MagicMock(),
+        personality=AgentPersonality(noise=0.0),  # テストではノイズ無効化
+    )
 
 
 class TestAgentProfile:

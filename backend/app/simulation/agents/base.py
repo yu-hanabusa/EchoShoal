@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import uuid
 import logging
 from abc import ABC, abstractmethod
@@ -14,6 +15,34 @@ from pydantic import BaseModel, Field
 from app.core.llm.router import LLMRouter, TaskType
 from app.simulation.agents.utils import _parse_skill
 from app.simulation.models import Industry, MarketState, SkillCategory
+
+
+class AgentPersonality(BaseModel):
+    """エージェントの性格・認知バイアス.
+
+    各パラメータは 0.0〜1.0 の範囲で設定する。
+    """
+
+    conservatism: float = 0.5
+    """保守性: 高い→現状維持を好む、新技術や変化を嫌う"""
+
+    bandwagon: float = 0.5
+    """同調性: 高い→他社がやっていることを真似する"""
+
+    overconfidence: float = 0.5
+    """過信度: 高い→リスクを過小評価、自社能力を過大評価"""
+
+    sunk_cost_bias: float = 0.5
+    """サンクコストバイアス: 高い→過去に投資した領域を捨てられない"""
+
+    info_sensitivity: float = 0.5
+    """情報感度: 低い→市場情報を見落とす/誤解する"""
+
+    noise: float = 0.1
+    """ノイズ: 一定確率でLLM判断後にランダム行動に差し替える"""
+
+    description: str = ""
+    """性格の自由記述（プロンプト注入用）"""
 
 
 class AgentProfile(BaseModel):
@@ -46,17 +75,29 @@ class AgentAction(BaseModel):
     impact: dict[str, float] = Field(default_factory=dict)
 
 
+# デフォルトの性格（パラメータ指定がない場合に使用）
+DEFAULT_PERSONALITY = AgentPersonality()
+
+
 class BaseAgent(ABC):
     """Base class for all simulation agents.
 
     Each agent observes the MarketState, decides actions using the LLM,
     and updates its own state accordingly.
+    Agents have personalities that bias their decisions and introduce noise.
     """
 
-    def __init__(self, profile: AgentProfile, state: AgentState, llm: LLMRouter):
+    def __init__(
+        self,
+        profile: AgentProfile,
+        state: AgentState,
+        llm: LLMRouter,
+        personality: AgentPersonality | None = None,
+    ):
         self.profile = profile
         self.state = state
         self.llm = llm
+        self.personality = personality or DEFAULT_PERSONALITY
         self._action_history: list[AgentAction] = []
 
     @property
@@ -72,13 +113,21 @@ class BaseAgent(ABC):
         """Return list of action types this agent can take."""
         ...
 
-    async def decide_actions(self, market: MarketState) -> list[AgentAction]:
+    async def decide_actions(
+        self, market: MarketState, rag_context: str = ""
+    ) -> list[AgentAction]:
         """Use LLM to decide which actions to take this round.
 
-        LLM呼び出しやパースに失敗した場合、利用可能なアクションの最初の1つをフォールバックとして返す。
+        1. 性格バイアス付きプロンプトでLLMに判断させる
+        2. 低確率でノイズ注入（ランダム行動に差し替え）
+        3. 失敗時はフォールバック
+
+        Args:
+            market: 現在の市場状態
+            rag_context: 知識グラフからの参考情報テキスト（省略可）
         """
         try:
-            prompt = self._build_decision_prompt(market)
+            prompt = self._build_decision_prompt(market, rag_context=rag_context)
             system_prompt = self._build_system_prompt()
 
             response = await self.llm.generate_json(
@@ -89,6 +138,10 @@ class BaseAgent(ABC):
 
             actions = self._parse_actions(response)
             if actions:
+                # ノイズ注入: 性格のnoise確率でランダム行動に差し替え
+                if random.random() < self.personality.noise:
+                    actions = self._inject_noise(actions)
+                    logger.info("Agent %s: ノイズ注入（非合理的判断）", self.name)
                 return actions
         except Exception:
             logger.warning("Agent %s: LLM呼び出し失敗、フォールバック使用", self.name)
@@ -102,6 +155,16 @@ class BaseAgent(ABC):
                 description="フォールバック（LLM応答なし）",
             )]
         return []
+
+    def _inject_noise(self, actions: list[AgentAction]) -> list[AgentAction]:
+        """行動をランダムに1つ差し替える（非合理的判断のシミュレーション）."""
+        available = self.available_actions()
+        random_action = random.choice(available)
+        return [AgentAction(
+            agent_id=self.id,
+            action_type=random_action,
+            description="直感的判断（合理的根拠なし）",
+        )]
 
     async def apply_actions(
         self, actions: list[AgentAction], market: MarketState
@@ -131,23 +194,69 @@ class BaseAgent(ABC):
         return True
 
     def _build_system_prompt(self) -> str:
+        personality_text = self._build_personality_prompt()
         return (
             f"あなたは日本のIT業界における{self.profile.agent_type}のシミュレーションエージェントです。\n"
             f"名前: {self.profile.name}\n"
             f"業界: {self.profile.industry.value}\n"
-            f"説明: {self.profile.description}\n"
+            f"説明: {self.profile.description}\n\n"
+            f"【あなたの性格・判断傾向】\n{personality_text}\n\n"
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
-            "市場状況を分析し、次のラウンドで取るべきアクションをJSON形式で回答してください。\n"
-            '回答形式: {"actions": [{"action_type": "...", "description": "...", "parameters": {}}]}'
+            "上記の性格に基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
+            "あなたは完全に合理的ではありません。上記の性格傾向に従って判断してください。\n"
+            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {}}]}'
         )
 
-    def _build_decision_prompt(self, market: MarketState) -> str:
+    def _build_personality_prompt(self) -> str:
+        """性格パラメータから自然言語のプロンプトテキストを生成する."""
+        p = self.personality
+        lines: list[str] = []
+
+        # 自由記述があればまず追加
+        if p.description:
+            lines.append(p.description)
+
+        # 保守性
+        if p.conservatism >= 0.7:
+            lines.append("あなたは保守的で、新しい技術や変化を恐れます。実績のある方法を強く好みます。")
+        elif p.conservatism <= 0.3:
+            lines.append("あなたは革新的で、新しい技術やアプローチに積極的に挑戦します。")
+
+        # 同調性
+        if p.bandwagon >= 0.7:
+            lines.append("他社や業界のトレンドに敏感で、みんながやっていることを真似する傾向があります。")
+        elif p.bandwagon <= 0.3:
+            lines.append("独自路線を好み、他社の動向に流されず独立した判断をします。")
+
+        # 過信度
+        if p.overconfidence >= 0.7:
+            lines.append("自社の能力を過大評価しがちで、リスクを過小に見積もります。大胆な行動を好みます。")
+        elif p.overconfidence <= 0.3:
+            lines.append("自社の能力を客観的に見る傾向があり、慎重にリスクを評価します。")
+
+        # サンクコスト
+        if p.sunk_cost_bias >= 0.7:
+            lines.append("過去に投資した技術や事業への愛着が非常に強く、たとえ市場が変わっても切り替えが難しいです。")
+        elif p.sunk_cost_bias <= 0.3:
+            lines.append("過去の投資にこだわらず、状況に応じて柔軟に方向転換できます。")
+
+        # 情報感度
+        if p.info_sensitivity <= 0.3:
+            lines.append("市場情報の収集・分析が苦手で、重要なトレンドを見落としがちです。")
+        elif p.info_sensitivity >= 0.7:
+            lines.append("市場情報に敏感で、データに基づいた判断を好みます。")
+
+        return "\n".join(lines) if lines else "バランスの取れた判断をします。"
+
+    def _build_decision_prompt(
+        self, market: MarketState, rag_context: str = ""
+    ) -> str:
         top_demand = sorted(
             market.skill_demand.items(), key=lambda x: x[1], reverse=True
         )[:3]
         demand_str = ", ".join(f"{s.value}: {v:.2f}" for s, v in top_demand)
 
-        return (
+        prompt = (
             f"【ラウンド {market.round_number}】\n"
             f"自社状況: 売上{self.state.revenue}万円, コスト{self.state.cost}万円, "
             f"人員{self.state.headcount}名, 契約{self.state.active_contracts}件\n"
@@ -158,9 +267,14 @@ class BaseAgent(ABC):
             f"  失業率: {market.unemployment_rate:.1%}\n"
             f"  AI自動化率: {market.ai_automation_rate:.1%}\n"
             f"  リモートワーク率: {market.remote_work_rate:.1%}\n"
-            f"  オフショア率: {market.overseas_outsource_rate:.1%}\n\n"
-            f"最大2つのアクションを選んでください。"
+            f"  オフショア率: {market.overseas_outsource_rate:.1%}\n"
         )
+
+        if rag_context:
+            prompt += rag_context
+
+        prompt += "\n\n最大2つのアクションを選んでください。"
+        return prompt
 
     def _parse_actions(self, response: dict[str, Any]) -> list[AgentAction]:
         """Parse LLM response into AgentAction list."""

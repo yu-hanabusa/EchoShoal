@@ -19,7 +19,7 @@ class StubAgent(BaseAgent):
         if action.action_type == "recruit":
             self.state.headcount += 1
 
-    async def decide_actions(self, market: MarketState) -> list[AgentAction]:
+    async def decide_actions(self, market: MarketState, rag_context: str = "") -> list[AgentAction]:
         return [
             AgentAction(
                 agent_id=self.id,

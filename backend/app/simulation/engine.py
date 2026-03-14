@@ -1,4 +1,8 @@
-"""Simulation engine - orchestrates agent-based market simulation."""
+"""Simulation engine - orchestrates agent-based market simulation.
+
+エージェントの行動・状態を知識グラフに時系列記録し、
+可視性制御付きGraphRAGでエージェント間の情報非対称性を実現する。
+"""
 
 from __future__ import annotations
 
@@ -8,6 +12,8 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from app.config import settings
+from app.core.graph.agent_memory import AgentMemoryStore
+from app.core.graph.rag import GraphRAGRetriever
 from app.core.llm.router import LLMRouter
 from app.simulation.agents.base import BaseAgent
 from app.simulation.events.effects import apply_active_events
@@ -28,10 +34,12 @@ class SimulationEngine:
 
     Each round:
     1. Activate a subset of agents
-    2. Each active agent observes market and decides actions (via LLM)
-    3. Actions are applied to agent states
-    4. Market state is updated based on aggregate agent actions
-    5. Round result is recorded
+    2. [RAG] Each agent gets its own context (visible actions only)
+    3. Each active agent decides actions (personality-biased LLM + noise)
+    4. Actions are applied to agent states
+    5. [Graph] Actions and state snapshots are recorded to Neo4j
+    6. Market state is updated based on aggregate agent actions
+    7. Round result is recorded
     """
 
     # コールバック型: async def callback(current_round, total_rounds) -> None
@@ -44,6 +52,8 @@ class SimulationEngine:
         scenario: ScenarioInput | None = None,
         on_progress: ProgressCallback | None = None,
         event_scheduler: EventScheduler | None = None,
+        rag: GraphRAGRetriever | None = None,
+        agent_memory: AgentMemoryStore | None = None,
     ):
         self.agents = agents
         self.llm = llm
@@ -53,6 +63,8 @@ class SimulationEngine:
         self._llm_call_count = 0
         self._on_progress = on_progress
         self._event_scheduler = event_scheduler
+        self._rag = rag
+        self._memory = agent_memory
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -60,6 +72,10 @@ class SimulationEngine:
         rounds = min(rounds, settings.max_rounds)
 
         logger.info("Starting simulation: %d rounds, %d agents", rounds, len(self.agents))
+
+        # エージェントノードを知識グラフに登録
+        if self._memory:
+            await self._register_agents()
 
         for round_num in range(1, rounds + 1):
             if self._llm_call_count >= settings.max_llm_calls:
@@ -74,6 +90,19 @@ class SimulationEngine:
 
         return self.results
 
+    async def _register_agents(self) -> None:
+        """全エージェントをNeo4jに登録する."""
+        for agent in self.agents:
+            try:
+                await self._memory.ensure_agent_node(
+                    agent_id=agent.id,
+                    name=agent.name,
+                    agent_type=agent.profile.agent_type,
+                    industry=agent.profile.industry.value,
+                )
+            except Exception:
+                logger.warning("Agent登録失敗: %s", agent.name)
+
     async def _run_round(self, round_number: int) -> RoundResult:
         """Execute a single simulation round."""
         self.market.round_number = round_number
@@ -87,16 +116,59 @@ class SimulationEngine:
         # Each agent decides and applies actions
         for agent in active_agents:
             try:
-                actions = await agent.decide_actions(self.market)
+                # エージェント固有のRAGコンテキスト取得（可視性制御付き）
+                rag_context = ""
+                if self._rag:
+                    try:
+                        ctx = await self._rag.get_agent_context(agent.id, round_number)
+                        rag_context = ctx.to_prompt()
+                    except Exception:
+                        logger.warning("RAGコンテキスト取得失敗: agent=%s", agent.name)
+
+                # LLM意思決定（性格バイアス + ノイズ注入済み）
+                actions = await agent.decide_actions(self.market, rag_context=rag_context)
                 self._llm_call_count += 1
+
+                # 行動を適用
                 await agent.apply_actions(actions, self.market)
 
+                # 行動をグラフに記録
                 for action in actions:
                     all_actions.append({
                         "agent": agent.name,
                         "type": action.action_type,
                         "description": action.description,
                     })
+                    if self._memory:
+                        try:
+                            await self._memory.record_action(
+                                agent_id=agent.id,
+                                agent_name=agent.name,
+                                round_number=round_number,
+                                action_type=action.action_type,
+                                description=action.description,
+                            )
+                        except Exception:
+                            logger.warning("行動記録失敗: agent=%s", agent.name)
+
+                # 状態スナップショットをグラフに記録
+                if self._memory:
+                    try:
+                        await self._memory.record_state(
+                            agent_id=agent.id,
+                            round_number=round_number,
+                            state={
+                                "revenue": agent.state.revenue,
+                                "cost": agent.state.cost,
+                                "headcount": agent.state.headcount,
+                                "satisfaction": agent.state.satisfaction,
+                                "reputation": agent.state.reputation,
+                                "active_contracts": agent.state.active_contracts,
+                            },
+                        )
+                    except Exception:
+                        logger.warning("状態記録失敗: agent=%s", agent.name)
+
             except Exception:
                 logger.exception("Agent %s failed in round %d", agent.name, round_number)
                 events.append(f"Agent {agent.name} encountered an error")

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     default_heavy_provider: str = "claude"  # "claude" or "openai"
 
+    # e-Stat API
+    estat_api_key: str = ""
+
     # Neo4j Settings
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
