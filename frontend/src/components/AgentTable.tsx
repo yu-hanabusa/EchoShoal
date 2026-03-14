@@ -42,17 +42,17 @@ export default function AgentTable({ agents }: Props) {
   return (
     <div className="bg-surface-0 rounded-lg border border-border p-5 overflow-x-auto">
       <h3 className="text-sm font-medium text-text-primary mb-4">
-        Agents (click name for persona)
+        エージェント一覧（名前クリックでペルソナ表示）
       </h3>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-text-tertiary">
-            <th className="py-2 pr-3 font-medium">Name</th>
-            <th className="py-2 px-3 font-medium">Type</th>
-            <th className="py-2 px-3 font-medium text-right">Headcount</th>
-            <th className="py-2 px-3 font-medium text-right">Revenue</th>
-            <th className="py-2 px-3 font-medium text-right">Satisfaction</th>
-            <th className="py-2 pl-3 font-medium text-right">Reputation</th>
+            <th className="py-2 pr-3 font-medium">名前</th>
+            <th className="py-2 px-3 font-medium">種別</th>
+            <th className="py-2 px-3 font-medium text-right">人員</th>
+            <th className="py-2 px-3 font-medium text-right">売上（万円）</th>
+            <th className="py-2 px-3 font-medium text-right">満足度</th>
+            <th className="py-2 pl-3 font-medium text-right">市場評判</th>
           </tr>
         </thead>
         <tbody className="text-text-primary">

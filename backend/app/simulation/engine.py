@@ -254,65 +254,79 @@ class SimulationEngine:
     def _update_market(self, actions: list[dict[str, Any]]) -> None:
         """Update market state based on aggregate agent actions.
 
-        各アクションのスキル・数量パラメータを使い、
-        スキル別に需要・供給を更新する。
+        すべてのアクションが市場に影響を与える。
         """
-        _HIRE_ACTIONS = {"recruit", "hire_engineers", "hire_internal"}
-        _TRAIN_ACTIONS = {"upskill", "learn_skill", "internal_training", "invest_rd"}
-        _DEMAND_ACTIONS = {"bid_project", "expand_sales", "outsource_project", "start_dx"}
+        # アクション → 市場影響のマッピング
+        # (demand_delta, supply_delta) per action
+        _ACTION_EFFECTS: dict[str, tuple[float, float]] = {
+            # 需要を上げるアクション
+            "recruit": (0.02, 0.0),
+            "hire_engineers": (0.02, 0.0),
+            "hire_internal": (0.02, 0.0),
+            "bid_project": (0.015, 0.0),
+            "expand_sales": (0.015, 0.0),
+            "outsource_project": (0.01, 0.0),
+            "start_dx": (0.02, 0.0),
+            "outsource": (0.01, -0.005),  # 外注は需要増+自社供給減
+            # 供給を上げるアクション
+            "upskill": (0.0, 0.015),
+            "learn_skill": (0.0, 0.015),
+            "internal_training": (0.0, 0.01),
+            "invest_rd": (0.0, 0.01),
+            "insource": (0.0, 0.01),      # 内製化は供給増
+            # 需給バランスに影響
+            "shift_domain": (0.01, 0.01),  # ドメイン変更は両方動く
+            "release_bench": (-0.01, 0.01),  # 解雇は需要減+市場供給増
+            "network": (0.005, 0.0),       # 人脈構築は需要微増
+            "take_contract": (0.01, -0.01),  # 受注は需要増+供給減
+            "raise_rate": (0.0, -0.005),   # 単価上げは供給減
+            "lower_rate": (0.005, 0.005),  # 単価下げは需給両方微増
+            # 間接的な影響
+            "adjust_margin": (0.005, 0.0),
+            "adopt_saas": (-0.005, 0.005), # SaaS導入は需要減+効率で供給増
+            "maintain_legacy": (0.005, 0.0),  # レガシー保守は需要維持
+            "rest": (0.0, 0.0),            # 休養は影響なし
+            "offshore": (-0.01, 0.01),     # オフショアは国内需要減+海外供給増
+        }
 
         for action in actions:
             action_type = action["type"]
             skill_str = action.get("skill")
-            count = action.get("count", 1)
+            count = max(1, action.get("count", 1))
+
+            effects = _ACTION_EFFECTS.get(action_type, (0.005, 0.0))
+            demand_delta = effects[0] * count
+            supply_delta = effects[1] * count
 
             # スキルが指定されていればそのスキルだけに影響
-            target_skills: list[SkillCategory] = []
             if skill_str:
                 try:
-                    target_skills = [SkillCategory(skill_str)]
+                    sc = SkillCategory(skill_str)
+                    self.market.skill_demand[sc] = max(
+                        0.0, min(1.0, self.market.skill_demand[sc] + demand_delta)
+                    )
+                    self.market.skill_supply[sc] = max(
+                        0.0, min(1.0, self.market.skill_supply[sc] + supply_delta)
+                    )
                 except ValueError:
                     pass
-
-            if action_type in _HIRE_ACTIONS:
-                if target_skills:
-                    for sc in target_skills:
-                        self.market.skill_demand[sc] = min(
-                            1.0, self.market.skill_demand[sc] + count * 0.005
-                        )
-                else:
-                    # スキル未指定の場合は全スキルに薄く影響
-                    for sc in SkillCategory:
-                        self.market.skill_demand[sc] = min(
-                            1.0, self.market.skill_demand[sc] + count * 0.001
-                        )
-
-            elif action_type in _TRAIN_ACTIONS:
-                if target_skills:
-                    for sc in target_skills:
-                        self.market.skill_supply[sc] = min(
-                            1.0, self.market.skill_supply[sc] + count * 0.003
-                        )
-                else:
-                    for sc in SkillCategory:
-                        self.market.skill_supply[sc] = min(
-                            1.0, self.market.skill_supply[sc] + count * 0.0005
-                        )
-
-            elif action_type in _DEMAND_ACTIONS:
-                if target_skills:
-                    for sc in target_skills:
-                        self.market.skill_demand[sc] = min(
-                            1.0, self.market.skill_demand[sc] + 0.003
-                        )
+            else:
+                # スキル未指定の場合は全スキルに薄く影響
+                for sc in SkillCategory:
+                    self.market.skill_demand[sc] = max(
+                        0.0, min(1.0, self.market.skill_demand[sc] + demand_delta * 0.2)
+                    )
+                    self.market.skill_supply[sc] = max(
+                        0.0, min(1.0, self.market.skill_supply[sc] + supply_delta * 0.2)
+                    )
 
         # Price adjustment based on demand/supply ratio per skill
         for skill in SkillCategory:
             ratio = self.market.demand_supply_ratio(skill)
-            if ratio > 1.2:
-                self.market.unit_prices[skill] *= 1.02  # 需要超過 → 単価上昇
-            elif ratio < 0.8:
-                self.market.unit_prices[skill] *= 0.98  # 供給過多 → 単価下降
+            if ratio > 1.1:
+                self.market.unit_prices[skill] *= 1.0 + (ratio - 1.0) * 0.05
+            elif ratio < 0.9:
+                self.market.unit_prices[skill] *= 1.0 - (1.0 - ratio) * 0.05
 
     def _apply_scenario_effects(self, round_number: int) -> None:
         """Apply scenario-specific effects to the market."""

@@ -71,7 +71,7 @@ export default function ActionTimeline({ rounds }: Props) {
                 backgroundColor: "#3b82f6",
                 top: "2px",
               }} />
-              Round {round.round_number}
+              {round.round_number}ヶ月目
             </div>
 
             {round.actions_taken.map((action, i) => (
