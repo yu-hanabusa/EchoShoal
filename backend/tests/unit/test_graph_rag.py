@@ -71,9 +71,9 @@ class TestGraphRAGRetriever:
         ctx = await retriever.get_agent_context("agent-1", round_number=4)
         prompt = ctx.to_prompt()
 
-        assert "売上100万円" in prompt
         assert "recruit" in prompt
-        assert "+10万円" in prompt  # 前回比
+        assert "+10万円" in prompt  # 行動→結果の紐付け
+        assert "ヶ月目" in prompt
 
     @pytest.mark.asyncio
     async def test_graceful_on_memory_failure(self):

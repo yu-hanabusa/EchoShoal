@@ -19,7 +19,6 @@ from app.simulation.agents.base import BaseAgent
 from app.simulation.events.effects import apply_active_events
 from app.simulation.events.scheduler import EventScheduler
 from app.simulation.models import (
-    Industry,
     MarketState,
     RoundResult,
     ScenarioInput,
@@ -122,6 +121,9 @@ class SimulationEngine:
         all_actions: list[dict[str, Any]] = []
         events: list[str] = []
 
+        # グラフからスキル供給を同期（定量的フィードバック）
+        await self._sync_market_from_graph()
+
         # Activate subset of agents
         active_agents = self._select_active_agents()
         logger.info("Round %d: %d/%d agents active", round_number, len(active_agents), len(self.agents))
@@ -167,6 +169,7 @@ class SimulationEngine:
                         "visibility": get_visibility(action.action_type),
                         "skill": action.parameters.get("skill", ""),
                         "count": action.parameters.get("count", 1),
+                        "reputation": agent.state.reputation,
                     })
                     if self._memory:
                         try:
@@ -227,6 +230,33 @@ class SimulationEngine:
             actions_taken=all_actions,
             events=events,
         )
+
+    async def _sync_market_from_graph(self) -> None:
+        """グラフのSKILLED_INデータから市場のスキル供給を同期する.
+
+        エージェントの実際のスキル保有状況に基づいて
+        skill_supplyを更新する（定量的フィードバック）。
+        """
+        if not self._memory:
+            return
+        try:
+            skill_data = await self._memory.graph.execute_read(
+                "MATCH (a:Agent {simulation_id: $sim_id})-[r:SKILLED_IN]->(s:Skill) "
+                "RETURN s.name AS skill, avg(r.proficiency) AS avg_prof, "
+                "       count(a) AS agent_count",
+                {"sim_id": self._memory.simulation_id},
+            )
+            for row in skill_data:
+                try:
+                    sc = SkillCategory(row["skill"])
+                    graph_supply = min(1.0, row["avg_prof"] * row["agent_count"] * 0.05)
+                    # グラフのデータと現在の値をブレンド（急激な変動を防ぐ）
+                    current = self.market.skill_supply[sc]
+                    self.market.skill_supply[sc] = current * 0.7 + graph_supply * 0.3
+                except ValueError:
+                    pass
+        except Exception:
+            logger.warning("グラフからのスキル供給同期に失敗")
 
     def _select_active_agents(self) -> list[BaseAgent]:
         """Randomly activate a subset of agents each round."""
@@ -295,8 +325,11 @@ class SimulationEngine:
             count = max(1, action.get("count", 1))
 
             effects = _ACTION_EFFECTS.get(action_type, (0.005, 0.0))
-            demand_delta = effects[0] * count
-            supply_delta = effects[1] * count
+            # 評判が高いエージェントほどアクションの市場影響が大きい
+            rep = action.get("reputation", 0.5)
+            rep_multiplier = 0.5 + rep  # 0.5〜1.5の範囲
+            demand_delta = effects[0] * count * rep_multiplier
+            supply_delta = effects[1] * count * rep_multiplier
 
             # スキルが指定されていればそのスキルだけに影響
             if skill_str:

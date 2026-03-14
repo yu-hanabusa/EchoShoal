@@ -31,6 +31,7 @@ class AgentDecisionContext:
     own_history: str = ""
     market_activity: str = ""
     industry_landscape: str = ""
+    skill_landscape: str = ""
     active_events: str = ""
     document_insights: str = ""
     reference_stats: str = ""
@@ -45,6 +46,8 @@ class AgentDecisionContext:
             sections.append(self.market_activity)
         if self.industry_landscape:
             sections.append(self.industry_landscape)
+        if self.skill_landscape:
+            sections.append(self.skill_landscape)
         if self.active_events:
             sections.append(self.active_events)
         if self.document_insights:
@@ -103,17 +106,23 @@ class GraphRAGRetriever:
         except Exception:
             logger.warning("競合環境の取得に失敗")
 
-        # 4. アクティブイベントの説明
+        # 4. 市場のスキル分布（SKILLED_INから）
+        try:
+            ctx.skill_landscape = await self._get_skill_landscape()
+        except Exception:
+            logger.warning("スキル分布の取得に失敗")
+
+        # 5. アクティブイベントの説明
         if active_events_text:
             ctx.active_events = active_events_text
 
-        # 5. アップロード文書から得た知識
+        # 6. アップロード文書から得た知識
         try:
             ctx.document_insights = await self._get_document_insights()
         except Exception:
             logger.warning("文書知識の取得に失敗")
 
-        # 6. 統計データ
+        # 7. 統計データ
         try:
             ctx.reference_stats = await self._get_reference_stats()
         except Exception:
@@ -122,40 +131,65 @@ class GraphRAGRetriever:
         return ctx
 
     def _format_own_history(self, history: dict[str, Any]) -> str:
-        """自分の行動・状態履歴をテキストに変換する."""
+        """自分の行動・状態履歴をテキストに変換する.
+
+        行動と結果（状態変化）を紐付けて表示し、
+        LLMが「何をしたら何が起きたか」を理解できるようにする。
+        """
         actions = history.get("actions", [])
         snapshots = history.get("snapshots", [])
 
         if not actions and not snapshots:
             return ""
 
-        lines: list[str] = ["【自社の直近の行動・状態】"]
+        lines: list[str] = ["【自社の直近の行動と結果】"]
 
-        if snapshots:
-            latest = snapshots[0]
-            lines.append(
-                f"  直近状態(R{latest['round']}): "
-                f"売上{latest['revenue']:.0f}万円, コスト{latest['cost']:.0f}万円, "
-                f"人員{latest['headcount']}名, "
-                f"満足度{latest['satisfaction']:.2f}, 評判{latest['reputation']:.2f}"
-            )
+        # スナップショットをラウンド別にインデックス
+        snap_by_round: dict[int, dict[str, Any]] = {}
+        for s in snapshots:
+            snap_by_round[s["round"]] = s
 
-            if len(snapshots) >= 2:
-                prev = snapshots[1]
-                rev_delta = latest["revenue"] - prev["revenue"]
-                hc_delta = latest["headcount"] - prev["headcount"]
-                if rev_delta != 0 or hc_delta != 0:
-                    lines.append(
-                        f"  前回比: 売上{rev_delta:+.0f}万円, 人員{hc_delta:+d}名"
-                    )
+        # 行動をラウンド別にグループ化
+        actions_by_round: dict[int, list[str]] = {}
+        for act in actions:
+            r = act["round"]
+            if r not in actions_by_round:
+                actions_by_round[r] = []
+            actions_by_round[r].append(act["action_type"])
 
-        if actions:
-            lines.append("  直近の行動:")
-            for act in actions[:6]:
+        # ラウンド順に行動→結果を表示
+        rounds_shown = sorted(set(list(snap_by_round.keys()) + list(actions_by_round.keys())), reverse=True)[:5]
+
+        prev_snap: dict[str, Any] | None = None
+        for r in reversed(rounds_shown):
+            snap = snap_by_round.get(r)
+            acts = actions_by_round.get(r, [])
+
+            act_str = ", ".join(acts) if acts else "行動なし"
+
+            if snap and prev_snap:
+                rev_d = snap["revenue"] - prev_snap["revenue"]
+                hc_d = snap["headcount"] - prev_snap["headcount"]
+                sat_d = snap["satisfaction"] - prev_snap["satisfaction"]
+                rep_d = snap["reputation"] - prev_snap["reputation"]
+                changes = []
+                if rev_d != 0:
+                    changes.append(f"売上{rev_d:+.0f}万円")
+                if hc_d != 0:
+                    changes.append(f"人員{hc_d:+d}名")
+                if abs(sat_d) >= 0.01:
+                    changes.append(f"満足度{sat_d:+.2f}")
+                if abs(rep_d) >= 0.01:
+                    changes.append(f"評判{rep_d:+.2f}")
+                change_str = ", ".join(changes) if changes else "変化なし"
+                lines.append(f"  {r}ヶ月目: {act_str} → 結果: {change_str}")
+            elif snap:
                 lines.append(
-                    f"    R{act['round']}: {act['action_type']}"
-                    f"（{act['description'][:30]}）"
+                    f"  {r}ヶ月目: {act_str} → "
+                    f"売上{snap['revenue']:.0f}万円, 人員{snap['headcount']}名"
                 )
+
+            prev_snap = snap
 
         return "\n".join(lines)
 
@@ -186,6 +220,28 @@ class GraphRAGRetriever:
         lines: list[str] = ["【業界動向（直近3ラウンド）】"]
         for industry, actions in by_industry.items():
             lines.append(f"  {industry}: {', '.join(actions[:5])}")
+
+        return "\n".join(lines)
+
+    async def _get_skill_landscape(self) -> str:
+        """市場のスキル分布を取得する（SKILLED_INリレーションから）."""
+        results = await self.graph.execute_read(
+            "MATCH (a:Agent {simulation_id: $sim_id})-[r:SKILLED_IN]->(s:Skill) "
+            "RETURN s.name AS skill, count(a) AS holders, "
+            "       round(avg(r.proficiency) * 100) / 100.0 AS avg_level "
+            "ORDER BY holders DESC",
+            {"sim_id": self.simulation_id},
+        )
+
+        if not results:
+            return ""
+
+        lines: list[str] = ["【市場のスキル分布】"]
+        for row in results:
+            lines.append(
+                f"  {row['skill']}: {row['holders']}社/人が保有 "
+                f"(平均習熟度{row['avg_level']:.1f})"
+            )
 
         return "\n".join(lines)
 
