@@ -64,6 +64,17 @@ docker compose down              # Stop services
 - Japanese NLP uses GiNZA (rule-based NER), not LLM
 - Keep simulation constraints minimal to preserve emergent behavior
 
+### Post-Implementation Workflow (MANDATORY)
+
+After completing any feature implementation, you MUST run the following in order before reporting completion to the user:
+
+1. `/test` — Run the full test suite. Fix any failures before proceeding.
+2. `/security-review` — Scan for hardcoded secrets, injection risks, and vulnerabilities. Fix critical issues.
+3. `/refactor` — Review code quality, duplication, and type safety. Fix issues found.
+
+Only after all three pass with no critical issues, report the implementation as complete.
+If the user asks to commit, use `/commit`.
+
 ## Security Rules
 
 - **NEVER** hardcode API keys, passwords, tokens, or secrets in source files
@@ -76,6 +87,7 @@ docker compose down              # Stop services
 
 ## Slash Commands
 
+- `/test` — Run the full test suite and fix any failures
 - `/security-review` — Scan for hardcoded secrets, injection risks, and security vulnerabilities
 - `/refactor` — Review code quality, duplication, type safety, and test coverage
-- `/test` — Run the full test suite and fix any failures
+- `/commit` — Run test + security-review + refactor, then commit (manual invocation only)

@@ -1,8 +1,15 @@
+---
+name: security-review
+description: Scan changed or newly created files for hardcoded secrets, injection risks, and security vulnerabilities
+disable-model-invocation: false
+allowed-tools: Read, Grep, Glob, Bash
+---
+
 Review all changed or newly created files for security risks.
 
 ## Checklist
 
-1. **Hardcoded secrets**: Search for API keys, passwords, tokens, or connection strings hardcoded in source files. Use `grep -rn` for patterns like `api_key =`, `password =`, `token =`, `secret =`, `Bearer `, `sk-`, `key-` across all non-.env files.
+1. **Hardcoded secrets**: Search for API keys, passwords, tokens, or connection strings hardcoded in source files. Use Grep for patterns like `api_key =`, `password =`, `token =`, `secret =`, `Bearer `, `sk-`, `key-` across all non-.env files.
 
 2. **Environment variables**: Verify all secrets are loaded via `pydantic-settings` (app/config.py) and environment variables, never from source code.
 

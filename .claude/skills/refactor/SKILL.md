@@ -1,3 +1,10 @@
+---
+name: refactor
+description: Review changed code for quality, reuse opportunities, and efficiency. Then fix any issues found.
+disable-model-invocation: false
+allowed-tools: Read, Grep, Glob, Edit, Bash
+---
+
 Review changed code for quality, reuse opportunities, and efficiency. Then fix any issues found.
 
 ## Checklist
