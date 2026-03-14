@@ -28,4 +28,32 @@ app.include_router(predictions_router)
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "app": settings.app_name}
+    """ヘルスチェック — 各サービスの接続状態を返す."""
+    from app.core.graph.client import GraphClient
+    from app.core.redis_client import RedisClient
+
+    redis_ok = False
+    neo4j_ok = False
+
+    try:
+        redis = RedisClient()
+        redis_ok = await redis.is_available()
+        await redis.close()
+    except Exception:
+        pass
+
+    try:
+        graph = GraphClient()
+        neo4j_ok = await graph.is_available()
+        await graph.close()
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "services": {
+            "redis": "connected" if redis_ok else "unavailable",
+            "neo4j": "connected" if neo4j_ok else "unavailable",
+        },
+    }

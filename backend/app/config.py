@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     max_actions_per_agent: int = 2
     max_llm_calls: int = 5000
 
+    # Rate Limiting
+    max_concurrent_simulations: int = 3
+    rate_limit_per_minute: int = 10
+
     model_config = {"env_prefix": "ECHOSHOAL_", "env_file": ".env"}
 
 

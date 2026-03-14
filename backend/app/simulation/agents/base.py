@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -70,18 +73,35 @@ class BaseAgent(ABC):
         ...
 
     async def decide_actions(self, market: MarketState) -> list[AgentAction]:
-        """Use LLM to decide which actions to take this round."""
-        prompt = self._build_decision_prompt(market)
-        system_prompt = self._build_system_prompt()
+        """Use LLM to decide which actions to take this round.
 
-        response = await self.llm.generate_json(
-            task_type=TaskType.AGENT_DECISION,
-            prompt=prompt,
-            system_prompt=system_prompt,
-        )
+        LLM呼び出しやパースに失敗した場合、利用可能なアクションの最初の1つをフォールバックとして返す。
+        """
+        try:
+            prompt = self._build_decision_prompt(market)
+            system_prompt = self._build_system_prompt()
 
-        actions = self._parse_actions(response)
-        return actions
+            response = await self.llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt=system_prompt,
+            )
+
+            actions = self._parse_actions(response)
+            if actions:
+                return actions
+        except Exception:
+            logger.warning("Agent %s: LLM呼び出し失敗、フォールバック使用", self.name)
+
+        # フォールバック: 最初の利用可能アクション
+        fallback_type = self.available_actions()[0] if self.available_actions() else None
+        if fallback_type:
+            return [AgentAction(
+                agent_id=self.id,
+                action_type=fallback_type,
+                description="フォールバック（LLM応答なし）",
+            )]
+        return []
 
     async def apply_actions(
         self, actions: list[AgentAction], market: MarketState
@@ -102,12 +122,12 @@ class BaseAgent(ABC):
         self.state.satisfaction = max(0.0, min(1.0, self.state.satisfaction))
 
     def _improve_skill(self, raw_skill: str | None, delta: float) -> bool:
-        """スキル習熟度を delta 分だけ上げる。成功時 True を返す。"""
+        """スキル習熟度を delta 分だけ変更する。成功時 True を返す。"""
         sc = _parse_skill(raw_skill)
         if sc is None:
             return False
         current = self.state.skills.get(sc, 0.0)
-        self.state.skills[sc] = min(1.0, current + delta)
+        self.state.skills[sc] = max(0.0, min(1.0, current + delta))
         return True
 
     def _build_system_prompt(self) -> str:

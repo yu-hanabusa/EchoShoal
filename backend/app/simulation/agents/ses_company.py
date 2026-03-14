@@ -47,6 +47,13 @@ class SESCompanyAgent(BaseAgent):
                 self.state.cost -= count * 35
                 self.state.satisfaction -= 0.05  # 解雇は満足度低下
             case "shift_domain":
-                pass  # ドメイン変更はスキル構成に影響（将来実装）
+                # 新ドメインのスキルを育成し、旧ドメインを縮小
+                new_skill = action.parameters.get("to_skill")
+                old_skill = action.parameters.get("from_skill")
+                if self._improve_skill(new_skill, 0.15):
+                    self.state.cost += 10  # 転換コスト
+                if old_skill:
+                    # 旧スキルの習熟度を下げる（人員配置転換による自然減）
+                    self._improve_skill(old_skill, -0.05)
 
         self._clamp_state()
