@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.predictions import router as predictions_router
 from app.api.routes.reports import router as reports_router
 from app.api.routes.simulations import router as simulations_router
 from app.config import settings
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(simulations_router)
 app.include_router(reports_router)
+app.include_router(predictions_router)
 
 
 @app.get("/api/health")
