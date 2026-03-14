@@ -37,7 +37,7 @@ class TestGraphClient:
 
 class TestSchemaConstants:
     def test_constraints_count(self):
-        assert len(SCHEMA_CONSTRAINTS) == 8  # 6 original + StatRecord + Agent
+        assert len(SCHEMA_CONSTRAINTS) == 9  # 6 original + StatRecord + Agent + Document
 
     def test_seed_industries_count(self):
         assert len(SEED_INDUSTRIES) == 5

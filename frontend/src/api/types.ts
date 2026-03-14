@@ -111,6 +111,28 @@ export interface SimulationReport {
   generated_at: string;
 }
 
+/** 文書処理結果 */
+export interface ProcessResult {
+  document_id: string;
+  filename: string;
+  entities_found: number;
+  technologies: string[];
+  organizations: string[];
+  policies: string[];
+  keywords: string[];
+  new_nodes_created: number;
+}
+
+/** 文書情報 */
+export interface DocumentInfo {
+  doc_id: string;
+  filename: string;
+  source: string;
+  text_length: number;
+  entity_count: number;
+  uploaded_at: string;
+}
+
 /** スキルカテゴリの日本語ラベル */
 export const SKILL_LABELS: Record<string, string> = {
   legacy: "レガシー",
