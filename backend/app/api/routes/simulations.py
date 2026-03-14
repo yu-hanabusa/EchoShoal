@@ -1,9 +1,9 @@
 """シミュレーション API エンドポイント.
 
-3ステップフロー:
-  1. POST /api/simulations/        → ジョブ作成（CREATED状態）
-  2. POST /api/simulations/{id}/documents → 文書アップロード
-  3. POST /api/simulations/{id}/start     → シミュレーション実行開始
+フロー:
+  POST /api/simulations/  → シナリオ + 文書を同時に受け取り、即座に実行開始
+  POST /api/simulations/{id}/documents  → 追加文書アップロード（再シミュレーション用）
+  POST /api/simulations/{id}/rerun  → 追加文書を含めて再実行
 
 すべてのデータは job_id (= simulation_id) でスコープされる。
 """
@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import deque
@@ -66,7 +67,6 @@ def _check_rate_limit() -> None:
 
 
 async def _get_graph_client() -> GraphClient | None:
-    """GraphClientを取得。利用不可時はNoneを返す。"""
     try:
         client = GraphClient()
         if await client.is_available():
@@ -76,41 +76,79 @@ async def _get_graph_client() -> GraphClient | None:
     return None
 
 
-# ─── Step 1: ジョブ作成 ───
+# ─── メイン: シミュレーション作成 + 即実行 ───
 
 @router.post("/")
-async def create_simulation(scenario: ScenarioInput) -> JSONResponse:
-    """シミュレーションジョブを作成する（CREATED状態）.
+async def create_simulation(
+    description: str = Form(...),
+    num_rounds: int = Form(default=24),
+    files: list[UploadFile] = File(default=[]),
+) -> JSONResponse:
+    """シミュレーションを作成し、即座に実行を開始する.
 
-    文書アップロード後に /start で実行を開始する。
+    シナリオテキスト + 文書ファイル（任意、複数可）を同時に受け取る。
+    AI加速度・経済ショック等のパラメータはNLPから自動推定する。
     """
+    global _active_simulations
+    _check_rate_limit()
+
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="シナリオは10文字以上で入力してください")
+
+    # ScenarioInput作成（パラメータは自動推定されるので0で初期化）
+    scenario = ScenarioInput(
+        description=description,
+        num_rounds=min(num_rounds, settings.max_rounds),
+    )
+
     job_manager = _get_job_manager()
     job_id = await job_manager.create_job(
-        scenario_description=scenario.description[:200],
+        scenario_description=description[:200],
     )
     await job_manager.save_scenario(job_id, scenario.model_dump())
 
+    # 文書があればNLP解析→知識グラフに格納
+    graph_client = await _get_graph_client()
+    if graph_client and files:
+        parser = DocumentParser()
+        processor = DocumentProcessor(graph_client, simulation_id=job_id)
+        for file in files:
+            try:
+                content = await file.read()
+                doc = parser.parse(content, file.filename or "unknown")
+                await processor.process(doc)
+                logger.info("文書アップロード完了: %s → job=%s", file.filename, job_id)
+            except (DocumentParseError, Exception) as exc:
+                logger.warning("文書処理スキップ: %s - %s", file.filename, exc)
+        await graph_client.close()
+
+    # 即座に実行開始
+    await job_manager.set_queued(job_id)
+    _active_simulations += 1
+    asyncio.create_task(_run_simulation_task(job_id, scenario, job_manager))
+
     return JSONResponse(
-        status_code=201,
-        content={"job_id": job_id, "status": "created"},
+        status_code=202,
+        content={"job_id": job_id, "status": "queued"},
     )
 
 
-# ─── Step 2: 文書アップロード ───
+# ─── 追加文書アップロード（結果を見た後に追加→再実行用） ───
 
 @router.post("/{job_id}/documents", response_model=ProcessResult)
-async def upload_simulation_document(
+async def upload_additional_document(
     job_id: str,
     file: UploadFile = File(...),
     source: str = Form(default=""),
 ) -> ProcessResult:
-    """このシミュレーション用の文書をアップロードし、NLP解析→知識グラフに格納する."""
+    """完了済みシミュレーションに追加文書をアップロードする.
+
+    アップロード後に /rerun で再シミュレーション可能。
+    """
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
     if info is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-    if info.status not in (JobStatus.CREATED,):
-        raise HTTPException(status_code=400, detail="文書アップロードは作成済みジョブのみ可能です")
 
     content = await file.read()
     parser = DocumentParser()
@@ -132,7 +170,7 @@ async def upload_simulation_document(
 
 @router.get("/{job_id}/documents", response_model=list[DocumentInfo])
 async def list_simulation_documents(job_id: str) -> list[DocumentInfo]:
-    """このシミュレーションにアップロードされた文書一覧を取得する."""
+    """このシミュレーションの文書一覧を取得する."""
     graph_client = await _get_graph_client()
     if not graph_client:
         return []
@@ -143,34 +181,61 @@ async def list_simulation_documents(job_id: str) -> list[DocumentInfo]:
         await graph_client.close()
 
 
-# ─── Step 3: シミュレーション実行開始 ───
+# ─── 再シミュレーション ───
 
-@router.post("/{job_id}/start")
-async def start_simulation(job_id: str) -> JSONResponse:
-    """シミュレーションの実行を開始する."""
+@router.post("/{job_id}/rerun")
+async def rerun_simulation(job_id: str) -> JSONResponse:
+    """追加文書を含めてシミュレーションを再実行する.
+
+    新しいjob_idが発行され、元のjob_idの文書データを引き継ぐ。
+    """
     global _active_simulations
     _check_rate_limit()
 
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
     if info is None:
-        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-    if info.status != JobStatus.CREATED:
-        raise HTTPException(status_code=400, detail=f"ジョブの状態が不正です: {info.status.value}")
+        raise HTTPException(status_code=404, detail="元のジョブが見つかりません")
 
     scenario_data = await job_manager.get_scenario(job_id)
     if not scenario_data:
         raise HTTPException(status_code=400, detail="シナリオが保存されていません")
 
     scenario = ScenarioInput(**scenario_data)
-    await job_manager.set_queued(job_id)
 
+    # 新しいジョブを作成（文書はNeo4jで同じsimulation_id=job_idを参照）
+    new_job_id = await job_manager.create_job(
+        scenario_description=scenario.description[:200],
+    )
+    await job_manager.save_scenario(new_job_id, scenario_data)
+
+    # 元のジョブの文書をコピー（simulation_idを新しいジョブに紐付け）
+    graph_client = await _get_graph_client()
+    if graph_client:
+        try:
+            await graph_client.execute_write(
+                "MATCH (d:Document {simulation_id: $old_id}) "
+                "WITH d, d.doc_id + '-' + $new_id AS new_doc_id "
+                "CREATE (d2:Document) SET d2 = properties(d), "
+                "       d2.doc_id = new_doc_id, d2.simulation_id = $new_id "
+                "WITH d2, d "
+                "OPTIONAL MATCH (d)-[:MENTIONS]->(e) "
+                "FOREACH (ent IN CASE WHEN e IS NOT NULL THEN [e] ELSE [] END | "
+                "  CREATE (d2)-[:MENTIONS]->(ent))",
+                {"old_id": job_id, "new_id": new_job_id},
+            )
+        except Exception:
+            logger.warning("文書コピー失敗: %s → %s", job_id, new_job_id)
+        finally:
+            await graph_client.close()
+
+    await job_manager.set_queued(new_job_id)
     _active_simulations += 1
-    asyncio.create_task(_run_simulation_task(job_id, scenario, job_manager))
+    asyncio.create_task(_run_simulation_task(new_job_id, scenario, job_manager))
 
     return JSONResponse(
         status_code=202,
-        content={"job_id": job_id, "status": "queued"},
+        content={"job_id": new_job_id, "status": "queued", "parent_job_id": job_id},
     )
 
 
@@ -179,7 +244,6 @@ async def start_simulation(job_id: str) -> JSONResponse:
 async def _setup_graph_components(
     simulation_id: str,
 ) -> tuple[GraphRAGRetriever | None, AgentMemoryStore | None, GraphClient | None]:
-    """知識グラフ関連コンポーネントをセットアップする（simulation_idスコープ）."""
     try:
         graph_client = GraphClient()
         if not await graph_client.is_available():
@@ -194,7 +258,6 @@ async def _setup_graph_components(
 async def _run_simulation_task(
     job_id: str, scenario: ScenarioInput, job_manager: JobManager
 ) -> None:
-    """バックグラウンドでシミュレーションを実行する."""
     global _active_simulations
     graph_client: GraphClient | None = None
     try:
@@ -206,14 +269,14 @@ async def _run_simulation_task(
         analyzer = ScenarioAnalyzer()
         enriched = analyzer.analyze(scenario)
         logger.info(
-            "シナリオ解析: スキル%d件, 業界%d件検出",
+            "シナリオ解析: スキル%d件, 業界%d件, AI加速度%.1f, 経済ショック%.1f",
             len(enriched.detected_skills), len(enriched.detected_industries),
+            scenario.ai_acceleration, scenario.economic_shock,
         )
 
         event_scheduler = EventScheduler(llm=llm)
         await event_scheduler.generate_from_scenario(scenario)
 
-        # simulation_id = job_id でスコープ
         rag, agent_memory, graph_client = await _setup_graph_components(job_id)
 
         async def on_progress(current: int, total: int) -> None:
@@ -259,52 +322,38 @@ async def list_simulations() -> list[dict[str, Any]]:
 
 @router.get("/{job_id}")
 async def get_simulation(job_id: str) -> dict[str, Any]:
-    """ジョブのステータスと結果を取得する."""
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
-
     if info is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-
     response: dict[str, Any] = info.model_dump()
-
     if info.status == JobStatus.COMPLETED:
         result = await job_manager.get_result(job_id)
         if result:
             response["result"] = result
-
     return response
 
 
 @router.get("/{job_id}/progress")
 async def get_simulation_progress(job_id: str) -> dict[str, Any]:
-    """シミュレーションの進捗を取得する."""
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
-
     if info is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
-
-    return {
-        "job_id": job_id,
-        "status": info.status.value,
-        "progress": info.progress,
-    }
+    return {"job_id": job_id, "status": info.status.value, "progress": info.progress}
 
 
 # ─── グラフ可視化（シミュレーションスコープ） ───
 
 @router.get("/{job_id}/graph")
 async def get_simulation_graph(job_id: str) -> dict[str, Any]:
-    """このシミュレーションの知識グラフ可視化データを取得する."""
     graph_client = await _get_graph_client()
     if not graph_client:
         return {"elements": []}
-
     try:
         elements: list[dict[str, Any]] = []
 
-        # このシミュレーションのDocumentノードとMENTIONS
+        # Documents + MENTIONS
         docs = await graph_client.execute_read(
             "MATCH (d:Document {simulation_id: $sim_id}) "
             "OPTIONAL MATCH (d)-[:MENTIONS]->(e) "
@@ -313,55 +362,31 @@ async def get_simulation_graph(job_id: str) -> dict[str, Any]:
             {"sim_id": job_id},
         )
         for row in docs:
-            doc_node_id = f"doc_{row['doc_id']}"
-            elements.append({
-                "data": {"id": doc_node_id, "label": row["filename"], "type": "Document"},
-            })
-            for mention in (row["mentions"] or []):
-                if mention.get("name"):
-                    prefix_map = {"Skill": "skill_", "Company": "company_", "Policy": "policy_"}
-                    target_prefix = prefix_map.get(mention.get("type", ""), "")
-                    target_id = f"{target_prefix}{mention['name']}"
-                    # エンティティノード
-                    elements.append({
-                        "data": {"id": target_id, "label": mention["name"], "type": mention.get("type", "Unknown")},
-                    })
-                    elements.append({
-                        "data": {"source": doc_node_id, "target": target_id, "label": "MENTIONS"},
-                    })
+            doc_id = f"doc_{row['doc_id']}"
+            elements.append({"data": {"id": doc_id, "label": row["filename"], "type": "Document"}})
+            for m in (row["mentions"] or []):
+                if m.get("name"):
+                    prefix = {"Skill": "skill_", "Company": "company_", "Policy": "policy_"}.get(m.get("type", ""), "")
+                    tid = f"{prefix}{m['name']}"
+                    elements.append({"data": {"id": tid, "label": m["name"], "type": m.get("type", "Unknown")}})
+                    elements.append({"data": {"source": doc_id, "target": tid, "label": "MENTIONS"}})
 
-        # このシミュレーションのAgentノードとSKILLED_IN
+        # Agents + SKILLED_IN
         agents = await graph_client.execute_read(
             "MATCH (a:Agent {simulation_id: $sim_id}) "
             "OPTIONAL MATCH (a)-[r:SKILLED_IN]->(s:Skill) "
-            "RETURN a.agent_id AS agent_id, a.name AS name, a.agent_type AS agent_type, "
+            "RETURN a.agent_id AS agent_id, a.name AS name, "
             "       collect({skill: s.name, proficiency: r.proficiency}) AS skills",
             {"sim_id": job_id},
         )
         for row in agents:
-            agent_node_id = f"agent_{row['agent_id'][:8]}"
-            elements.append({
-                "data": {"id": agent_node_id, "label": row["name"], "type": "Agent"},
-            })
-            for skill_info in (row["skills"] or []):
-                if skill_info.get("skill"):
-                    skill_id = f"skill_{skill_info['skill']}"
-                    elements.append({
-                        "data": {"id": skill_id, "label": skill_info["skill"], "type": "Skill"},
-                    })
-                    elements.append({
-                        "data": {"source": agent_node_id, "target": skill_id, "label": "SKILLED_IN"},
-                    })
-
-        # StatRecord（グローバル）
-        stats = await graph_client.execute_read(
-            "MATCH (sr:StatRecord) "
-            "RETURN sr.name AS name, sr.source AS source LIMIT 10"
-        )
-        for row in stats:
-            elements.append({
-                "data": {"id": f"stat_{row['name']}", "label": row["name"], "type": "StatRecord"},
-            })
+            aid = f"agent_{row['agent_id'][:8]}"
+            elements.append({"data": {"id": aid, "label": row["name"], "type": "Agent"}})
+            for s in (row["skills"] or []):
+                if s.get("skill"):
+                    sid = f"skill_{s['skill']}"
+                    elements.append({"data": {"id": sid, "label": s["skill"], "type": "Skill"}})
+                    elements.append({"data": {"source": aid, "target": sid, "label": "SKILLED_IN"}})
 
         return {"elements": elements}
     finally:

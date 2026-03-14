@@ -5,7 +5,6 @@ import type {
   JobInfo,
   PredictionResult,
   ProcessResult,
-  ScenarioInput,
   SimulationReport,
 } from "./types";
 
@@ -28,17 +27,7 @@ export async function listSimulations(): Promise<JobInfo[]> {
   return request("/simulations/");
 }
 
-/** Step 1: シミュレーションジョブを作成（CREATED状態） */
-export async function createSimulation(
-  scenario: ScenarioInput
-): Promise<{ job_id: string; status: string }> {
-  return request("/simulations/", {
-    method: "POST",
-    body: JSON.stringify(scenario),
-  });
-}
-
-/** Step 2: このシミュレーション用の文書をアップロード */
+/** このシミュレーション用の追加文書をアップロード */
 export async function uploadSimulationDocument(
   jobId: string,
   file: File,
@@ -59,13 +48,6 @@ export async function uploadSimulationDocument(
     throw new Error(body.detail || `Upload error: ${res.status}`);
   }
   return res.json() as Promise<ProcessResult>;
-}
-
-/** Step 3: シミュレーション実行開始 */
-export async function startSimulation(
-  jobId: string
-): Promise<{ job_id: string; status: string }> {
-  return request(`/simulations/${jobId}/start`, { method: "POST" });
 }
 
 /** ジョブのステータス + 結果を取得 */

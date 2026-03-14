@@ -110,7 +110,48 @@ class ScenarioAnalyzer:
             len(merged_skills), len(merged_industries), len(analysis.policies),
         )
 
+        # パラメータ自動推定（ユーザー未指定の場合）
+        if scenario.ai_acceleration == 0:
+            enriched.original.ai_acceleration = self._estimate_ai_acceleration(analysis)
+        if scenario.economic_shock == 0:
+            enriched.original.economic_shock = self._estimate_economic_shock(analysis)
+        if not scenario.policy_change and analysis.policies:
+            enriched.original.policy_change = ", ".join(analysis.policies)
+
+        # context_summaryを再構築（推定値を反映）
+        enriched.context_summary = self._build_context_summary(
+            enriched.original, merged_skills, merged_industries, analysis.policies,
+        )
+
         return enriched
+
+    def _estimate_ai_acceleration(self, analysis: AnalysisResult) -> float:
+        """NLP解析結果からAI加速度を推定する."""
+        ai_keywords = {"LLM", "ChatGPT", "GPT-4", "Claude", "Gemini", "生成AI", "機械学習",
+                        "深層学習", "PyTorch", "TensorFlow"}
+        ai_count = sum(1 for t in analysis.technologies if t in ai_keywords)
+        ai_text_signals = sum(1 for kw in analysis.keywords if "AI" in kw or "人工知能" in kw)
+        total = ai_count + ai_text_signals
+        if total >= 3:
+            return 0.8
+        if total >= 1:
+            return 0.4
+        return 0.0
+
+    def _estimate_economic_shock(self, analysis: AnalysisResult) -> float:
+        """NLP解析結果から経済ショックを推定する."""
+        negative_keywords = {"不況", "景気後退", "リストラ", "縮小", "減少", "削減", "低迷"}
+        positive_keywords = {"好景気", "成長", "拡大", "増加", "投資拡大", "活況"}
+
+        text_lower = " ".join(analysis.keywords)
+        neg = sum(1 for kw in negative_keywords if kw in text_lower)
+        pos = sum(1 for kw in positive_keywords if kw in text_lower)
+
+        if neg > pos:
+            return -0.3 * min(neg, 3)
+        if pos > neg:
+            return 0.3 * min(pos, 3)
+        return 0.0
 
     def _build_context_summary(
         self,

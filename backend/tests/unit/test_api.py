@@ -34,13 +34,13 @@ class TestCreateSimulation:
         with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.post("/api/simulations/", json={
+                response = await client.post("/api/simulations/", data={
                     "description": "AI技術の普及によるIT人材市場の変化予測テスト",
                 })
-            assert response.status_code == 201
+            assert response.status_code == 202
             data = response.json()
             assert data["job_id"] == "test-job-id"
-            assert data["status"] == "created"
+            assert data["status"] == "queued"
 
     @pytest.mark.asyncio
     async def test_invalid_scenario_rejected(self):
