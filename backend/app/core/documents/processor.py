@@ -209,6 +209,31 @@ class DocumentProcessor:
             for r in results
         ]
 
+    async def get_document_entities(self) -> dict[str, list[str]]:
+        """このシミュレーションの文書から抽出された全エンティティを集約する."""
+        results = await self.graph.execute_read(
+            "MATCH (d:Document {simulation_id: $sim_id})-[:MENTIONS]->(e) "
+            "RETURN labels(e)[0] AS type, collect(DISTINCT e.name) AS names",
+            {"sim_id": self.simulation_id},
+        )
+
+        entities: dict[str, list[str]] = {
+            "technologies": [],
+            "organizations": [],
+            "policies": [],
+        }
+        for row in results:
+            node_type = row.get("type", "")
+            names = row.get("names", [])
+            if node_type == "Skill":
+                entities["technologies"].extend(names)
+            elif node_type == "Company":
+                entities["organizations"].extend(names)
+            elif node_type == "Policy":
+                entities["policies"].extend(names)
+
+        return entities
+
     async def get_document_detail(self, doc_id: str) -> dict[str, Any] | None:
         """文書の詳細と関連エンティティを取得する."""
         doc = await self.graph.execute_read(

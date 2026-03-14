@@ -32,6 +32,7 @@ from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
 from app.simulation.engine import SimulationEngine
 from app.simulation.events.scheduler import EventScheduler
+from app.simulation.agent_generator import AgentGenerator
 from app.simulation.factory import create_default_agents
 from app.simulation.models import ScenarioInput
 from app.simulation.scenario_analyzer import ScenarioAnalyzer
@@ -264,7 +265,6 @@ async def _run_simulation_task(
         await job_manager.set_running(job_id)
 
         llm = LLMRouter()
-        agents = create_default_agents(llm)
 
         analyzer = ScenarioAnalyzer(llm=llm)
         enriched = await analyzer.analyze_async(scenario)
@@ -274,10 +274,24 @@ async def _run_simulation_task(
             scenario.ai_acceleration, scenario.economic_shock,
         )
 
+        # 知識グラフコンポーネント
+        rag, agent_memory, graph_client = await _setup_graph_components(job_id)
+
+        # 文書エンティティ取得 → エージェント動的生成
+        doc_entities: dict[str, list[str]] | None = None
+        if graph_client:
+            try:
+                from app.core.documents.processor import DocumentProcessor
+                proc = DocumentProcessor(graph_client, simulation_id=job_id)
+                doc_entities = await proc.get_document_entities()
+            except Exception:
+                logger.warning("文書エンティティ取得失敗")
+
+        generator = AgentGenerator(llm)
+        agents = await generator.generate(scenario, enriched, doc_entities)
+
         event_scheduler = EventScheduler(llm=llm)
         await event_scheduler.generate_from_scenario(scenario)
-
-        rag, agent_memory, graph_client = await _setup_graph_components(job_id)
 
         async def on_progress(current: int, total: int) -> None:
             await job_manager.update_progress(job_id, current, total)
