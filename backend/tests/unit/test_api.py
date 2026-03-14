@@ -37,10 +37,10 @@ class TestCreateSimulation:
                 response = await client.post("/api/simulations/", json={
                     "description": "AI技術の普及によるIT人材市場の変化予測テスト",
                 })
-            assert response.status_code == 202
+            assert response.status_code == 201
             data = response.json()
             assert data["job_id"] == "test-job-id"
-            assert data["status"] == "queued"
+            assert data["status"] == "created"
 
     @pytest.mark.asyncio
     async def test_invalid_scenario_rejected(self):

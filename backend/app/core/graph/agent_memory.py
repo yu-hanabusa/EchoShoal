@@ -2,15 +2,7 @@
 
 エージェントの行動・状態を時系列でNeo4jに記録し、
 可視性制御に基づいて他エージェントの視点から取得する。
-
-ノード:
-  - Agent {agent_id, name, agent_type, industry}
-  - AgentSnapshot {agent_id, round, revenue, cost, headcount, satisfaction, reputation}
-  - ActionRecord {agent_id, agent_name, round, action_type, description, visibility}
-
-リレーション:
-  - Agent -[STATE_AT {round}]-> AgentSnapshot
-  - Agent -[PERFORMED {round}]-> ActionRecord
+すべてのデータは simulation_id でスコープされる。
 """
 
 from __future__ import annotations
@@ -63,8 +55,9 @@ def get_visibility(action_type: str) -> str:
 class AgentMemoryStore:
     """エージェントの行動・状態を知識グラフに記録・取得する."""
 
-    def __init__(self, graph_client: GraphClient):
+    def __init__(self, graph_client: GraphClient, simulation_id: str = ""):
         self.graph = graph_client
+        self.simulation_id = simulation_id
 
     async def ensure_agent_node(
         self,
@@ -75,11 +68,12 @@ class AgentMemoryStore:
     ) -> None:
         """Agentノードが存在することを保証する（冪等）."""
         await self.graph.execute_write(
-            "MERGE (a:Agent {agent_id: $agent_id}) "
+            "MERGE (a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
             "SET a.name = $name, a.agent_type = $agent_type, "
             "    a.industry = $industry",
             {
                 "agent_id": agent_id,
+                "sim_id": self.simulation_id,
                 "name": name,
                 "agent_type": agent_type,
                 "industry": industry,
@@ -94,9 +88,9 @@ class AgentMemoryStore:
     ) -> None:
         """エージェントの状態スナップショットを記録する."""
         await self.graph.execute_write(
-            "MATCH (a:Agent {agent_id: $agent_id}) "
+            "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
             "CREATE (s:AgentSnapshot {"
-            "  agent_id: $agent_id, round: $round, "
+            "  agent_id: $agent_id, simulation_id: $sim_id, round: $round, "
             "  revenue: $revenue, cost: $cost, headcount: $headcount, "
             "  satisfaction: $satisfaction, reputation: $reputation, "
             "  active_contracts: $active_contracts"
@@ -104,6 +98,7 @@ class AgentMemoryStore:
             "CREATE (a)-[:STATE_AT {round: $round}]->(s)",
             {
                 "agent_id": agent_id,
+                "sim_id": self.simulation_id,
                 "round": round_number,
                 "revenue": state.get("revenue", 0.0),
                 "cost": state.get("cost", 0.0),
@@ -125,9 +120,10 @@ class AgentMemoryStore:
         """エージェントの行動を可視性付きで記録する."""
         visibility = get_visibility(action_type)
         await self.graph.execute_write(
-            "MATCH (a:Agent {agent_id: $agent_id}) "
+            "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
             "CREATE (ar:ActionRecord {"
             "  agent_id: $agent_id, agent_name: $agent_name, "
+            "  simulation_id: $sim_id, "
             "  round: $round, action_type: $action_type, "
             "  description: $description, visibility: $visibility"
             "}) "
@@ -135,6 +131,7 @@ class AgentMemoryStore:
             {
                 "agent_id": agent_id,
                 "agent_name": agent_name,
+                "sim_id": self.simulation_id,
                 "round": round_number,
                 "action_type": action_type,
                 "description": description,
@@ -148,18 +145,13 @@ class AgentMemoryStore:
         from_round: int = 1,
         to_round: int | None = None,
     ) -> list[dict[str, Any]]:
-        """観察者から見える行動を取得する.
-
-        可視性ルール:
-        - public: 全エージェントに見える
-        - private: 自分の行動のみ見える
-        - partial: 当面はpublic扱い（将来、取引関係で制御）
-        """
+        """観察者から見える行動を取得する（同一シミュレーション内のみ）."""
         to_round_val = to_round or 9999
 
         return await self.graph.execute_read(
             "MATCH (a:Agent)-[:PERFORMED]->(ar:ActionRecord) "
-            "WHERE ar.round >= $from_round AND ar.round <= $to_round "
+            "WHERE ar.simulation_id = $sim_id "
+            "  AND ar.round >= $from_round AND ar.round <= $to_round "
             "  AND ("
             "    ar.visibility = 'public' "
             "    OR ar.visibility = 'partial' "
@@ -171,6 +163,7 @@ class AgentMemoryStore:
             "ORDER BY ar.round DESC "
             "LIMIT 50",
             {
+                "sim_id": self.simulation_id,
                 "observer_id": observer_id,
                 "from_round": from_round,
                 "to_round": to_round_val,
@@ -182,24 +175,26 @@ class AgentMemoryStore:
         agent_id: str,
         last_n_rounds: int = 5,
     ) -> dict[str, Any]:
-        """自分自身の行動・状態履歴を取得する（private含む全情報）."""
+        """自分自身の行動・状態履歴を取得する（同一シミュレーション内）."""
         actions = await self.graph.execute_read(
-            "MATCH (:Agent {agent_id: $agent_id})-[:PERFORMED]->(ar:ActionRecord) "
+            "MATCH (:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
+            "-[:PERFORMED]->(ar:ActionRecord) "
             "RETURN ar.action_type AS action_type, ar.description AS description, "
             "       ar.round AS round "
             "ORDER BY ar.round DESC "
             "LIMIT $limit",
-            {"agent_id": agent_id, "limit": last_n_rounds * 2},
+            {"agent_id": agent_id, "sim_id": self.simulation_id, "limit": last_n_rounds * 2},
         )
 
         snapshots = await self.graph.execute_read(
-            "MATCH (:Agent {agent_id: $agent_id})-[:STATE_AT]->(s:AgentSnapshot) "
+            "MATCH (:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
+            "-[:STATE_AT]->(s:AgentSnapshot) "
             "RETURN s.round AS round, s.revenue AS revenue, s.cost AS cost, "
             "       s.headcount AS headcount, s.satisfaction AS satisfaction, "
             "       s.reputation AS reputation "
             "ORDER BY s.round DESC "
             "LIMIT $limit",
-            {"agent_id": agent_id, "limit": last_n_rounds},
+            {"agent_id": agent_id, "sim_id": self.simulation_id, "limit": last_n_rounds},
         )
 
         return {"actions": actions, "snapshots": snapshots}
@@ -221,7 +216,6 @@ class AgentMemoryStore:
         if not actions:
             return ""
 
-        # 他者の行動のみ（自分の行動は own_history で見る）
         other_actions = [a for a in actions if a["agent_id"] != observer_id]
         if not other_actions:
             return ""
@@ -240,19 +234,17 @@ class AgentMemoryStore:
         agent_id: str,
         skills: dict[str, float],
     ) -> None:
-        """エージェントのスキル習熟度をグラフに記録する.
-
-        SKILLED_IN リレーションで Agent → Skill を結ぶ。
-        """
+        """エージェントのスキル習熟度をグラフに記録する."""
         for skill_name, proficiency in skills.items():
             try:
                 await self.graph.execute_write(
-                    "MATCH (a:Agent {agent_id: $agent_id}) "
+                    "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
                     "MERGE (s:Skill {name: $skill_name}) "
                     "MERGE (a)-[r:SKILLED_IN]->(s) "
                     "SET r.proficiency = $proficiency",
                     {
                         "agent_id": agent_id,
+                        "sim_id": self.simulation_id,
                         "skill_name": skill_name,
                         "proficiency": proficiency,
                     },

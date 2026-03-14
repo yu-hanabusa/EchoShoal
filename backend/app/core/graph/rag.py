@@ -65,9 +65,11 @@ class GraphRAGRetriever:
         self,
         graph_client: GraphClient,
         agent_memory: AgentMemoryStore,
+        simulation_id: str = "",
     ):
         self.graph = graph_client
         self.memory = agent_memory
+        self.simulation_id = simulation_id
 
     async def get_agent_context(
         self,
@@ -162,11 +164,12 @@ class GraphRAGRetriever:
         from_round = max(1, round_number - 3)
         results = await self.graph.execute_read(
             "MATCH (a:Agent)-[:PERFORMED]->(ar:ActionRecord) "
-            "WHERE ar.round >= $from_round AND ar.visibility = 'public' "
+            "WHERE ar.simulation_id = $sim_id "
+            "  AND ar.round >= $from_round AND ar.visibility = 'public' "
             "RETURN a.industry AS industry, ar.action_type AS action, "
             "       count(*) AS count "
             "ORDER BY industry, count DESC",
-            {"from_round": from_round},
+            {"sim_id": self.simulation_id, "from_round": from_round},
         )
 
         if not results:
@@ -190,10 +193,12 @@ class GraphRAGRetriever:
         """アップロード文書から得た知識を取得する."""
         results = await self.graph.execute_read(
             "MATCH (d:Document)-[:MENTIONS]->(e) "
+            "WHERE d.simulation_id = $sim_id "
             "RETURN d.source AS source, labels(e)[0] AS type, "
             "       collect(DISTINCT e.name) AS entities "
             "ORDER BY d.uploaded_at DESC "
-            "LIMIT 5"
+            "LIMIT 5",
+            {"sim_id": self.simulation_id},
         )
 
         if not results:

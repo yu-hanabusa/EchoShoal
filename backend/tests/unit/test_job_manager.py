@@ -28,14 +28,14 @@ class TestJobManager:
         redis.set_json.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_create_job_sets_queued_status(self):
+    async def test_create_job_sets_created_status(self):
         redis = make_mock_redis()
         manager = JobManager(redis)
         await manager.create_job()
 
         call_args = redis.set_json.call_args[0]
         data = call_args[1]
-        assert data["status"] == "queued"
+        assert data["status"] == "created"
 
     @pytest.mark.asyncio
     async def test_set_running(self):

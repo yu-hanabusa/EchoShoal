@@ -1,8 +1,13 @@
-"""ジョブ管理 — シミュレーションの非同期実行とステータス管理."""
+"""ジョブ管理 — シミュレーションの非同期実行とステータス管理.
+
+シミュレーションのライフサイクル:
+  CREATED → (文書アップロード) → QUEUED → RUNNING → COMPLETED/FAILED
+"""
 
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -18,13 +23,16 @@ logger = logging.getLogger(__name__)
 _KEY_STATUS = "job:{job_id}:status"
 _KEY_RESULT = "job:{job_id}:result"
 _KEY_PROGRESS = "job:{job_id}:progress"
+_KEY_SCENARIO = "job:{job_id}:scenario"
+_KEY_INDEX = "jobs:index"  # Sorted Set (score=created_at timestamp)
 
-# TTL: 結果は24時間保持
-_RESULT_TTL = 86400
+# TTL: 結果は7日間保持
+_RESULT_TTL = 86400 * 7
 
 
 class JobStatus(str, Enum):
     """ジョブの状態."""
+    CREATED = "created"    # 作成済み（文書アップロード待ち）
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -38,6 +46,7 @@ class JobInfo(BaseModel):
     created_at: str
     progress: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
+    scenario_description: str = ""
 
 
 class JobManager:
@@ -46,22 +55,52 @@ class JobManager:
     def __init__(self, redis: RedisClient):
         self.redis = redis
 
-    async def create_job(self) -> str:
-        """新しいジョブを作成し、ジョブIDを返す."""
+    async def create_job(self, scenario_description: str = "") -> str:
+        """新しいジョブを作成し、ジョブIDを返す.
+
+        ジョブはCREATED状態で作成される（文書アップロード待ち）。
+        """
         job_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         await self.redis.set_json(
             _KEY_STATUS.format(job_id=job_id),
             {
                 "job_id": job_id,
-                "status": JobStatus.QUEUED.value,
+                "status": JobStatus.CREATED.value,
                 "created_at": now,
                 "error": None,
+                "scenario_description": scenario_description[:200],
             },
             ttl=_RESULT_TTL,
         )
+        # インデックスに追加
+        try:
+            client = await self.redis._get_client()
+            await client.zadd(_KEY_INDEX, {job_id: time.time()})
+        except Exception:
+            logger.warning("ジョブインデックス更新失敗: %s", job_id)
+
         logger.info("ジョブ作成: %s", job_id)
         return job_id
+
+    async def save_scenario(self, job_id: str, scenario: dict[str, Any]) -> None:
+        """シナリオ入力を保存する."""
+        await self.redis.set_json(
+            _KEY_SCENARIO.format(job_id=job_id), scenario, ttl=_RESULT_TTL,
+        )
+
+    async def get_scenario(self, job_id: str) -> dict[str, Any] | None:
+        """保存されたシナリオ入力を取得する."""
+        return await self.redis.get_json(_KEY_SCENARIO.format(job_id=job_id))
+
+    async def set_queued(self, job_id: str) -> None:
+        """ジョブをキュー済みに更新する（実行開始時）."""
+        info = await self._get_status_raw(job_id)
+        if info:
+            info["status"] = JobStatus.QUEUED.value
+            await self.redis.set_json(
+                _KEY_STATUS.format(job_id=job_id), info, ttl=_RESULT_TTL
+            )
 
     async def set_running(self, job_id: str) -> None:
         """ジョブを実行中に更新する."""
@@ -124,11 +163,29 @@ class JobManager:
             created_at=info["created_at"],
             progress=progress,
             error=info.get("error"),
+            scenario_description=info.get("scenario_description", ""),
         )
 
     async def get_result(self, job_id: str) -> dict[str, Any] | None:
         """ジョブの結果を取得する."""
         return await self.redis.get_json(_KEY_RESULT.format(job_id=job_id))
+
+    async def list_jobs(self, limit: int = 20) -> list[JobInfo]:
+        """過去のジョブ一覧を取得する（新しい順）."""
+        try:
+            client = await self.redis._get_client()
+            job_ids = await client.zrevrange(_KEY_INDEX, 0, limit - 1)
+        except Exception:
+            logger.warning("ジョブ一覧取得失敗")
+            return []
+
+        jobs: list[JobInfo] = []
+        for job_id_bytes in job_ids:
+            job_id = job_id_bytes.decode() if isinstance(job_id_bytes, bytes) else job_id_bytes
+            info = await self.get_job_info(job_id)
+            if info:
+                jobs.append(info)
+        return jobs
 
     async def _get_status_raw(self, job_id: str) -> dict[str, Any] | None:
         return await self.redis.get_json(_KEY_STATUS.format(job_id=job_id))

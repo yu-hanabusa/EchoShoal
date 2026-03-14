@@ -2,8 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.data_sources import router as data_sources_router
-from app.api.routes.documents import router as documents_router
-from app.api.routes.graph import router as graph_router
 from app.api.routes.predictions import router as predictions_router
 from app.api.routes.reports import router as reports_router
 from app.api.routes.simulations import router as simulations_router
@@ -17,7 +15,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,8 +26,6 @@ app.include_router(simulations_router)
 app.include_router(reports_router)
 app.include_router(predictions_router)
 app.include_router(data_sources_router)
-app.include_router(documents_router)
-app.include_router(graph_router)
 
 
 @app.get("/api/health")

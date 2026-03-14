@@ -57,9 +57,11 @@ class DocumentProcessor:
         self,
         graph_client: GraphClient,
         nlp_analyzer: JapaneseAnalyzer | None = None,
+        simulation_id: str = "",
     ):
         self.graph = graph_client
         self.nlp = nlp_analyzer or JapaneseAnalyzer()
+        self.simulation_id = simulation_id
 
     async def process(self, doc: ParsedDocument) -> ProcessResult:
         """文書を解析し、知識グラフに格納する.
@@ -113,6 +115,7 @@ class DocumentProcessor:
             "    d.text_length = $text_length, "
             "    d.page_count = $page_count, "
             "    d.entity_count = $entity_count, "
+            "    d.simulation_id = $simulation_id, "
             "    d.uploaded_at = datetime()",
             {
                 "doc_id": doc.id,
@@ -121,6 +124,7 @@ class DocumentProcessor:
                 "text_length": len(doc.text),
                 "page_count": doc.page_count,
                 "entity_count": len(analysis.entities),
+                "simulation_id": self.simulation_id,
             },
         )
 
@@ -182,14 +186,16 @@ class DocumentProcessor:
         )
 
     async def get_documents(self) -> list[DocumentInfo]:
-        """アップロード済み文書の一覧を取得する."""
+        """このシミュレーションにアップロードされた文書一覧を取得する."""
         results = await self.graph.execute_read(
             "MATCH (d:Document) "
+            "WHERE d.simulation_id = $simulation_id "
             "RETURN d.doc_id AS doc_id, d.filename AS filename, "
             "       d.source AS source, d.text_length AS text_length, "
             "       d.entity_count AS entity_count, "
             "       toString(d.uploaded_at) AS uploaded_at "
-            "ORDER BY d.uploaded_at DESC"
+            "ORDER BY d.uploaded_at DESC",
+            {"simulation_id": self.simulation_id},
         )
         return [
             DocumentInfo(

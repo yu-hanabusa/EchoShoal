@@ -4,9 +4,10 @@ import type { ScenarioInput } from "../api/types";
 interface Props {
   onSubmit: (scenario: ScenarioInput) => void;
   isLoading: boolean;
+  submitLabel?: string;
 }
 
-export default function ScenarioForm({ onSubmit, isLoading }: Props) {
+export default function ScenarioForm({ onSubmit, isLoading, submitLabel }: Props) {
   const [description, setDescription] = useState("");
   const [numRounds, setNumRounds] = useState(24);
   const [aiAcceleration, setAiAcceleration] = useState(0);
@@ -168,7 +169,7 @@ export default function ScenarioForm({ onSubmit, isLoading }: Props) {
         disabled={isLoading || !isValid}
         className="w-full py-2.5 px-6 rounded-md bg-interactive hover:bg-interactive-hover disabled:bg-border-strong disabled:text-text-tertiary text-white text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed"
       >
-        {isLoading ? "送信中..." : "シミュレーション開始"}
+        {isLoading ? "送信中..." : (submitLabel || "シミュレーション開始")}
       </button>
     </form>
   );

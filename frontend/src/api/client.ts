@@ -1,4 +1,4 @@
-/** APIクライアント */
+/** APIクライアント — すべてのAPIはシミュレーション(job_id)スコープ */
 
 import type {
   DocumentInfo,
@@ -23,7 +23,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** シミュレーションジョブを作成 */
+/** シミュレーション一覧を取得 */
+export async function listSimulations(): Promise<JobInfo[]> {
+  return request("/simulations/");
+}
+
+/** Step 1: シミュレーションジョブを作成（CREATED状態） */
 export async function createSimulation(
   scenario: ScenarioInput
 ): Promise<{ job_id: string; status: string }> {
@@ -31,6 +36,36 @@ export async function createSimulation(
     method: "POST",
     body: JSON.stringify(scenario),
   });
+}
+
+/** Step 2: このシミュレーション用の文書をアップロード */
+export async function uploadSimulationDocument(
+  jobId: string,
+  file: File,
+  source?: string,
+): Promise<ProcessResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (source) {
+    formData.append("source", source);
+  }
+
+  const res = await fetch(`${BASE_URL}/simulations/${jobId}/documents`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Upload error: ${res.status}`);
+  }
+  return res.json() as Promise<ProcessResult>;
+}
+
+/** Step 3: シミュレーション実行開始 */
+export async function startSimulation(
+  jobId: string
+): Promise<{ job_id: string; status: string }> {
+  return request(`/simulations/${jobId}/start`, { method: "POST" });
 }
 
 /** ジョブのステータス + 結果を取得 */
@@ -55,48 +90,19 @@ export async function getPrediction(jobId: string): Promise<PredictionResult> {
   return request(`/simulations/${jobId}/prediction`);
 }
 
+/** このシミュレーションの文書一覧を取得 */
+export async function getSimulationDocuments(jobId: string): Promise<DocumentInfo[]> {
+  return request(`/simulations/${jobId}/documents`);
+}
+
+/** このシミュレーションの知識グラフ可視化データを取得 */
+export async function getSimulationGraph(jobId: string): Promise<{
+  elements: Array<{ data: Record<string, string> }>;
+}> {
+  return request(`/simulations/${jobId}/graph`);
+}
+
 /** ヘルスチェック */
 export async function healthCheck(): Promise<{ status: string; app: string }> {
   return request("/health");
-}
-
-/** 文書をアップロード */
-export async function uploadDocument(
-  file: File,
-  source?: string
-): Promise<ProcessResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  if (source) {
-    formData.append("source", source);
-  }
-
-  const res = await fetch(`${BASE_URL}/documents/upload`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Upload error: ${res.status}`);
-  }
-  return res.json() as Promise<ProcessResult>;
-}
-
-/** アップロード済み文書一覧を取得 */
-export async function getDocuments(): Promise<DocumentInfo[]> {
-  return request("/documents/");
-}
-
-/** 文書の詳細を取得 */
-export async function getDocumentDetail(
-  docId: string
-): Promise<Record<string, unknown>> {
-  return request(`/documents/${docId}`);
-}
-
-/** 知識グラフ可視化データを取得 */
-export async function getGraphVisualization(): Promise<{
-  elements: Array<{ data: Record<string, string> }>;
-}> {
-  return request("/graph/visualization");
 }

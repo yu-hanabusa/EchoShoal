@@ -1,12 +1,13 @@
 import { useState, useRef } from "react";
-import { uploadDocument } from "../api/client";
+import { uploadSimulationDocument } from "../api/client";
 import type { ProcessResult } from "../api/types";
 
 interface Props {
+  jobId: string;
   onUploaded: () => void;
 }
 
-export default function DocumentUpload({ onUploaded }: Props) {
+export default function DocumentUpload({ jobId, onUploaded }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [source, setSource] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -23,7 +24,7 @@ export default function DocumentUpload({ onUploaded }: Props) {
     setResult(null);
 
     try {
-      const res = await uploadDocument(file, source || undefined);
+      const res = await uploadSimulationDocument(jobId, file, source || undefined);
       setResult(res);
       setFile(null);
       setSource("");

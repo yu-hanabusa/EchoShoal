@@ -1,67 +1,101 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import ScenarioForm from "../components/ScenarioForm";
-import DocumentUpload from "../components/DocumentUpload";
-import { createSimulation } from "../api/client";
-import type { ScenarioInput } from "../api/types";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { listSimulations } from "../api/client";
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  created: { label: "作成済み", color: "text-text-tertiary" },
+  queued: { label: "待機中", color: "text-caution" },
+  running: { label: "実行中", color: "text-interactive" },
+  completed: { label: "完了", color: "text-positive" },
+  failed: { label: "失敗", color: "text-negative" },
+};
 
 export default function HomePage() {
-  const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-  const [uploadCount, setUploadCount] = useState(0);
-
-  const mutation = useMutation({
-    mutationFn: (scenario: ScenarioInput) => createSimulation(scenario),
-    onSuccess: (data) => {
-      navigate(`/simulation/${data.job_id}`);
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
+  const { data: simulations, isLoading } = useQuery({
+    queryKey: ["simulations"],
+    queryFn: listSimulations,
+    refetchInterval: 10000,
   });
 
   return (
     <div className="min-h-screen bg-surface-1">
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-        {error && (
-          <div
-            className="px-4 py-3 rounded-md bg-negative-light border border-negative/20 text-negative text-sm"
-            role="alert"
+      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-text-primary">
+            Simulations
+          </h1>
+          <Link
+            to="/new"
+            className="px-5 py-2 rounded-md bg-interactive hover:bg-interactive-hover text-white text-sm font-medium transition-colors"
           >
-            {error}
+            + New Simulation
+          </Link>
+        </div>
+
+        {isLoading ? (
+          <p className="text-sm text-text-tertiary text-center py-12">
+            Loading...
+          </p>
+        ) : !simulations || simulations.length === 0 ? (
+          <div className="rounded-md border border-border bg-surface-0 p-12 text-center">
+            <p className="text-text-secondary mb-4">
+              まだシミュレーションがありません
+            </p>
+            <Link
+              to="/new"
+              className="text-interactive hover:underline text-sm font-medium"
+            >
+              最初のシミュレーションを作成する
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-md border border-border bg-surface-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-text-tertiary">
+                  <th className="py-3 px-4 font-medium">シナリオ</th>
+                  <th className="py-3 px-4 font-medium w-24">状態</th>
+                  <th className="py-3 px-4 font-medium w-36 text-right">作成日時</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simulations.map((sim) => {
+                  const status = STATUS_LABELS[sim.status] || STATUS_LABELS.created;
+                  return (
+                    <tr
+                      key={sim.job_id}
+                      className="border-b border-border last:border-b-0 hover:bg-surface-1 transition-colors"
+                    >
+                      <td className="py-3 px-4">
+                        <Link
+                          to={
+                            sim.status === "created"
+                              ? `/new?resume=${sim.job_id}`
+                              : `/simulation/${sim.job_id}`
+                          }
+                          className="text-text-primary hover:text-interactive font-medium"
+                        >
+                          {sim.scenario_description || "(no description)"}
+                        </Link>
+                      </td>
+                      <td className={`py-3 px-4 font-medium ${status.color}`}>
+                        {status.label}
+                      </td>
+                      <td className="py-3 px-4 text-right text-text-tertiary text-xs tabular-nums">
+                        {new Date(sim.created_at).toLocaleString("ja-JP", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-
-        {/* Step 1: Document Upload (optional) */}
-        <fieldset className="rounded-md border border-border bg-surface-0 p-5">
-          <legend className="px-2 text-sm font-medium text-text-secondary">
-            Step 1: 参考資料のアップロード（任意）
-          </legend>
-          <p className="text-sm text-text-tertiary mb-4">
-            IT業界レポートや求人データ等をアップロードすると、NLP解析で知識グラフにデータが蓄積され、シミュレーションの精度が向上します。
-          </p>
-          <DocumentUpload onUploaded={() => setUploadCount((c) => c + 1)} />
-          {uploadCount > 0 && (
-            <p className="mt-3 text-xs text-positive">
-              {uploadCount}件のドキュメントを知識グラフに投入済み
-            </p>
-          )}
-        </fieldset>
-
-        {/* Step 2: Scenario + Parameters + Submit */}
-        <div>
-          <p className="text-sm font-medium text-text-secondary mb-4 px-2">
-            Step 2: シナリオ & パラメータ設定
-          </p>
-          <ScenarioForm
-            onSubmit={(scenario) => {
-              setError(null);
-              mutation.mutate(scenario);
-            }}
-            isLoading={mutation.isPending}
-          />
-        </div>
       </main>
     </div>
   );
