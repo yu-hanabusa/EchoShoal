@@ -15,7 +15,7 @@ export default function HomePage() {
   const { data: simulations, isLoading } = useQuery({
     queryKey: ["simulations"],
     queryFn: listSimulations,
-    refetchInterval: 10000,
+    refetchInterval: false,
   });
 
   const deleteMutation = useMutation({
