@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.simulation.agents.base import AgentAction, BaseAgent
-from app.simulation.agents.utils import _parse_skill
 from app.simulation.models import MarketState
 
 
@@ -44,11 +43,7 @@ class SIerCompanyAgent(BaseAgent):
             case "invest_rd":
                 amount = action.parameters.get("amount", 20)
                 self.state.cost += amount
-                skill = action.parameters.get("skill", "ai_ml")
-                sc = _parse_skill(skill)
-                if sc is not None:
-                    current = self.state.skills.get(sc, 0.0)
-                    self.state.skills[sc] = min(1.0, current + 0.15)
+                self._improve_skill(action.parameters.get("skill", "ai_ml"), 0.15)
             case "offshore":
                 savings = action.parameters.get("savings", 20)
                 self.state.cost -= savings

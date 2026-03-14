@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.llm.router import LLMRouter, TaskType
+from app.simulation.agents.utils import _parse_skill
 from app.simulation.models import Industry, MarketState, SkillCategory
 
 
@@ -96,9 +97,18 @@ class BaseAgent(ABC):
         ...
 
     def _clamp_state(self) -> None:
-        """Clamp reputation and satisfaction to [0, 1]."""
+        """reputation と satisfaction を [0, 1] の範囲に制限する。"""
         self.state.reputation = max(0.0, min(1.0, self.state.reputation))
         self.state.satisfaction = max(0.0, min(1.0, self.state.satisfaction))
+
+    def _improve_skill(self, raw_skill: str | None, delta: float) -> bool:
+        """スキル習熟度を delta 分だけ上げる。成功時 True を返す。"""
+        sc = _parse_skill(raw_skill)
+        if sc is None:
+            return False
+        current = self.state.skills.get(sc, 0.0)
+        self.state.skills[sc] = min(1.0, current + delta)
+        return True
 
     def _build_system_prompt(self) -> str:
         return (

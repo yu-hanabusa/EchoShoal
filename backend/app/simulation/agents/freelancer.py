@@ -35,11 +35,7 @@ class FreelancerAgent(BaseAgent):
                     self.state.active_contracts = 1
                     self.state.satisfaction -= 0.02  # 稼働による疲労
             case "learn_skill":
-                skill_name = action.parameters.get("skill", "ai_ml")
-                sc = _parse_skill(skill_name)
-                if sc is not None:
-                    current = self.state.skills.get(sc, 0.0)
-                    self.state.skills[sc] = min(1.0, current + 0.12)
+                if self._improve_skill(action.parameters.get("skill", "ai_ml"), 0.12):
                     self.state.cost += 3  # 学習コスト
                     self.state.revenue *= 0.5  # 稼働減
             case "raise_rate":

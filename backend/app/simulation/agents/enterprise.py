@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from app.simulation.agents.base import AgentAction, BaseAgent
-from app.simulation.agents.utils import _parse_skill
-from app.simulation.models import MarketState, SkillCategory
+from app.simulation.models import MarketState
 
 
 class EnterpriseITAgent(BaseAgent):
@@ -37,16 +36,11 @@ class EnterpriseITAgent(BaseAgent):
                 self.state.active_contracts += 1
             case "start_dx":
                 self.state.cost += 80
-                skill = action.parameters.get("skill", "cloud_infra")
-                sc = _parse_skill(skill)
-                if sc is not None:
-                    current = self.state.skills.get(sc, 0.0)
-                    self.state.skills[sc] = min(1.0, current + 0.2)
+                self._improve_skill(action.parameters.get("skill", "cloud_infra"), 0.2)
                 self.state.reputation += 0.05
             case "maintain_legacy":
                 self.state.cost += 20
-                legacy = self.state.skills.get(SkillCategory.LEGACY, 0.0)
-                self.state.skills[SkillCategory.LEGACY] = min(1.0, legacy + 0.05)
+                self._improve_skill("legacy", 0.05)
                 self.state.satisfaction -= 0.03  # レガシー保守は満足度低下
             case "adopt_saas":
                 self.state.cost += 15  # 月額SaaS費用

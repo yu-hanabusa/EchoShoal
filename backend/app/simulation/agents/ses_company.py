@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.simulation.agents.base import AgentAction, BaseAgent
-from app.simulation.agents.utils import _parse_skill
 from app.simulation.models import MarketState
 
 
@@ -31,11 +30,7 @@ class SESCompanyAgent(BaseAgent):
                 self.state.headcount += count
                 self.state.cost += count * 35  # 平均月35万コスト/人
             case "upskill":
-                skill = action.parameters.get("skill")
-                sc = _parse_skill(skill)
-                if sc is not None:
-                    current = self.state.skills.get(sc, 0.0)
-                    self.state.skills[sc] = min(1.0, current + 0.1)
+                if self._improve_skill(action.parameters.get("skill"), 0.1):
                     self.state.cost += 5  # 研修コスト
             case "adjust_margin":
                 direction = action.parameters.get("direction", "up")
