@@ -43,79 +43,11 @@ SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT IF NOT EXISTS FOR (d:Document) REQUIRE d.doc_id IS UNIQUE",
 ]
 
-# --- 初期データ ---
-
-SEED_INDUSTRIES = [
-    {"name": "sier", "label_ja": "SIer（システムインテグレータ）", "description": "大規模システム開発を受託する元請け企業群"},
-    {"name": "ses", "label_ja": "SES（システムエンジニアリングサービス）", "description": "エンジニアを客先常駐で派遣する企業群"},
-    {"name": "freelance", "label_ja": "フリーランス", "description": "個人で業務委託契約を結ぶ独立エンジニア"},
-    {"name": "web_startup", "label_ja": "Web系スタートアップ", "description": "自社プロダクトを開発するWeb系企業"},
-    {"name": "enterprise_it", "label_ja": "事業会社IT部門", "description": "非IT企業の社内IT部門・情報システム部"},
-]
-
-SEED_SKILL_CATEGORIES = [
-    {"name": "legacy", "label_ja": "レガシー", "skills": ["COBOL", "VB.NET", "メインフレーム", "AS/400"]},
-    {"name": "web_frontend", "label_ja": "Webフロントエンド", "skills": ["React", "Vue.js", "TypeScript", "Angular", "Next.js"]},
-    {"name": "web_backend", "label_ja": "Webバックエンド", "skills": ["Python", "Go", "Node.js", "Java", "PHP", "Ruby"]},
-    {"name": "cloud_infra", "label_ja": "クラウド・インフラ", "skills": ["AWS", "GCP", "Azure", "Kubernetes", "Docker", "Terraform"]},
-    {"name": "ai_ml", "label_ja": "AI・機械学習", "skills": ["PyTorch", "TensorFlow", "LLM", "データサイエンス", "MLOps"]},
-    {"name": "security", "label_ja": "セキュリティ", "skills": ["ペネトレーションテスト", "SOC運用", "ISMS", "ゼロトラスト"]},
-    {"name": "mobile", "label_ja": "モバイル", "skills": ["Swift", "Kotlin", "Flutter", "React Native"]},
-    {"name": "erp", "label_ja": "ERP", "skills": ["SAP", "Oracle ERP", "Salesforce", "ServiceNow"]},
-]
-
-SEED_ROLES = [
-    {"name": "se", "label_ja": "システムエンジニア"},
-    {"name": "pg", "label_ja": "プログラマ"},
-    {"name": "pm", "label_ja": "プロジェクトマネージャ"},
-    {"name": "infra", "label_ja": "インフラエンジニア"},
-    {"name": "data_scientist", "label_ja": "データサイエンティスト"},
-    {"name": "security_engineer", "label_ja": "セキュリティエンジニア"},
-    {"name": "sre", "label_ja": "SRE"},
-    {"name": "designer", "label_ja": "UIデザイナー"},
-]
-
-
 async def initialize_schema(client: GraphClient) -> None:
     """スキーマ制約を作成する."""
     for constraint in SCHEMA_CONSTRAINTS:
         await client.execute_write(constraint)
     logger.info("知識グラフスキーマを初期化しました")
-
-
-async def seed_initial_data(client: GraphClient) -> None:
-    """初期データを投入する（冪等）."""
-    # 業界
-    for ind in SEED_INDUSTRIES:
-        await client.execute_write(
-            "MERGE (i:Industry {name: $name}) "
-            "SET i.label_ja = $label_ja, i.description = $description",
-            ind,
-        )
-
-    # スキルカテゴリ + スキル
-    for cat in SEED_SKILL_CATEGORIES:
-        await client.execute_write(
-            "MERGE (sc:SkillCategory {name: $name}) SET sc.label_ja = $label_ja",
-            {"name": cat["name"], "label_ja": cat["label_ja"]},
-        )
-        for skill_name in cat["skills"]:
-            await client.execute_write(
-                "MERGE (s:Skill {name: $skill_name}) "
-                "WITH s "
-                "MATCH (sc:SkillCategory {name: $cat_name}) "
-                "MERGE (s)-[:CATEGORIZED_AS]->(sc)",
-                {"skill_name": skill_name, "cat_name": cat["name"]},
-            )
-
-    # 職種
-    for role in SEED_ROLES:
-        await client.execute_write(
-            "MERGE (r:Role {name: $name}) SET r.label_ja = $label_ja",
-            role,
-        )
-
-    logger.info("初期データを投入しました")
 
 
 class KnowledgeGraphRepository:
