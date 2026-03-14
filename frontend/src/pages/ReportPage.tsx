@@ -25,14 +25,8 @@ export default function ReportPage() {
 
   return (
     <div className="min-h-screen bg-surface-1">
-      <header className="bg-surface-0 border-b border-border">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link
-            to="/"
-            className="text-lg font-semibold text-brand tracking-tight hover:opacity-80 transition-opacity"
-          >
-            EchoShoal
-          </Link>
+      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        <div className="flex justify-end">
           <Link
             to={`/simulation/${jobId}`}
             className="text-sm text-interactive hover:underline"
@@ -40,9 +34,6 @@ export default function ReportPage() {
             シミュレーション結果に戻る
           </Link>
         </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         {/* Loading */}
         {isLoading && (
           <div className="bg-surface-0 rounded-lg border border-border p-8 text-center">

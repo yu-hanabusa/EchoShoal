@@ -39,9 +39,34 @@ export default function GraphPage() {
     queryFn: getGraphVisualization,
   });
 
-  if (isLoading) return <div style={{ padding: "2rem", textAlign: "center" }}>Loading graph...</div>;
-  if (error) return <div style={{ padding: "2rem", textAlign: "center", color: "#ef4444" }}>Failed to load graph. Is Neo4j running?</div>;
-  if (!data?.elements?.length) return <div style={{ padding: "2rem", textAlign: "center" }}>No graph data available.</div>;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-surface-1 flex items-center justify-center">
+        <p className="text-sm text-text-tertiary">Loading graph...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-surface-1 flex items-center justify-center">
+        <p className="text-sm text-negative">Failed to load graph. Is Neo4j running?</p>
+      </div>
+    );
+  }
+
+  if (!data?.elements?.length) {
+    return (
+      <div className="min-h-screen bg-surface-1">
+        <main className="max-w-5xl mx-auto px-4 py-8">
+          <h1 className="text-lg font-semibold text-text-primary mb-4">Knowledge Graph</h1>
+          <p className="text-sm text-text-tertiary">
+            No graph data available. Upload documents or run data collection first.
+          </p>
+        </main>
+      </div>
+    );
+  }
 
   // Separate nodes and edges
   const nodes: GraphNode[] = [];
@@ -55,7 +80,7 @@ export default function GraphPage() {
     }
   }
 
-  // Simple force-directed layout approximation (group by type)
+  // Simple layout: group by type in rows
   const typeGroups: Record<string, GraphNode[]> = {};
   for (const node of nodes) {
     if (!typeGroups[node.type]) typeGroups[node.type] = [];
@@ -64,7 +89,6 @@ export default function GraphPage() {
 
   const typeOrder = ["Industry", "SkillCategory", "Skill", "Role", "Policy", "Document"];
   const width = 1100;
-  const height = 700;
   let currentY = 60;
 
   for (const type of typeOrder) {
@@ -74,12 +98,11 @@ export default function GraphPage() {
     const startX = (width - spacing * (group.length - 1)) / 2;
     group.forEach((node, i) => {
       node.x = startX + i * spacing;
-      node.y = currentY + (Math.random() * 20 - 10); // slight jitter
+      node.y = currentY + (Math.random() * 20 - 10);
     });
     currentY += 110;
   }
 
-  // Handle any types not in typeOrder
   for (const [type, group] of Object.entries(typeGroups)) {
     if (typeOrder.includes(type)) continue;
     const spacing = Math.min(120, (width - 100) / Math.max(group.length, 1));
@@ -92,73 +115,65 @@ export default function GraphPage() {
   }
 
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const svgHeight = Math.max(currentY + 40, 400);
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "2rem" }}>
-      <h1 style={{ marginBottom: "1rem" }}>Knowledge Graph</h1>
+    <div className="min-h-screen bg-surface-1">
+      <main className="max-w-5xl mx-auto px-4 py-8">
+        <h1 className="text-lg font-semibold text-text-primary mb-4">Knowledge Graph</h1>
 
-      {/* Legend */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
-          <div key={type} style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.8rem" }}>
-            <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: color, display: "inline-block" }} />
-            {type}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden", backgroundColor: "#fafafa" }}>
-        <svg width="100%" viewBox={`0 0 ${width} ${Math.max(currentY + 40, height)}`}>
-          {/* Edges */}
-          {edges.map((edge, i) => {
-            const s = nodeMap.get(edge.source);
-            const t = nodeMap.get(edge.target);
-            if (!s || !t) return null;
-            return (
-              <line
-                key={`e-${i}`}
-                x1={s.x}
-                y1={s.y}
-                x2={t.x}
-                y2={t.y}
-                stroke="#d1d5db"
-                strokeWidth={1}
-                opacity={0.6}
+        {/* Legend */}
+        <div className="flex gap-4 mb-4 flex-wrap">
+          {Object.entries(NODE_COLORS).map(([type, color]) => (
+            <div key={type} className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <span
+                className="inline-block w-3 h-3 rounded-full"
+                style={{ backgroundColor: color }}
               />
-            );
-          })}
+              {type}
+            </div>
+          ))}
+        </div>
 
-          {/* Nodes */}
-          {nodes.map((node) => {
-            const color = NODE_COLORS[node.type] || "#9ca3af";
-            const size = NODE_SIZES[node.type] || 14;
-            return (
-              <g key={node.id}>
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={size / 2}
-                  fill={color}
-                  opacity={0.85}
+        <div className="rounded-lg border border-border overflow-hidden bg-surface-0">
+          <svg width="100%" viewBox={`0 0 ${width} ${svgHeight}`}>
+            {/* Edges */}
+            {edges.map((edge, i) => {
+              const s = nodeMap.get(edge.source);
+              const t = nodeMap.get(edge.target);
+              if (!s || !t) return null;
+              return (
+                <line
+                  key={`e-${i}`}
+                  x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                  stroke="#d1d5db" strokeWidth={1} opacity={0.6}
                 />
-                <text
-                  x={node.x}
-                  y={node.y + size / 2 + 12}
-                  textAnchor="middle"
-                  fontSize={9}
-                  fill="#4b5563"
-                >
-                  {node.label.length > 12 ? node.label.slice(0, 12) + "..." : node.label}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
+              );
+            })}
 
-      <p style={{ color: "#9ca3af", fontSize: "0.8rem", marginTop: "0.5rem" }}>
-        {nodes.length} nodes, {edges.length} edges
-      </p>
+            {/* Nodes */}
+            {nodes.map((node) => {
+              const color = NODE_COLORS[node.type] || "#9ca3af";
+              const size = NODE_SIZES[node.type] || 14;
+              return (
+                <g key={node.id}>
+                  <circle cx={node.x} cy={node.y} r={size / 2} fill={color} opacity={0.85} />
+                  <text
+                    x={node.x} y={node.y + size / 2 + 12}
+                    textAnchor="middle" fontSize={9} fill="#4b5563"
+                  >
+                    {node.label.length > 12 ? node.label.slice(0, 12) + "..." : node.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <p className="text-xs text-text-tertiary mt-2">
+          {nodes.length} nodes, {edges.length} edges
+        </p>
+      </main>
     </div>
   );
 }

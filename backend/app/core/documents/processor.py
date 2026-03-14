@@ -17,7 +17,6 @@ from app.core.nlp.analyzer import AnalysisResult, JapaneseAnalyzer
 logger = logging.getLogger(__name__)
 
 # NLP抽出結果の技術名 → 既存 Skill ノード名のマッピング
-# AnalyzerのルールベースパターンとSchemaのSEED_SKILL_CATEGORIESの橋渡し
 _TECH_TO_SKILL: dict[str, str] = {
     "Python": "Python",
     "Go": "Go",

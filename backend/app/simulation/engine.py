@@ -17,7 +17,6 @@ from app.core.graph.rag import GraphRAGRetriever
 from app.core.llm.router import LLMRouter
 from app.simulation.agents.base import BaseAgent
 from app.simulation.events.effects import apply_active_events
-from app.simulation.events.models import MarketEvent
 from app.simulation.events.scheduler import EventScheduler
 from app.simulation.models import (
     Industry,
