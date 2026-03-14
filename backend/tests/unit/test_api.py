@@ -1,70 +1,132 @@
-"""Tests for simulation API endpoint."""
+"""API エンドポイントのユニットテスト."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.core.job_manager import JobInfo, JobManager, JobStatus
 from app.main import app
-from app.simulation.models import MarketState, RoundResult
 
 
-@pytest.fixture
-def mock_engine_run():
-    """Mock the simulation engine to avoid LLM calls."""
-    results = [
-        RoundResult(
-            round_number=1,
-            market_state=MarketState(round_number=1),
-            actions_taken=[{"agent": "TestCo", "type": "recruit", "description": "テスト"}],
-            events=[],
-            summary="Round 1 complete",
-        )
-    ]
-    with patch("app.api.routes.simulations.SimulationEngine") as mock_cls:
-        instance = mock_cls.return_value
-        instance.run = AsyncMock(return_value=results)
-        instance.get_summary.return_value = {
-            "total_rounds": 1,
-            "final_market": MarketState(round_number=1).model_dump(),
-            "agents": [],
-            "llm_calls": 1,
-        }
-        yield instance
+def make_mock_job_manager() -> MagicMock:
+    mock = MagicMock(spec=JobManager)
+    mock.create_job = AsyncMock(return_value="test-job-id")
+    mock.get_job_info = AsyncMock()
+    mock.get_result = AsyncMock()
+    return mock
 
 
-class TestSimulationAPI:
+class TestHealthCheck:
     @pytest.mark.asyncio
-    async def test_run_simulation(self, mock_engine_run):
+    async def test_health_check(self):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.post("/api/simulations/", json={
-                "description": "AI技術の普及によるIT人材市場の変化予測テスト",
-                "num_rounds": 3,
-                "focus_skills": ["ai_ml"],
-            })
-
+            response = await client.get("/api/health")
         assert response.status_code == 200
-        data = response.json()
-        assert "scenario" in data
-        assert "summary" in data
-        assert "rounds" in data
+        assert response.json()["status"] == "ok"
+
+
+class TestCreateSimulation:
+    @pytest.mark.asyncio
+    async def test_returns_202_with_job_id(self):
+        mock_jm = make_mock_job_manager()
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/api/simulations/", json={
+                    "description": "AI技術の普及によるIT人材市場の変化予測テスト",
+                })
+            assert response.status_code == 202
+            data = response.json()
+            assert data["job_id"] == "test-job-id"
+            assert data["status"] == "queued"
 
     @pytest.mark.asyncio
     async def test_invalid_scenario_rejected(self):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post("/api/simulations/", json={
-                "description": "短い",  # Too short
+                "description": "短い",
             })
-
         assert response.status_code == 422
 
-    @pytest.mark.asyncio
-    async def test_health_check(self):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.get("/api/health")
 
-        assert response.status_code == 200
-        assert response.json()["status"] == "ok"
+class TestGetSimulation:
+    @pytest.mark.asyncio
+    async def test_returns_404_for_missing_job(self):
+        mock_jm = make_mock_job_manager()
+        mock_jm.get_job_info = AsyncMock(return_value=None)
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/simulations/nonexistent")
+            assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_returns_running_status(self):
+        mock_jm = make_mock_job_manager()
+        mock_jm.get_job_info = AsyncMock(return_value=JobInfo(
+            job_id="test-id",
+            status=JobStatus.RUNNING,
+            created_at="2026-01-01",
+            progress={"current_round": 5, "total_rounds": 24},
+        ))
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/simulations/test-id")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "running"
+            assert data["progress"]["current_round"] == 5
+
+    @pytest.mark.asyncio
+    async def test_returns_completed_with_result(self):
+        mock_jm = make_mock_job_manager()
+        mock_jm.get_job_info = AsyncMock(return_value=JobInfo(
+            job_id="test-id",
+            status=JobStatus.COMPLETED,
+            created_at="2026-01-01",
+        ))
+        mock_jm.get_result = AsyncMock(return_value={
+            "summary": {"total_rounds": 10},
+            "rounds": [],
+        })
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/simulations/test-id")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "completed"
+            assert "result" in data
+
+
+class TestGetProgress:
+    @pytest.mark.asyncio
+    async def test_returns_progress(self):
+        mock_jm = make_mock_job_manager()
+        mock_jm.get_job_info = AsyncMock(return_value=JobInfo(
+            job_id="test-id",
+            status=JobStatus.RUNNING,
+            created_at="2026-01-01",
+            progress={"current_round": 12, "total_rounds": 24, "percentage": 50.0},
+        ))
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/simulations/test-id/progress")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["progress"]["percentage"] == 50.0
+
+    @pytest.mark.asyncio
+    async def test_returns_404_for_missing(self):
+        mock_jm = make_mock_job_manager()
+        mock_jm.get_job_info = AsyncMock(return_value=None)
+        with patch("app.api.routes.simulations._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get("/api/simulations/nonexistent/progress")
+            assert response.status_code == 404

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from app.config import settings
@@ -30,11 +31,15 @@ class SimulationEngine:
     5. Round result is recorded
     """
 
+    # コールバック型: async def callback(current_round, total_rounds) -> None
+    ProgressCallback = Callable[[int, int], Coroutine[Any, Any, None]]
+
     def __init__(
         self,
         agents: list[BaseAgent],
         llm: LLMRouter,
         scenario: ScenarioInput | None = None,
+        on_progress: ProgressCallback | None = None,
     ):
         self.agents = agents
         self.llm = llm
@@ -42,6 +47,7 @@ class SimulationEngine:
         self.market = MarketState()
         self.results: list[RoundResult] = []
         self._llm_call_count = 0
+        self._on_progress = on_progress
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -57,6 +63,9 @@ class SimulationEngine:
 
             result = await self._run_round(round_num)
             self.results.append(result)
+
+            if self._on_progress:
+                await self._on_progress(round_num, rounds)
 
         return self.results
 
