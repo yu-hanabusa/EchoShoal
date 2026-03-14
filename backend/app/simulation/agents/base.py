@@ -99,6 +99,11 @@ class BaseAgent(ABC):
         self.llm = llm
         self.personality = personality or DEFAULT_PERSONALITY
         self._action_history: list[AgentAction] = []
+        self._scenario_summary: str = ""
+
+    def set_scenario_context(self, summary: str) -> None:
+        """シナリオの要約テキストを設定する（エンジンから呼ばれる）."""
+        self._scenario_summary = summary
 
     @property
     def id(self) -> str:
@@ -195,16 +200,22 @@ class BaseAgent(ABC):
 
     def _build_system_prompt(self) -> str:
         personality_text = self._build_personality_prompt()
+        scenario_section = ""
+        if self._scenario_summary:
+            scenario_section = f"\n【シミュレーションシナリオ】\n{self._scenario_summary}\n"
+
         return (
             f"あなたは日本のIT業界における{self.profile.agent_type}のシミュレーションエージェントです。\n"
             f"名前: {self.profile.name}\n"
             f"業界: {self.profile.industry.value}\n"
-            f"説明: {self.profile.description}\n\n"
+            f"説明: {self.profile.description}\n"
+            f"{scenario_section}\n"
             f"【あなたの性格・判断傾向】\n{personality_text}\n\n"
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
-            "上記の性格に基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
+            "上記の性格とシナリオに基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
             "あなたは完全に合理的ではありません。上記の性格傾向に従って判断してください。\n"
-            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {}}]}'
+            "parametersには必ず skill（対象スキルカテゴリ名）を含めてください。\n"
+            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {"skill": "スキルカテゴリ名", ...}}]}'
         )
 
     def _build_personality_prompt(self) -> str:

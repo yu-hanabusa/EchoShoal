@@ -122,6 +122,7 @@ async def _run_simulation_task(
         engine = SimulationEngine(
             agents=agents, llm=llm, scenario=scenario,
             on_progress=on_progress, event_scheduler=event_scheduler,
+            enriched_scenario=enriched,
             rag=rag, agent_memory=agent_memory,
         )
 

@@ -234,3 +234,28 @@ class AgentMemoryStore:
             )
 
         return "\n".join(lines)
+
+    async def record_skills(
+        self,
+        agent_id: str,
+        skills: dict[str, float],
+    ) -> None:
+        """エージェントのスキル習熟度をグラフに記録する.
+
+        SKILLED_IN リレーションで Agent → Skill を結ぶ。
+        """
+        for skill_name, proficiency in skills.items():
+            try:
+                await self.graph.execute_write(
+                    "MATCH (a:Agent {agent_id: $agent_id}) "
+                    "MERGE (s:Skill {name: $skill_name}) "
+                    "MERGE (a)-[r:SKILLED_IN]->(s) "
+                    "SET r.proficiency = $proficiency",
+                    {
+                        "agent_id": agent_id,
+                        "skill_name": skill_name,
+                        "proficiency": proficiency,
+                    },
+                )
+            except Exception:
+                logger.warning("スキル記録失敗: agent=%s, skill=%s", agent_id, skill_name)

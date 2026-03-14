@@ -92,12 +92,17 @@ class ScenarioAnalyzer:
         merged_skills = list(set(scenario.focus_skills + detected_skills))
         merged_industries = list(set(scenario.focus_industries + detected_industries))
 
+        context_summary = self._build_context_summary(
+            scenario, merged_skills, merged_industries, analysis.policies,
+        )
+
         enriched = EnrichedScenario(
             original=scenario,
             analysis=analysis,
             detected_skills=merged_skills,
             detected_industries=merged_industries,
             detected_policies=analysis.policies,
+            context_summary=context_summary,
         )
 
         logger.info(
@@ -106,3 +111,34 @@ class ScenarioAnalyzer:
         )
 
         return enriched
+
+    def _build_context_summary(
+        self,
+        scenario: ScenarioInput,
+        skills: list[SkillCategory],
+        industries: list[Industry],
+        policies: list[str],
+    ) -> str:
+        """シナリオの要約テキストを生成する（エージェントプロンプト注入用）."""
+        lines: list[str] = [scenario.description]
+
+        if skills:
+            skill_names = ", ".join(s.value for s in skills)
+            lines.append(f"注目スキル: {skill_names}")
+        if industries:
+            ind_names = ", ".join(i.value for i in industries)
+            lines.append(f"関連業界: {ind_names}")
+        if policies:
+            lines.append(f"関連政策: {', '.join(policies)}")
+        if scenario.ai_acceleration > 0.3:
+            lines.append(f"AI加速度が高い（{scenario.ai_acceleration:+.1f}）: AI技術の急速な普及が予想される")
+        elif scenario.ai_acceleration < -0.3:
+            lines.append(f"AI減速（{scenario.ai_acceleration:+.1f}）: AI導入が停滞する見通し")
+        if scenario.economic_shock < -0.3:
+            lines.append(f"経済ショック（{scenario.economic_shock:+.1f}）: 景気後退による投資縮小")
+        elif scenario.economic_shock > 0.3:
+            lines.append(f"経済好調（{scenario.economic_shock:+.1f}）: IT投資拡大の見通し")
+        if scenario.policy_change:
+            lines.append(f"政策変更: {scenario.policy_change}")
+
+        return "\n".join(lines)

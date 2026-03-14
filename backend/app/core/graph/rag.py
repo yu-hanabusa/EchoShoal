@@ -1,13 +1,15 @@
 """GraphRAG検索モジュール.
 
-エージェントの視点から見える情報のみを知識グラフから取得し、
+エージェントの視点から見える情報を知識グラフから取得し、
 LLMプロンプトに注入する。
 
-情報の非対称性:
-- public行動: 全エージェントに見える
-- private行動: 自分だけが見える
-- partial行動: 当面はpublic扱い（将来、取引関係で制御）
-- ユーザー（API）のみが全情報を見られる（神の視点）
+情報ソース:
+1. 自己履歴（private含む）
+2. 市場の公開行動（可視性フィルタ適用）
+3. 業界別の競合環境集計
+4. アクティブイベントの説明
+5. アップロード文書から得た知識
+6. 統計データ
 """
 
 from __future__ import annotations
@@ -28,19 +30,25 @@ class AgentDecisionContext:
 
     own_history: str = ""
     market_activity: str = ""
+    industry_landscape: str = ""
+    active_events: str = ""
+    document_insights: str = ""
     reference_stats: str = ""
 
     def to_prompt(self) -> str:
-        """プロンプト用テキストに変換する.
-
-        内容がない場合は空文字を返す。
-        """
+        """プロンプト用テキストに変換する."""
         sections: list[str] = []
 
         if self.own_history:
             sections.append(self.own_history)
         if self.market_activity:
             sections.append(self.market_activity)
+        if self.industry_landscape:
+            sections.append(self.industry_landscape)
+        if self.active_events:
+            sections.append(self.active_events)
+        if self.document_insights:
+            sections.append(self.document_insights)
         if self.reference_stats:
             sections.append(self.reference_stats)
 
@@ -51,11 +59,7 @@ class AgentDecisionContext:
 
 
 class GraphRAGRetriever:
-    """エージェントの視点から見える情報を知識グラフから取得する.
-
-    Neo4jのCypherクエリでグラフ走査し、可視性制御を適用する。
-    ベクトル検索は使わないため、WSL2の8GB RAM制限下でも軽量に動作する。
-    """
+    """エージェントの視点から見える情報を知識グラフから取得する."""
 
     def __init__(
         self,
@@ -69,16 +73,9 @@ class GraphRAGRetriever:
         self,
         agent_id: str,
         round_number: int,
+        active_events_text: str = "",
     ) -> AgentDecisionContext:
-        """特定エージェントの視点から見える情報を取得する.
-
-        Args:
-            agent_id: 観察者のエージェントID
-            round_number: 現在のラウンド番号
-
-        Returns:
-            AgentDecisionContext: そのエージェントが見える範囲の情報
-        """
+        """特定エージェントの視点から見える情報を取得する."""
         ctx = AgentDecisionContext()
 
         # 1. 自分の行動履歴（private含む全情報）
@@ -98,7 +95,23 @@ class GraphRAGRetriever:
         except Exception:
             logger.warning("市場動向の取得に失敗: agent=%s", agent_id)
 
-        # 3. 統計データ
+        # 3. 業界別の競合環境集計
+        try:
+            ctx.industry_landscape = await self._get_industry_landscape(round_number)
+        except Exception:
+            logger.warning("競合環境の取得に失敗")
+
+        # 4. アクティブイベントの説明
+        if active_events_text:
+            ctx.active_events = active_events_text
+
+        # 5. アップロード文書から得た知識
+        try:
+            ctx.document_insights = await self._get_document_insights()
+        except Exception:
+            logger.warning("文書知識の取得に失敗")
+
+        # 6. 統計データ
         try:
             ctx.reference_stats = await self._get_reference_stats()
         except Exception:
@@ -116,7 +129,6 @@ class GraphRAGRetriever:
 
         lines: list[str] = ["【自社の直近の行動・状態】"]
 
-        # 状態変化
         if snapshots:
             latest = snapshots[0]
             lines.append(
@@ -126,7 +138,6 @@ class GraphRAGRetriever:
                 f"満足度{latest['satisfaction']:.2f}, 評判{latest['reputation']:.2f}"
             )
 
-            # 前回との比較（あれば）
             if len(snapshots) >= 2:
                 prev = snapshots[1]
                 rev_delta = latest["revenue"] - prev["revenue"]
@@ -136,7 +147,6 @@ class GraphRAGRetriever:
                         f"  前回比: 売上{rev_delta:+.0f}万円, 人員{hc_delta:+d}名"
                     )
 
-        # 行動履歴
         if actions:
             lines.append("  直近の行動:")
             for act in actions[:6]:
@@ -144,6 +154,62 @@ class GraphRAGRetriever:
                     f"    R{act['round']}: {act['action_type']}"
                     f"（{act['description'][:30]}）"
                 )
+
+        return "\n".join(lines)
+
+    async def _get_industry_landscape(self, round_number: int) -> str:
+        """業界別の公開行動集計を取得する（競合環境の把握）."""
+        from_round = max(1, round_number - 3)
+        results = await self.graph.execute_read(
+            "MATCH (a:Agent)-[:PERFORMED]->(ar:ActionRecord) "
+            "WHERE ar.round >= $from_round AND ar.visibility = 'public' "
+            "RETURN a.industry AS industry, ar.action_type AS action, "
+            "       count(*) AS count "
+            "ORDER BY industry, count DESC",
+            {"from_round": from_round},
+        )
+
+        if not results:
+            return ""
+
+        # 業界別に集計
+        by_industry: dict[str, list[str]] = {}
+        for row in results:
+            ind = row["industry"]
+            if ind not in by_industry:
+                by_industry[ind] = []
+            by_industry[ind].append(f"{row['action']}x{row['count']}")
+
+        lines: list[str] = ["【業界動向（直近3ラウンド）】"]
+        for industry, actions in by_industry.items():
+            lines.append(f"  {industry}: {', '.join(actions[:5])}")
+
+        return "\n".join(lines)
+
+    async def _get_document_insights(self) -> str:
+        """アップロード文書から得た知識を取得する."""
+        results = await self.graph.execute_read(
+            "MATCH (d:Document)-[:MENTIONS]->(e) "
+            "RETURN d.source AS source, labels(e)[0] AS type, "
+            "       collect(DISTINCT e.name) AS entities "
+            "ORDER BY d.uploaded_at DESC "
+            "LIMIT 5"
+        )
+
+        if not results:
+            return ""
+
+        lines: list[str] = ["【参考資料からの知識】"]
+        for row in results:
+            source = row["source"] or "不明"
+            entity_type = row["type"]
+            entities = row["entities"][:10]
+            type_label = {"Skill": "技術", "Company": "企業", "Policy": "政策"}.get(
+                entity_type, entity_type
+            )
+            lines.append(
+                f"  {source}: {type_label} - {', '.join(entities)}"
+            )
 
         return "\n".join(lines)
 

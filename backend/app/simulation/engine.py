@@ -20,11 +20,13 @@ from app.simulation.events.effects import apply_active_events
 from app.simulation.events.models import MarketEvent
 from app.simulation.events.scheduler import EventScheduler
 from app.simulation.models import (
+    Industry,
     MarketState,
     RoundResult,
     ScenarioInput,
     SkillCategory,
 )
+from app.simulation.scenario_analyzer import EnrichedScenario
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,7 @@ class SimulationEngine:
         event_scheduler: EventScheduler | None = None,
         rag: GraphRAGRetriever | None = None,
         agent_memory: AgentMemoryStore | None = None,
+        enriched_scenario: EnrichedScenario | None = None,
     ):
         self.agents = agents
         self.llm = llm
@@ -65,6 +68,8 @@ class SimulationEngine:
         self._event_scheduler = event_scheduler
         self._rag = rag
         self._memory = agent_memory
+        self._enriched_scenario = enriched_scenario
+        self._scenario_summary = enriched_scenario.context_summary if enriched_scenario else ""
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -72,6 +77,15 @@ class SimulationEngine:
         rounds = min(rounds, settings.max_rounds)
 
         logger.info("Starting simulation: %d rounds, %d agents", rounds, len(self.agents))
+
+        # シナリオ解析結果で市場初期状態を調整
+        if self._enriched_scenario:
+            self._initialize_from_scenario(self._enriched_scenario)
+
+        # シナリオ要約をエージェントに渡す
+        if self._scenario_summary:
+            for agent in self.agents:
+                agent.set_scenario_context(self._scenario_summary)
 
         # エージェントノードを知識グラフに登録
         if self._memory:
@@ -113,6 +127,16 @@ class SimulationEngine:
         active_agents = self._select_active_agents()
         logger.info("Round %d: %d/%d agents active", round_number, len(active_agents), len(self.agents))
 
+        # アクティブイベントの説明テキストを生成
+        active_events_text = ""
+        if self._event_scheduler:
+            active = self._event_scheduler.get_active_events(round_number)
+            if active:
+                event_lines = [f"【現在発生中のイベント（R{round_number}）】"]
+                for evt in active:
+                    event_lines.append(f"  - {evt.name}: {evt.description}")
+                active_events_text = "\n".join(event_lines)
+
         # Each agent decides and applies actions
         for agent in active_agents:
             try:
@@ -120,7 +144,10 @@ class SimulationEngine:
                 rag_context = ""
                 if self._rag:
                     try:
-                        ctx = await self._rag.get_agent_context(agent.id, round_number)
+                        ctx = await self._rag.get_agent_context(
+                            agent.id, round_number,
+                            active_events_text=active_events_text,
+                        )
                         rag_context = ctx.to_prompt()
                     except Exception:
                         logger.warning("RAGコンテキスト取得失敗: agent=%s", agent.name)
@@ -139,6 +166,8 @@ class SimulationEngine:
                         "type": action.action_type,
                         "description": action.description,
                         "visibility": get_visibility(action.action_type),
+                        "skill": action.parameters.get("skill", ""),
+                        "count": action.parameters.get("count", 1),
                     })
                     if self._memory:
                         try:
@@ -152,7 +181,7 @@ class SimulationEngine:
                         except Exception:
                             logger.warning("行動記録失敗: agent=%s", agent.name)
 
-                # 状態スナップショットをグラフに記録
+                # 状態スナップショット + スキルをグラフに記録
                 if self._memory:
                     try:
                         await self._memory.record_state(
@@ -167,6 +196,13 @@ class SimulationEngine:
                                 "active_contracts": agent.state.active_contracts,
                             },
                         )
+                        # スキル習熟度をグラフに記録
+                        skill_dict = {
+                            sc.value: prof
+                            for sc, prof in agent.state.skills.items()
+                        }
+                        if skill_dict:
+                            await self._memory.record_skills(agent.id, skill_dict)
                     except Exception:
                         logger.warning("状態記録失敗: agent=%s", agent.name)
 
@@ -198,23 +234,80 @@ class SimulationEngine:
         rate = settings.agent_activation_rate
         return [a for a in self.agents if random.random() < rate]
 
+    def _initialize_from_scenario(self, enriched: EnrichedScenario) -> None:
+        """シナリオ解析結果で市場初期状態を調整する."""
+        for skill in enriched.detected_skills:
+            self.market.skill_demand[skill] = min(
+                1.0, self.market.skill_demand[skill] + 0.1
+            )
+            logger.info("シナリオ初期化: %s の需要を+0.1", skill.value)
+
+        for industry in enriched.detected_industries:
+            self.market.industry_growth[industry] += 0.05
+            logger.info("シナリオ初期化: %s の成長率を+0.05", industry.value)
+
+        if enriched.detected_policies:
+            logger.info(
+                "シナリオ初期化: 検出政策 %s",
+                ", ".join(enriched.detected_policies),
+            )
+
     def _update_market(self, actions: list[dict[str, Any]]) -> None:
-        """Update market state based on aggregate agent actions."""
-        hire_count = sum(1 for a in actions if a["type"] in ("recruit", "hire_engineers", "hire_internal"))
-        train_count = sum(1 for a in actions if a["type"] in ("upskill", "learn_skill", "internal_training", "invest_rd"))
+        """Update market state based on aggregate agent actions.
 
-        # Hiring increases demand, training increases supply
-        for skill in SkillCategory:
-            if hire_count > 0:
-                self.market.skill_demand[skill] = min(
-                    1.0, self.market.skill_demand[skill] + hire_count * 0.01
-                )
-            if train_count > 0:
-                self.market.skill_supply[skill] = min(
-                    1.0, self.market.skill_supply[skill] + train_count * 0.005
-                )
+        各アクションのスキル・数量パラメータを使い、
+        スキル別に需要・供給を更新する。
+        """
+        _HIRE_ACTIONS = {"recruit", "hire_engineers", "hire_internal"}
+        _TRAIN_ACTIONS = {"upskill", "learn_skill", "internal_training", "invest_rd"}
+        _DEMAND_ACTIONS = {"bid_project", "expand_sales", "outsource_project", "start_dx"}
 
-        # Price adjustment based on demand/supply
+        for action in actions:
+            action_type = action["type"]
+            skill_str = action.get("skill")
+            count = action.get("count", 1)
+
+            # スキルが指定されていればそのスキルだけに影響
+            target_skills: list[SkillCategory] = []
+            if skill_str:
+                try:
+                    target_skills = [SkillCategory(skill_str)]
+                except ValueError:
+                    pass
+
+            if action_type in _HIRE_ACTIONS:
+                if target_skills:
+                    for sc in target_skills:
+                        self.market.skill_demand[sc] = min(
+                            1.0, self.market.skill_demand[sc] + count * 0.005
+                        )
+                else:
+                    # スキル未指定の場合は全スキルに薄く影響
+                    for sc in SkillCategory:
+                        self.market.skill_demand[sc] = min(
+                            1.0, self.market.skill_demand[sc] + count * 0.001
+                        )
+
+            elif action_type in _TRAIN_ACTIONS:
+                if target_skills:
+                    for sc in target_skills:
+                        self.market.skill_supply[sc] = min(
+                            1.0, self.market.skill_supply[sc] + count * 0.003
+                        )
+                else:
+                    for sc in SkillCategory:
+                        self.market.skill_supply[sc] = min(
+                            1.0, self.market.skill_supply[sc] + count * 0.0005
+                        )
+
+            elif action_type in _DEMAND_ACTIONS:
+                if target_skills:
+                    for sc in target_skills:
+                        self.market.skill_demand[sc] = min(
+                            1.0, self.market.skill_demand[sc] + 0.003
+                        )
+
+        # Price adjustment based on demand/supply ratio per skill
         for skill in SkillCategory:
             ratio = self.market.demand_supply_ratio(skill)
             if ratio > 1.2:
