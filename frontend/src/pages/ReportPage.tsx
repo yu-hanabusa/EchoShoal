@@ -42,7 +42,7 @@ export default function ReportPage() {
               レポートを生成中...
             </p>
             <p className="text-xs text-text-tertiary mt-1">
-              Claude APIを使用するため数十秒かかります
+              LLMによる分析を行うため数十秒〜数分かかります。このページから離れないでください。
             </p>
           </div>
         )}

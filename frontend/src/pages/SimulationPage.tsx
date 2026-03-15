@@ -64,12 +64,17 @@ export default function SimulationPage() {
 
         {/* Running */}
         {isRunning && (
-          <ProgressBar
-            percentage={data.progress?.percentage ?? 0}
-            currentRound={data.progress?.current_round ?? 0}
-            totalRounds={data.progress?.total_rounds ?? 1}
-            status={data.status}
-          />
+          <>
+            <ProgressBar
+              percentage={data.progress?.percentage ?? 0}
+              currentRound={data.progress?.current_round ?? 0}
+              totalRounds={data.progress?.total_rounds ?? 1}
+              status={data.status}
+            />
+            <p className="text-xs text-text-tertiary text-center">
+              ページを離れても処理はバックグラウンドで継続します
+            </p>
+          </>
         )}
 
         {/* Failed */}
