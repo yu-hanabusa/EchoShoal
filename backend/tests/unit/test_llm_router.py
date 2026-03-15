@@ -114,7 +114,7 @@ class TestLLMRouting:
     @pytest.mark.asyncio
     async def test_generate_json_raises_on_invalid_json(self, router, mock_ollama):
         mock_ollama.generate = AsyncMock(return_value="not json")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(ValueError, match="JSON parse failed"):
             await router.generate_json(TaskType.AGENT_DECISION, "test")
 
 

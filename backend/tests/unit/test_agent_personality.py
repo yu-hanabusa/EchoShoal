@@ -92,7 +92,7 @@ class TestPersonalityPrompt:
         system_prompt = agent._build_system_prompt()
         assert "性格" in system_prompt
         assert "保守的" in system_prompt
-        assert "完全に合理的ではありません" in system_prompt
+        assert "Choose 1-2 actions" in system_prompt
 
 
 class TestNoiseInjection:
