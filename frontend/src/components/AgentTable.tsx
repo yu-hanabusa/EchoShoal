@@ -6,21 +6,17 @@ interface Props {
   agents: AgentSummary[];
 }
 
-function MetricCell({
-  value,
-  thresholds,
-}: {
-  value: number;
-  thresholds: { good: number; bad: number };
-}) {
-  const pct = (value * 100).toFixed(0);
+function LevelBadge({ value }: { value: number }) {
+  const level = value >= 0.7 ? "高" : value >= 0.4 ? "中" : "低";
   const color =
-    value >= thresholds.good
-      ? "text-positive"
-      : value < thresholds.bad
-        ? "text-negative"
-        : "text-text-primary";
-  return <span className={`${color} tabular-nums`}>{pct}%</span>;
+    value >= 0.6 ? "text-positive bg-positive-light"
+      : value >= 0.3 ? "text-caution bg-caution-light"
+        : "text-negative bg-negative-light";
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${color}`}>
+      {level}
+    </span>
+  );
 }
 
 export default function AgentTable({ agents }: Props) {
@@ -30,10 +26,10 @@ export default function AgentTable({ agents }: Props) {
     return (
       <div className="bg-surface-0 rounded-lg border border-border p-5">
         <h3 className="text-sm font-medium text-text-primary mb-3">
-          Agents
+          ステークホルダー一覧
         </h3>
         <p className="text-sm text-text-tertiary py-6 text-center">
-          No agent data.
+          データがありません
         </p>
       </div>
     );
@@ -42,17 +38,17 @@ export default function AgentTable({ agents }: Props) {
   return (
     <div className="bg-surface-0 rounded-lg border border-border p-5 overflow-x-auto">
       <h3 className="text-sm font-medium text-text-primary mb-4">
-        エージェント一覧（名前クリックでペルソナ表示）
+        ステークホルダー一覧
+        <span className="text-text-tertiary font-normal ml-2">（名前クリックでペルソナ詳細）</span>
       </h3>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-text-tertiary">
-            <th className="py-2 pr-3 font-medium">名前</th>
+            <th className="py-2 pr-3 font-medium">ステークホルダー</th>
             <th className="py-2 px-3 font-medium">種別</th>
-            <th className="py-2 px-3 font-medium text-right">人員</th>
-            <th className="py-2 px-3 font-medium text-right">売上（万円）</th>
-            <th className="py-2 px-3 font-medium text-right">満足度</th>
-            <th className="py-2 pl-3 font-medium text-right">市場評判</th>
+            <th className="py-2 px-3 font-medium text-right" title="このステークホルダーの組織内の従業員・メンバー数">組織規模</th>
+            <th className="py-2 px-3 font-medium text-right" title="このステークホルダーの市場での信頼度・影響力（LLM推定）">市場影響力</th>
+            <th className="py-2 pl-3 font-medium text-right" title="このステークホルダーの現状への納得度（LLM推定）">現状納得度</th>
           </tr>
         </thead>
         <tbody className="text-text-primary">
@@ -61,22 +57,19 @@ export default function AgentTable({ agents }: Props) {
               key={agent.id}
               className="border-b border-border last:border-b-0 hover:bg-surface-1 transition-colors"
             >
-              <td className="py-2.5 pr-3 font-medium truncate max-w-[200px]">
+              <td className="py-2.5 pr-3">
                 <button
                   onClick={() => setSelectedAgent(agent)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "#4f46e5",
-                    fontWeight: 600,
-                    textDecoration: "underline",
-                    textUnderlineOffset: "2px",
-                    padding: 0,
-                  }}
+                  className="text-interactive font-semibold underline underline-offset-2 hover:text-interactive-hover bg-transparent border-none cursor-pointer p-0"
                 >
                   {agent.name || "\u2014"}
                 </button>
+                {agent.mode === "archetype" && agent.represents_count && agent.represents_count > 1 && (
+                  <span className="ml-1.5 text-xs text-text-tertiary">(×{agent.represents_count})</span>
+                )}
+                {agent.description && (
+                  <p className="text-xs text-text-tertiary mt-0.5 truncate max-w-[300px]">{agent.description}</p>
+                )}
               </td>
               <td className="py-2.5 px-3">
                 <span className="inline-block px-2 py-0.5 rounded text-xs bg-surface-2 text-text-secondary">
@@ -84,22 +77,13 @@ export default function AgentTable({ agents }: Props) {
                 </span>
               </td>
               <td className="py-2.5 px-3 text-right tabular-nums">
-                {agent.headcount.toLocaleString()}
-              </td>
-              <td className="py-2.5 px-3 text-right tabular-nums">
-                {agent.revenue > 0 ? agent.revenue.toLocaleString() : "\u2014"}
+                {agent.headcount > 0 ? `${agent.headcount.toLocaleString()}名` : "\u2014"}
               </td>
               <td className="py-2.5 px-3 text-right">
-                <MetricCell
-                  value={agent.satisfaction}
-                  thresholds={{ good: 0.6, bad: 0.3 }}
-                />
+                <LevelBadge value={agent.reputation} />
               </td>
               <td className="py-2.5 pl-3 text-right">
-                <MetricCell
-                  value={agent.reputation}
-                  thresholds={{ good: 0.6, bad: 0.3 }}
-                />
+                <LevelBadge value={agent.satisfaction} />
               </td>
             </tr>
           ))}

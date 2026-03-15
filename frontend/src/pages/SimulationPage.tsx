@@ -89,29 +89,32 @@ export default function SimulationPage() {
         {/* Completed: Results */}
         {isCompleted && result && (
           <div className="space-y-6">
+            {/* サマリーカード */}
             <div className="bg-surface-0 rounded-lg border border-border p-6">
-              <div className="flex flex-col md:flex-row md:items-end gap-6">
-                <div className="flex-1">
-                  <p className="text-sm text-text-tertiary mb-1">ユーザー獲得率</p>
-                  <p className="text-4xl font-bold text-text-primary tabular-nums tracking-tight">
-                    {((result.summary.final_market.dimensions?.user_adoption ?? 0) * 100).toFixed(1)}
-                    <span className="text-lg font-normal text-text-secondary ml-0.5">%</span>
-                  </p>
-                </div>
-                <div className="flex gap-8 text-sm">
-                  <div>
-                    <p className="text-text-tertiary">シミュレーション期間</p>
-                    <p className="text-text-primary font-medium tabular-nums">{result.summary.total_rounds}ヶ月</p>
-                  </div>
-                  <div>
-                    <p className="text-text-tertiary">エージェント数</p>
-                    <p className="text-text-primary font-medium tabular-nums">{result.summary.agents.length}体</p>
-                  </div>
-                  <div>
-                    <p className="text-text-tertiary">LLM判断回数</p>
-                    <p className="text-text-primary font-medium tabular-nums">{result.summary.llm_calls.toLocaleString()}回</p>
-                  </div>
-                </div>
+              <div className="flex items-baseline justify-between mb-4">
+                <h2 className="text-sm font-semibold text-text-primary">シミュレーション概要</h2>
+                <span className="text-xs text-text-tertiary">
+                  {result.summary.total_rounds}ヶ月間 / {result.summary.agents.length}ステークホルダー
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { key: "user_adoption", label: "市場浸透度", desc: "ターゲット市場でのサービス認知・利用の広がり" },
+                  { key: "competitive_pressure", label: "競合脅威度", desc: "競合からの参入・対抗の強さ" },
+                  { key: "revenue_potential", label: "収益性見通し", desc: "持続的に収益を生む可能性" },
+                  { key: "ecosystem_health", label: "エコシステム成熟度", desc: "連携サービス・コミュニティの活性度" },
+                ].map(({ key, label, desc }) => {
+                  const val = result.summary.final_market.dimensions?.[key] ?? 0;
+                  const color = val >= 0.6 ? "text-positive" : val >= 0.3 ? "text-caution" : "text-negative";
+                  const level = val >= 0.7 ? "高" : val >= 0.4 ? "中" : "低";
+                  return (
+                    <div key={key} className="text-center" title={desc}>
+                      <p className="text-xs text-text-tertiary mb-1">{label}</p>
+                      <p className={`text-2xl font-bold tabular-nums ${color}`}>{level}</p>
+                      <p className="text-[10px] text-text-tertiary mt-0.5">{(val * 10).toFixed(1)} / 10</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
