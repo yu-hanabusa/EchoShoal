@@ -70,6 +70,7 @@ export default function SimulationPage() {
               currentRound={data.progress?.current_round ?? 0}
               totalRounds={data.progress?.total_rounds ?? 1}
               status={data.status}
+              phase={data.progress?.phase}
             />
             <p className="text-xs text-text-tertiary text-center">
               ページを離れても処理はバックグラウンドで継続します

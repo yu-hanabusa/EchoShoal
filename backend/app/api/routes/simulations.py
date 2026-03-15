@@ -267,6 +267,7 @@ async def _run_simulation_task(
     graph_client: GraphClient | None = None
     try:
         await job_manager.set_running(job_id)
+        await job_manager.update_progress(job_id, 0, 1, phase="シナリオ解析中")
 
         llm = LLMRouter()
 
@@ -311,14 +312,18 @@ async def _run_simulation_task(
             except Exception:
                 logger.warning("文書エンティティ取得失敗")
 
+        await job_manager.update_progress(job_id, 0, 1, phase="エージェント生成中")
         generator = AgentGenerator(llm)
         agents = await generator.generate(scenario, enriched, doc_entities)
 
+        await job_manager.update_progress(job_id, 0, 1, phase="イベントスケジュール生成中")
         event_scheduler = EventScheduler(llm=llm)
         await event_scheduler.generate_from_scenario(scenario)
 
+        await job_manager.update_progress(job_id, 0, scenario.num_rounds, phase="市場初期状態をLLMが推定中")
+
         async def on_progress(current: int, total: int) -> None:
-            await job_manager.update_progress(job_id, current, total)
+            await job_manager.update_progress(job_id, current, total, phase=f"{current}ヶ月目をシミュレーション中")
 
         engine = SimulationEngine(
             agents=agents, llm=llm, scenario=scenario,
@@ -330,6 +335,7 @@ async def _run_simulation_task(
         results = await engine.run()
 
         # レポートをシミュレーション結果と一緒に生成・保存
+        await job_manager.update_progress(job_id, scenario.num_rounds, scenario.num_rounds, phase="レポート生成中")
         report_dict = None
         try:
             from app.reports.extractor import build_report_data

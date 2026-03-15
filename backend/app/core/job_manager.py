@@ -136,7 +136,8 @@ class JobManager:
         logger.error("ジョブ失敗: %s - %s", job_id, error)
 
     async def update_progress(
-        self, job_id: str, current_round: int, total_rounds: int
+        self, job_id: str, current_round: int, total_rounds: int,
+        phase: str = "",
     ) -> None:
         """進捗を更新する."""
         await self.redis.set_json(
@@ -145,6 +146,7 @@ class JobManager:
                 "current_round": current_round,
                 "total_rounds": total_rounds,
                 "percentage": round(current_round / total_rounds * 100, 1),
+                "phase": phase,
             },
             ttl=_RESULT_TTL,
         )

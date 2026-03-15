@@ -3,6 +3,7 @@ interface Props {
   currentRound: number;
   totalRounds: number;
   status: string;
+  phase?: string;
 }
 
 export default function ProgressBar({
@@ -10,16 +11,18 @@ export default function ProgressBar({
   currentRound,
   totalRounds,
   status,
+  phase,
 }: Props) {
   const pct = Math.min(percentage, 100);
+
   const statusText =
     status === "queued"
       ? "キューに追加中..."
-      : status === "running"
-        ? `ラウンド ${currentRound} / ${totalRounds} を実行中`
-        : status === "completed"
-          ? "完了"
-          : "エラーが発生しました";
+      : status === "completed"
+        ? "完了"
+        : status === "failed"
+          ? "エラーが発生しました"
+          : phase || `${currentRound} / ${totalRounds} ヶ月目を実行中`;
 
   return (
     <div className="bg-surface-0 rounded-lg border border-border p-6 max-w-md mx-auto">
