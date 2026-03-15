@@ -4,6 +4,7 @@ import AgentPersonaCard from "./AgentPersonaCard";
 
 interface Props {
   agents: AgentSummary[];
+  serviceName?: string;
 }
 
 function LevelBadge({ value }: { value: number }) {
@@ -19,8 +20,18 @@ function LevelBadge({ value }: { value: number }) {
   );
 }
 
-export default function AgentTable({ agents }: Props) {
+export default function AgentTable({ agents, serviceName }: Props) {
   const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
+
+  // 対象サービスを先頭にソート
+  const sn = serviceName?.toLowerCase() || "";
+  const sorted = [...agents].sort((a, b) => {
+    const aIsTarget = sn && a.name.toLowerCase().includes(sn);
+    const bIsTarget = sn && b.name.toLowerCase().includes(sn);
+    if (aIsTarget && !bIsTarget) return -1;
+    if (!aIsTarget && bIsTarget) return 1;
+    return 0;
+  });
 
   if (agents.length === 0) {
     return (
@@ -52,7 +63,7 @@ export default function AgentTable({ agents }: Props) {
           </tr>
         </thead>
         <tbody className="text-text-primary">
-          {agents.map((agent) => (
+          {sorted.map((agent) => (
             <tr
               key={agent.id}
               className="border-b border-border last:border-b-0 hover:bg-surface-1 transition-colors"

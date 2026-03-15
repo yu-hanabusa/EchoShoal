@@ -166,7 +166,7 @@ export default function SimulationPage() {
               </div>
             )}
 
-            <AgentTable agents={result.summary.agents} />
+            <AgentTable agents={result.summary.agents} serviceName={data.service_name} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <MarketChart rounds={result.rounds} title="サービスの成長指標の変化" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />

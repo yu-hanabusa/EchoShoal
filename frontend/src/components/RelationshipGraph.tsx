@@ -1,6 +1,34 @@
 import { useState, useMemo } from "react";
 import type { RoundResult, AgentSummary } from "../api/types";
 
+/** アクションタイプを日本語に変換 */
+const ACTION_LABELS: Record<string, string> = {
+  adopt_service: "サービス採用", build_competitor: "競合開発", invest: "投資",
+  regulate: "規制", partner: "提携", observe: "様子見", ignore: "無視",
+  adopt_new_service: "新サービス採用", stay_with_current: "現状維持",
+  trial: "試用", churn: "解約", recommend: "推薦", complain: "不満表明",
+  compare_alternatives: "比較検討", create_post: "投稿", comment: "コメント",
+  like: "いいね", follow: "フォロー", repost: "リポスト", sign_up: "登録",
+  refresh: "更新確認", login: "ログイン",
+  set_regulation: "規制設定", issue_subsidy: "補助金発行",
+  announce_policy: "政策発表", provide_platform: "基盤提供",
+  launch_competing_feature: "競合機能発表", acquire_startup: "スタートアップ買収",
+  form_standards_group: "標準化団体設立", host_event: "イベント開催",
+  publish_research: "調査公開", fund_startup: "スタートアップ出資",
+  exit_investment: "投資撤退",
+};
+
+/** 投稿内容をクリーンアップ */
+function cleanDescription(raw: string): string {
+  let s = raw;
+  s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
+  s = s.replace(/\{["\u0027](?:posts|user_id|post_id|name|user_name|bio|content)["\u0027]\s*:[\s\S]{0,200}/g, "");
+  s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow)\s*$/gm, "");
+  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  s = s.replace(/^\s*\{[^}]*$|^[^{]*\}\s*$/gm, "");
+  return s.trim();
+}
+
 const AGENT_COLORS = [
   "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
   "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
@@ -302,10 +330,10 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
               <p className="text-xs font-medium text-text-tertiary mb-1">{selectedRound}ヶ月目の行動:</p>
               {selectedAgentActions.map((a, i) => (
                 <div key={i} className="flex items-start gap-2 text-sm py-1">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary font-mono shrink-0">
-                    {a.type}
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary shrink-0">
+                    {ACTION_LABELS[a.type] || a.type}
                   </span>
-                  <span className="text-text-secondary">{a.description}</span>
+                  <span className="text-text-secondary">{cleanDescription(a.description)}</span>
                   {a.reacting_to && (
                     <span className="text-xs text-interactive ml-1 shrink-0">
                       ← {a.reacting_to}への反応

@@ -232,10 +232,24 @@ class AgentGenerator:
             description=raw.get("description", ""),
         )
 
+        # ステークホルダー種別ごとのデフォルト値
+        _defaults: dict[str, tuple[int, float, float]] = {
+            # (headcount, revenue, cost)
+            "platformer": (5000, 10000, 8000),
+            "enterprise": (200, 500, 400),
+            "government": (300, 0, 500),
+            "investor": (30, 1000, 200),
+            "community": (50, 10, 15),
+            "freelancer": (1, 80, 10),
+            "indie_developer": (1, 10, 5),
+            "end_user": (1, 0, 0),
+        }
+        defaults = _defaults.get(stakeholder_str, (10, 100, 50))
+
         state = AgentState(
-            headcount=max(1, int(raw.get("headcount", 10))),
-            revenue=max(0, float(raw.get("revenue", 100))),
-            cost=max(0, float(raw.get("cost", 50))),
+            headcount=max(1, int(raw.get("headcount", defaults[0]))),
+            revenue=max(0, float(raw.get("revenue", defaults[1]))),
+            cost=max(0, float(raw.get("cost", defaults[2]))),
             capabilities=capabilities,
         )
 
