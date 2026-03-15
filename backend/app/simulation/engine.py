@@ -284,7 +284,7 @@ class SimulationEngine:
 
         return RoundResult(
             round_number=round_number,
-            market_state=self.market.model_copy(),
+            market_state=self.market.model_copy(deep=True),
             actions_taken=all_actions,
             events=events,
             summary=narrative,
@@ -541,7 +541,7 @@ class SimulationEngine:
                         pass
 
         except Exception:
-            logger.warning("LLM市場更新失敗、市場は変化なし")
+            logger.exception("LLM市場更新失敗、市場は変化なし")
 
         return market_effects
 
