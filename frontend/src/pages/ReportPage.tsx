@@ -41,9 +41,14 @@ export default function ReportPage() {
             <p className="text-sm text-text-secondary">
               レポートを生成中...
             </p>
-            <p className="text-xs text-text-tertiary mt-1">
-              LLMによる分析を行うため数十秒〜数分かかります。このページから離れないでください。
+            <p className="text-xs text-text-tertiary mt-2">
+              LLMによる分析を行うため数十秒〜数分かかります。
             </p>
+            <div className="mt-3 mx-auto max-w-sm px-4 py-2 rounded-md bg-caution-light border border-caution/20">
+              <p className="text-xs text-caution font-medium">
+                このページから離れたりリロードすると生成が中断されます。完了までお待ちください。
+              </p>
+            </div>
           </div>
         )}
 
