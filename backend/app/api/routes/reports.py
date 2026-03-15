@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,10 +16,15 @@ from app.reports.extractor import build_report_data
 from app.reports.generator import ReportGenerator
 from app.simulation.models import ServiceMarketState, RoundResult
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/simulations", tags=["reports"])
 
 _redis: RedisClient | None = None
 _job_manager: JobManager | None = None
+
+REPORT_CACHE_PREFIX = "report:"
+REPORT_CACHE_TTL = 60 * 60 * 24 * 7  # 7日間
 
 
 def _get_job_manager() -> JobManager:
@@ -28,14 +35,16 @@ def _get_job_manager() -> JobManager:
     return _job_manager
 
 
+def _get_redis() -> RedisClient:
+    global _redis
+    if _redis is None:
+        _redis = RedisClient()
+    return _redis
+
+
 @router.get("/{job_id}/report")
 async def get_report(job_id: str, format: str = "json") -> Any:
-    """シミュレーション結果のレポートを生成して返す.
-
-    Args:
-        job_id: シミュレーションジョブID
-        format: 出力形式（"json" または "markdown"）
-    """
+    """シミュレーション結果のレポートを返す。生成済みならキャッシュから返す。"""
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
 
@@ -48,11 +57,27 @@ async def get_report(job_id: str, format: str = "json") -> Any:
             detail=f"シミュレーションが完了していません（現在: {info.status.value}）",
         )
 
+    # キャッシュ確認
+    redis = _get_redis()
+    cache_key = f"{REPORT_CACHE_PREFIX}{job_id}"
+    cached = await redis.get(cache_key)
+    if cached:
+        logger.info("レポートキャッシュヒット: %s", job_id)
+        report_data = json.loads(cached)
+        if format == "markdown":
+            from app.reports.models import SimulationReport
+            report = SimulationReport(**report_data)
+            return PlainTextResponse(
+                content=report.to_markdown(),
+                media_type="text/markdown",
+            )
+        return report_data
+
+    # キャッシュなし → 生成
     result = await job_manager.get_result(job_id)
     if result is None:
         raise HTTPException(status_code=404, detail="結果データが見つかりません")
 
-    # 結果からRoundResultを復元
     rounds = [
         RoundResult(
             round_number=r["round_number"],
@@ -66,17 +91,23 @@ async def get_report(job_id: str, format: str = "json") -> Any:
     if not rounds:
         raise HTTPException(status_code=400, detail="シミュレーション結果が空です")
 
-    # レポートデータ抽出
-    report_data = build_report_data(
+    report_input = build_report_data(
         rounds=rounds,
         scenario_description=result.get("scenario", {}).get("description", ""),
         agents_summary=result.get("summary", {}).get("agents", []),
     )
 
-    # レポート生成
     llm = LLMRouter()
     generator = ReportGenerator(llm=llm)
-    report = await generator.generate(report_data)
+    report = await generator.generate(report_input)
+
+    # キャッシュに保存
+    report_dict = report.model_dump()
+    try:
+        await redis.set(cache_key, json.dumps(report_dict, ensure_ascii=False), ex=REPORT_CACHE_TTL)
+        logger.info("レポートキャッシュ保存: %s", job_id)
+    except Exception:
+        logger.warning("レポートキャッシュ保存失敗: %s", job_id)
 
     if format == "markdown":
         return PlainTextResponse(
@@ -84,4 +115,4 @@ async def get_report(job_id: str, format: str = "json") -> Any:
             media_type="text/markdown",
         )
 
-    return report.model_dump()
+    return report_dict
