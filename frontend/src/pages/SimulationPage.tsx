@@ -97,21 +97,35 @@ export default function SimulationPage() {
                   {result.summary.total_rounds}ヶ月間 / {result.summary.agents.length}ステークホルダー
                 </span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <p className="text-xs text-text-tertiary mb-3">
+                LLMがシナリオとエージェント行動を分析した定性的評価です。詳細はレポートをご覧ください。
+              </p>
+              <div className="space-y-2">
                 {[
-                  { key: "user_adoption", label: "市場浸透度", desc: "ターゲット市場でのサービス認知・利用の広がり" },
-                  { key: "competitive_pressure", label: "競合脅威度", desc: "競合からの参入・対抗の強さ" },
-                  { key: "revenue_potential", label: "収益性見通し", desc: "持続的に収益を生む可能性" },
-                  { key: "ecosystem_health", label: "エコシステム成熟度", desc: "連携サービス・コミュニティの活性度" },
-                ].map(({ key, label, desc }) => {
+                  { key: "user_adoption", label: "市場浸透",
+                    high: "ターゲット市場に広く受け入れられる見込みです",
+                    mid: "一定の浸透は見込めますが、拡大には課題があります",
+                    low: "市場への浸透は限定的と予測されます" },
+                  { key: "competitive_pressure", label: "競合環境",
+                    high: "競合の脅威が高く、差別化戦略が不可欠です",
+                    mid: "一定の競合はありますが、対処可能な水準です",
+                    low: "競合の脅威は低く、有利なポジションです" },
+                  { key: "revenue_potential", label: "収益性",
+                    high: "持続的な収益を生む可能性が高いと評価されます",
+                    mid: "収益化は可能ですが、成長には追加の施策が必要です",
+                    low: "現状のモデルでは収益化に課題があります" },
+                  { key: "ecosystem_health", label: "エコシステム",
+                    high: "連携サービスやコミュニティが活発で成長基盤があります",
+                    mid: "エコシステムは発展途上です",
+                    low: "エコシステムが未成熟で、単独での成長が求められます" },
+                ].map(({ key, label, high, mid, low }) => {
                   const val = result.summary.final_market.dimensions?.[key] ?? 0;
                   const color = val >= 0.6 ? "text-positive" : val >= 0.3 ? "text-caution" : "text-negative";
-                  const level = val >= 0.7 ? "高" : val >= 0.4 ? "中" : "低";
+                  const text = val >= 0.6 ? high : val >= 0.3 ? mid : low;
                   return (
-                    <div key={key} className="text-center" title={desc}>
-                      <p className="text-xs text-text-tertiary mb-1">{label}</p>
-                      <p className={`text-2xl font-bold tabular-nums ${color}`}>{level}</p>
-                      <p className="text-[10px] text-text-tertiary mt-0.5">{(val * 10).toFixed(1)} / 10</p>
+                    <div key={key} className="flex items-start gap-3 py-1.5">
+                      <span className={`shrink-0 text-xs font-semibold w-20 pt-0.5 ${color}`}>{label}</span>
+                      <span className="text-sm text-text-secondary">{text}</span>
                     </div>
                   );
                 })}
