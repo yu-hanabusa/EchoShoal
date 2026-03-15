@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import Markdown from "react-markdown";
 import { getReport, getPrediction } from "../api/client";
 import { DIMENSION_LABELS } from "../api/types";
 
@@ -117,9 +118,9 @@ export default function ReportPage() {
             <h2 className="text-base font-semibold text-text-primary mb-3">
               エグゼクティブサマリー
             </h2>
-            <p className="text-[15px] text-text-secondary leading-relaxed whitespace-pre-wrap">
-              {report.executive_summary}
-            </p>
+            <div className="prose prose-sm max-w-none text-text-secondary">
+              <Markdown>{report.executive_summary}</Markdown>
+            </div>
           </div>
         )}
 
@@ -227,8 +228,10 @@ export default function ReportPage() {
               <h2 className="text-sm font-semibold text-text-primary mb-3">
                 {section.title}
               </h2>
-              <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
-                {section.content || (
+              <div className="prose prose-sm max-w-none text-text-secondary">
+                {section.content ? (
+                  <Markdown>{section.content}</Markdown>
+                ) : (
                   <span className="text-text-tertiary">
                     内容がありません
                   </span>
