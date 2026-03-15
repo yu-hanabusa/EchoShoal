@@ -5,6 +5,7 @@ import RelationshipGraph from "../components/RelationshipGraph";
 import ProgressBar from "../components/ProgressBar";
 import MarketChart from "../components/MarketChart";
 import AgentTable from "../components/AgentTable";
+import SocialFeed from "../components/SocialFeed";
 
 export default function SimulationPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -139,6 +140,31 @@ export default function SimulationPage() {
             </div>
 
             <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} />
+
+            {/* OASIS Social Feed */}
+            {result.social_feed && result.social_feed.length > 0 && (
+              <SocialFeed feed={result.social_feed} />
+            )}
+
+            {/* OASIS Stats */}
+            {result.summary.oasis_stats && (
+              <div className="bg-surface-0 rounded-lg border border-border p-4">
+                <h3 className="text-sm font-medium text-text-primary mb-2">OASIS Platform Activity</h3>
+                <div className="grid grid-cols-4 gap-4 text-center">
+                  {[
+                    { label: "Posts", value: result.summary.oasis_stats.posts },
+                    { label: "Comments", value: result.summary.oasis_stats.comments },
+                    { label: "Likes", value: result.summary.oasis_stats.likes },
+                    { label: "Follows", value: result.summary.oasis_stats.follows },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <p className="text-lg font-bold text-text-primary">{value}</p>
+                      <p className="text-xs text-text-tertiary">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <AgentTable agents={result.summary.agents} />
 

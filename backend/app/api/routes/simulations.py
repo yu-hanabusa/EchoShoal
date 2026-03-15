@@ -37,6 +37,13 @@ from app.simulation.factory import create_default_agents
 from app.simulation.models import ScenarioInput
 from app.simulation.scenario_analyzer import ScenarioAnalyzer
 
+# OASIS engine (lazy import to avoid hard dependency)
+_OASIS_AVAILABLE = True
+try:
+    from app.oasis.simulation_runner import OASISSimulationEngine
+except ImportError:
+    _OASIS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
@@ -338,12 +345,28 @@ async def _run_simulation_task(
                 phase=f"{current}ヶ月目をシミュレーション中（{total}ヶ月中）",
             )
 
-        engine = SimulationEngine(
-            agents=agents, llm=llm, scenario=scenario,
-            on_progress=on_progress, event_scheduler=event_scheduler,
-            enriched_scenario=enriched,
-            rag=rag, agent_memory=agent_memory,
-        )
+        # エンジン選択: OASIS or Legacy
+        use_oasis = settings.simulation_engine == "oasis" and _OASIS_AVAILABLE
+        oasis_engine = None
+
+        if use_oasis:
+            logger.info("OASISエンジンを使用: job=%s", job_id)
+            oasis_engine = OASISSimulationEngine(
+                agents=agents, llm=llm, scenario=scenario,
+                on_progress=on_progress, event_scheduler=event_scheduler,
+                enriched_scenario=enriched,
+                simulation_id=job_id,
+                rag=rag, agent_memory=agent_memory,
+            )
+            engine = oasis_engine
+        else:
+            logger.info("Legacyエンジンを使用: job=%s", job_id)
+            engine = SimulationEngine(
+                agents=agents, llm=llm, scenario=scenario,
+                on_progress=on_progress, event_scheduler=event_scheduler,
+                enriched_scenario=enriched,
+                rag=rag, agent_memory=agent_memory,
+            )
 
         results = await engine.run()
 
@@ -371,6 +394,38 @@ async def _run_simulation_task(
             "rounds": [r.model_dump() for r in results],
             "report": report_dict,
         }
+
+        # OASISエンジンの場合: ソーシャルフィードとグラフ同期
+        if oasis_engine is not None:
+            try:
+                result_data["social_feed"] = oasis_engine.get_social_feed(limit=50)
+            except Exception:
+                logger.warning("OASISソーシャルフィード取得失敗: job=%s", job_id)
+
+            # OASIS → Neo4j グラフ同期
+            if graph_client and agent_memory:
+                try:
+                    from app.oasis.graph_sync import sync_oasis_to_neo4j
+                    from app.oasis.config import get_database_path
+
+                    # OASIS agent_id → EchoShoal agent_id マッピング構築
+                    oasis_id_map = {}
+                    for i, agent in enumerate(agents):
+                        oasis_id_map[i] = agent.id
+
+                    sync_result = await sync_oasis_to_neo4j(
+                        db_path=get_database_path(job_id),
+                        graph_client=graph_client,
+                        simulation_id=job_id,
+                        agent_id_map=oasis_id_map,
+                    )
+                    logger.info(
+                        "OASISグラフ同期完了: %dエッジ同期 (%dエラー)",
+                        sync_result.edges_synced, sync_result.errors,
+                    )
+                except Exception:
+                    logger.warning("OASISグラフ同期失敗: job=%s", job_id)
+
         await job_manager.set_completed(job_id, result_data)
 
     except Exception as exc:

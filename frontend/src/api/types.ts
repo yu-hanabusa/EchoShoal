@@ -1,15 +1,17 @@
 /** バックエンドAPI の型定義 */
 
-export type JobStatus = "queued" | "running" | "completed" | "failed";
+export type JobStatus = "created" | "queued" | "running" | "completed" | "failed";
 
 export interface JobInfo {
   job_id: string;
   status: JobStatus;
   created_at: string;
+  scenario_description?: string;
   progress: {
     current_round?: number;
     total_rounds?: number;
     percentage?: number;
+    phase?: string;
   };
   error?: string | null;
   result?: SimulationResult;
@@ -54,6 +56,7 @@ export interface RoundResult {
   market_state: ServiceMarketState;
   actions_taken: ActionTaken[];
   events: string[];
+  summary?: string;
 }
 
 export interface AgentPersonality {
@@ -88,8 +91,11 @@ export interface SimulationResult {
     final_market: ServiceMarketState;
     agents: AgentSummary[];
     llm_calls: number;
+    engine?: string;
+    oasis_stats?: OasisStats;
   };
   rounds: RoundResult[];
+  social_feed?: SocialPost[];
 }
 
 export interface TrendData {
@@ -136,6 +142,34 @@ export interface SimulationReport {
   sections: ReportSection[];
   success_score?: SuccessScore | null;
   generated_at: string;
+}
+
+/** OASIS SNSフィード */
+export interface SocialPost {
+  id: string;
+  type: "post";
+  author: string;
+  content: string;
+  created_at: string;
+  likes: number;
+  dislikes: number;
+  shares: number;
+  comments: SocialComment[];
+}
+
+export interface SocialComment {
+  author: string;
+  content: string;
+  created_at: string;
+  likes: number;
+}
+
+/** OASIS統計 */
+export interface OasisStats {
+  posts: number;
+  comments: number;
+  likes: number;
+  follows: number;
 }
 
 /** 文書処理結果 */

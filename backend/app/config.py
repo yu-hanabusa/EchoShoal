@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     max_actions_per_agent: int = 2
     max_llm_calls: int = 5000
 
+    # OASIS Integration
+    simulation_engine: str = "oasis"  # "oasis" or "legacy"
+    oasis_platform: str = "reddit"  # "twitter" or "reddit"
+    oasis_max_agents: int = 200
+    oasis_rounds_per_step: int = 1
+
     # Rate Limiting
     max_concurrent_simulations: int = 3
     rate_limit_per_minute: int = 10

@@ -12,6 +12,9 @@ const RELATION_COLORS: Record<string, string> = {
   regulator: "#6366f1", acquirer: "#ec4899", user: "#3b82f6",
   advocate: "#34d399", critic: "#f97316", former_user: "#9ca3af",
   interaction: "#d1d5db",
+  // OASIS interaction types
+  interest: "#60a5fa", discussion: "#a78bfa", amplification: "#fbbf24",
+  support: "#34d399", opposition: "#ef4444", reference: "#06b6d4",
 };
 
 const RELATION_LABELS: Record<string, string> = {
@@ -19,6 +22,9 @@ const RELATION_LABELS: Record<string, string> = {
   regulator: "規制", acquirer: "買収", user: "利用",
   advocate: "推薦", critic: "批判", former_user: "離脱",
   interaction: "影響",
+  // OASIS interaction types
+  interest: "関心", discussion: "議論", amplification: "拡散",
+  support: "支持", opposition: "反対", reference: "引用",
 };
 
 interface Props {
@@ -31,6 +37,7 @@ interface Edge {
   to: string;
   type: string;
   round: number;
+  weight: number;
 }
 
 export default function RelationshipGraph({ rounds, agents }: Props) {
@@ -44,9 +51,9 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
     return map;
   }, [agents]);
 
-  // 全エッジを収集
+  // 全エッジを収集（weight = 同一方向の累積インタラクション数）
   const allEdges = useMemo(() => {
-    const edges: Edge[] = [];
+    const edgeMap = new Map<string, Edge>();
     const typeMap: Record<string, string> = {
       build_competitor: "competitor", launch_competing_product: "competitor",
       launch_competing_feature: "competitor", price_undercut: "competitor",
@@ -56,19 +63,33 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
       acquire_service: "acquirer", acquire_startup: "acquirer",
       adopt_new_service: "user", adopt_service: "user", adopt_tool: "user",
       recommend: "advocate", complain: "critic", churn: "former_user",
+      // OASIS action mappings
+      post_opinion: "discussion", comment: "discussion",
+      endorse: "support", critique: "opposition", amplify: "amplification",
+      quote_opinion: "reference", follow_stakeholder: "interest",
+      market_research: "interest",
     };
     for (const r of rounds) {
       for (const a of r.actions_taken) {
         if (a.reacting_to) {
-          edges.push({
-            from: a.agent, to: a.reacting_to,
-            type: typeMap[a.type] || "interaction",
-            round: r.round_number,
-          });
+          const relType = typeMap[a.type] || "interaction";
+          const key = `${a.agent}→${a.reacting_to}→${relType}`;
+          const existing = edgeMap.get(key);
+          if (existing) {
+            existing.weight += 1;
+            existing.round = Math.max(existing.round, r.round_number);
+          } else {
+            edgeMap.set(key, {
+              from: a.agent, to: a.reacting_to,
+              type: relType,
+              round: r.round_number,
+              weight: 1,
+            });
+          }
         }
       }
     }
-    return edges;
+    return Array.from(edgeMap.values());
   }, [rounds]);
 
   // 選択ラウンドまでに「登場した」エージェント（行動したことがある）
@@ -189,7 +210,7 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
             return (
               <g key={i} opacity={selectedAgent ? (isHighlighted ? 1 : 0.15) : 0.7}>
                 <line x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={color} strokeWidth={isHighlighted ? 3 : 2} />
+                  stroke={color} strokeWidth={isHighlighted ? Math.min(e.weight + 2, 6) : Math.min(e.weight, 4) + 1} />
                 <polygon points={`${x2},${y2} ${ax1},${ay1} ${ax2},${ay2}`} fill={color} />
                 <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 6}
                   textAnchor="middle" fontSize={9} fill={color} fontWeight={600}>
@@ -216,7 +237,7 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
             return (
               <g key={name}
                 onClick={() => setSelectedAgent(isSelected ? null : name)}
-                style={{ cursor: "pointer" }}
+                className="cursor-pointer"
                 opacity={dimmed ? 0.2 : 1}
               >
                 <circle
@@ -279,7 +300,7 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
               <span className="inline-block w-3 h-3 rounded-full"
                 style={{ backgroundColor: agentColorMap[selectedAgent] || "#94a3b8" }} />
               <h4 className="text-sm font-semibold text-text-primary">{selectedAgent}</h4>
-              {selectedAgentInfo?.mode === "archetype" && selectedAgentInfo.represents_count > 1 && (
+              {selectedAgentInfo?.mode === "archetype" && (selectedAgentInfo.represents_count ?? 0) > 1 && (
                 <span className="text-xs text-text-tertiary">(×{selectedAgentInfo.represents_count})</span>
               )}
             </div>

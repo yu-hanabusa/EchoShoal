@@ -96,7 +96,8 @@ class TestDocumentProcessor:
         proc, _, _ = self._make_processor()
         doc = self._make_doc()
 
-        result = await proc.process(doc)
+        with patch.object(proc, "_extract_orgs_with_llm", new_callable=AsyncMock, return_value=[]):
+            result = await proc.process(doc)
 
         # Python, AWS + NTTデータ + DX推進法 = 4
         assert result.entities_found == 4

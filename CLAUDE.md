@@ -5,13 +5,21 @@ Agent-based simulation engine that predicts whether a specific service
 will succeed and what impact it will have on the market, using
 stakeholder-driven "what-if" scenario analysis.
 
+## Environment
+
+- **OS**: Windows 11 native (WSL不要)
+- **Python**: 3.13 with uv
+- **Node**: v22+ with pnpm
+- **Docker**: Docker Desktop for Windows (Neo4j + Redis)
+- **Ollama**: Windows native (qwen2.5:14b)
+
 ## Tech Stack
 
 - **Backend**: FastAPI (Python 3.13) with uv
 - **Frontend**: React 18 + TypeScript + Vite with pnpm
 - **Graph DB**: Neo4j Community Edition
 - **Cache/Queue**: Redis
-- **LLM (light)**: Ollama (qwen2.5:14b / gemma3:12b)
+- **LLM (light)**: Ollama (qwen2.5:14b)
 - **LLM (heavy)**: Claude API / OpenAI API
 - **NLP**: GiNZA (spaCy) + SudachiPy
 - **Testing**: pytest + pytest-asyncio + httpx
@@ -52,6 +60,24 @@ regulatory_risk, market_awareness, ecosystem_health, funding_climate
 ### External Factors (environment, not agents)
 Economic changes, technology trends, regulatory changes, social shifts, disasters
 
+## Startup (Windows Native)
+
+```bash
+# 1. Infrastructure (Docker Desktop must be running)
+docker compose up -d             # Start Neo4j + Redis
+
+# 2. Backend (separate terminal)
+cd backend
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 3. Frontend (separate terminal)
+cd frontend
+pnpm dev                         # localhost:5173
+
+# Shutdown
+docker compose down              # Stop Neo4j + Redis
+```
+
 ## Development Commands
 
 ### Backend
@@ -60,7 +86,6 @@ cd backend
 uv run pytest                    # Run all tests
 uv run pytest tests/unit         # Run unit tests only
 uv run pytest -x -v              # Stop on first failure, verbose
-uv run python -m app.main        # Start dev server
 ```
 
 ### Frontend
@@ -69,12 +94,6 @@ cd frontend
 pnpm dev                         # Start dev server
 pnpm build                       # Production build
 pnpm test                        # Run tests
-```
-
-### Infrastructure
-```bash
-docker compose up -d             # Start Neo4j + Redis
-docker compose down              # Stop services
 ```
 
 ## Development Guidelines
