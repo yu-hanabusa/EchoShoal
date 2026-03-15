@@ -39,13 +39,7 @@ export default function ReportPage() {
         {isLoading && (
           <div className="bg-surface-0 rounded-lg border border-border p-8 text-center">
             <p className="text-sm text-text-secondary">
-              レポートを生成中...
-            </p>
-            <p className="text-xs text-text-tertiary mt-1">
-              LLMによる分析のため数十秒〜数分かかります（生成後はキャッシュされます）
-            </p>
-            <p className="text-xs text-caution mt-1">
-              初回生成中にページを離れると最初からやり直しになります
+              レポートを読み込み中...
             </p>
           </div>
         )}
@@ -88,7 +82,8 @@ export default function ReportPage() {
                 <ul className="text-sm text-text-secondary space-y-0.5">
                   {report.success_score.key_factors.map((f, i) => (
                     <li key={i} className="flex items-start gap-1.5">
-                      <span className="text-text-tertiary shrink-0">•</span>{f}
+                      <span className="text-text-tertiary shrink-0">•</span>
+                      <span className="prose prose-sm max-w-none"><Markdown>{f}</Markdown></span>
                     </li>
                   ))}
                 </ul>
@@ -99,7 +94,12 @@ export default function ReportPage() {
                 <div>
                   <p className="text-xs font-medium text-negative mb-1">リスク</p>
                   <ul className="text-xs text-text-secondary space-y-0.5">
-                    {report.success_score.risks.map((r, i) => <li key={i}>• {r}</li>)}
+                    {report.success_score.risks.map((r, i) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <span className="shrink-0">•</span>
+                        <span className="prose prose-xs max-w-none"><Markdown>{r}</Markdown></span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -107,7 +107,12 @@ export default function ReportPage() {
                 <div>
                   <p className="text-xs font-medium text-positive mb-1">機会</p>
                   <ul className="text-xs text-text-secondary space-y-0.5">
-                    {report.success_score.opportunities.map((o, i) => <li key={i}>• {o}</li>)}
+                    {report.success_score.opportunities.map((o, i) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <span className="shrink-0">•</span>
+                        <span className="prose prose-xs max-w-none"><Markdown>{o}</Markdown></span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -142,7 +147,7 @@ export default function ReportPage() {
                   <span className="text-text-tertiary select-none shrink-0 mt-px">
                     •
                   </span>
-                  <span>{h}</span>
+                  <span className="prose prose-sm max-w-none"><Markdown>{h}</Markdown></span>
                 </li>
               ))}
             </ul>

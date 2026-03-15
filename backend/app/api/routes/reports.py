@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -14,6 +13,7 @@ from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
 from app.reports.extractor import build_report_data
 from app.reports.generator import ReportGenerator
+from app.reports.models import SimulationReport
 from app.simulation.models import ServiceMarketState, RoundResult
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,6 @@ router = APIRouter(prefix="/api/simulations", tags=["reports"])
 
 _redis: RedisClient | None = None
 _job_manager: JobManager | None = None
-
-REPORT_CACHE_PREFIX = "report:"
-REPORT_CACHE_TTL = 60 * 60 * 24 * 7  # 7日間
 
 
 def _get_job_manager() -> JobManager:
@@ -35,16 +32,9 @@ def _get_job_manager() -> JobManager:
     return _job_manager
 
 
-def _get_redis() -> RedisClient:
-    global _redis
-    if _redis is None:
-        _redis = RedisClient()
-    return _redis
-
-
 @router.get("/{job_id}/report")
 async def get_report(job_id: str, format: str = "json") -> Any:
-    """シミュレーション結果のレポートを返す。生成済みならキャッシュから返す。"""
+    """シミュレーション結果のレポートを返す。保存済みなら即座に返す。"""
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
 
@@ -57,27 +47,24 @@ async def get_report(job_id: str, format: str = "json") -> Any:
             detail=f"シミュレーションが完了していません（現在: {info.status.value}）",
         )
 
-    # キャッシュ確認
-    redis = _get_redis()
-    cache_key = f"{REPORT_CACHE_PREFIX}{job_id}"
-    cached = await redis.get(cache_key)
-    if cached:
-        logger.info("レポートキャッシュヒット: %s", job_id)
-        report_data = json.loads(cached)
-        if format == "markdown":
-            from app.reports.models import SimulationReport
-            report = SimulationReport(**report_data)
-            return PlainTextResponse(
-                content=report.to_markdown(),
-                media_type="text/markdown",
-            )
-        return report_data
-
-    # キャッシュなし → 生成
     result = await job_manager.get_result(job_id)
     if result is None:
         raise HTTPException(status_code=404, detail="結果データが見つかりません")
 
+    # 結果に保存済みのレポートがあればそれを返す
+    saved_report = result.get("report")
+    if saved_report:
+        logger.info("保存済みレポートを返却: %s", job_id)
+        if format == "markdown":
+            report = SimulationReport(**saved_report)
+            return PlainTextResponse(
+                content=report.to_markdown(),
+                media_type="text/markdown",
+            )
+        return saved_report
+
+    # 保存されていない場合（旧データ互換）→ その場で生成
+    logger.info("レポート未保存のため生成: %s", job_id)
     rounds = [
         RoundResult(
             round_number=r["round_number"],
@@ -101,18 +88,10 @@ async def get_report(job_id: str, format: str = "json") -> Any:
     generator = ReportGenerator(llm=llm)
     report = await generator.generate(report_input)
 
-    # キャッシュに保存
-    report_dict = report.model_dump()
-    try:
-        await redis.set(cache_key, json.dumps(report_dict, ensure_ascii=False), ex=REPORT_CACHE_TTL)
-        logger.info("レポートキャッシュ保存: %s", job_id)
-    except Exception:
-        logger.warning("レポートキャッシュ保存失敗: %s", job_id)
-
     if format == "markdown":
         return PlainTextResponse(
             content=report.to_markdown(),
             media_type="text/markdown",
         )
 
-    return report_dict
+    return report.model_dump()

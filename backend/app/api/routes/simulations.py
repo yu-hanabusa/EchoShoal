@@ -329,10 +329,28 @@ async def _run_simulation_task(
 
         results = await engine.run()
 
+        # レポートをシミュレーション結果と一緒に生成・保存
+        report_dict = None
+        try:
+            from app.reports.extractor import build_report_data
+            from app.reports.generator import ReportGenerator
+            report_input = build_report_data(
+                rounds=results,
+                scenario_description=scenario.description,
+                agents_summary=engine.get_summary().get("agents", []),
+            )
+            report_generator = ReportGenerator(llm=llm)
+            report = await report_generator.generate(report_input)
+            report_dict = report.model_dump()
+            logger.info("レポート生成完了: job=%s", job_id)
+        except Exception:
+            logger.warning("レポート生成失敗（結果は保存します）: job=%s", job_id)
+
         result_data = {
             "scenario": scenario.model_dump(),
             "summary": engine.get_summary(),
             "rounds": [r.model_dump() for r in results],
+            "report": report_dict,
         }
         await job_manager.set_completed(job_id, result_data)
 
