@@ -120,11 +120,17 @@ export default function SimulationPage() {
                     low: "エコシステムが未成熟で、単独での成長が求められます" },
                 ].map(({ key, label, high, mid, low }) => {
                   const val = result.summary.final_market.dimensions?.[key] ?? 0;
-                  const color = val >= 0.6 ? "text-positive" : val >= 0.3 ? "text-caution" : "text-negative";
+                  const level = val >= 0.6 ? "高" : val >= 0.3 ? "中" : "低";
+                  const badgeColor = val >= 0.6
+                    ? "bg-positive-light text-positive"
+                    : val >= 0.3
+                      ? "bg-caution-light text-caution"
+                      : "bg-negative-light text-negative";
                   const text = val >= 0.6 ? high : val >= 0.3 ? mid : low;
                   return (
-                    <div key={key} className="flex items-start gap-3 py-1.5">
-                      <span className={`shrink-0 text-xs font-semibold w-20 pt-0.5 ${color}`}>{label}</span>
+                    <div key={key} className="flex items-center gap-3 py-1.5">
+                      <span className="shrink-0 text-xs font-medium text-text-secondary w-20">{label}</span>
+                      <span className={`shrink-0 inline-block w-7 text-center text-xs font-bold rounded px-1 py-0.5 ${badgeColor}`}>{level}</span>
                       <span className="text-sm text-text-secondary">{text}</span>
                     </div>
                   );

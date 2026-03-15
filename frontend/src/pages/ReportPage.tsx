@@ -157,29 +157,28 @@ export default function ReportPage() {
         {/* Dimension predictions table */}
         {prediction && prediction.dimension_predictions.length > 0 && (
           <div className="bg-surface-0 rounded-lg border border-border p-5 overflow-x-auto">
-            <h2 className="text-sm font-semibold text-text-primary mb-4">
-              ディメンション別予測
+            <h2 className="text-sm font-semibold text-text-primary mb-1">
+              今後6ヶ月の見通し
             </h2>
+            <p className="text-xs text-text-tertiary mb-4">シミュレーション結果のトレンドから予測した、各指標の今後の方向性です</p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-text-tertiary">
-                  <th className="py-2 pr-3 font-medium">ディメンション</th>
-                  <th className="py-2 px-3 font-medium text-right">
-                    現在値
-                  </th>
-                  <th className="py-2 px-3 font-medium text-right">
-                    予測値
-                  </th>
-                  <th className="py-2 pl-3 font-medium text-right">
-                    変化率
-                  </th>
+                  <th className="py-2 pr-3 font-medium">指標</th>
+                  <th className="py-2 px-3 font-medium text-center">現在</th>
+                  <th className="py-2 px-3 font-medium text-center">傾向</th>
+                  <th className="py-2 pl-3 font-medium text-center">6ヶ月後</th>
                 </tr>
               </thead>
               <tbody className="text-text-primary">
                 {prediction.dimension_predictions.map((dp) => {
                   const rate = dp.trend.change_rate;
-                  const up = dp.predicted_value > dp.current_value;
-                  const down = dp.predicted_value < dp.current_value;
+                  const currentLevel = dp.current_value >= 0.6 ? "高" : dp.current_value >= 0.3 ? "中" : "低";
+                  const predictedLevel = dp.predicted_value >= 0.6 ? "高" : dp.predicted_value >= 0.3 ? "中" : "低";
+                  const currentColor = dp.current_value >= 0.6 ? "bg-positive-light text-positive" : dp.current_value >= 0.3 ? "bg-caution-light text-caution" : "bg-negative-light text-negative";
+                  const predictedColor = dp.predicted_value >= 0.6 ? "bg-positive-light text-positive" : dp.predicted_value >= 0.3 ? "bg-caution-light text-caution" : "bg-negative-light text-negative";
+                  const arrow = rate > 5 ? "↑ 上昇" : rate < -5 ? "↓ 低下" : "→ 横ばい";
+                  const arrowColor = rate > 5 ? "text-positive" : rate < -5 ? "text-negative" : "text-text-tertiary";
 
                   return (
                     <tr
@@ -189,33 +188,14 @@ export default function ReportPage() {
                       <td className="py-2.5 pr-3 font-medium">
                         {DIMENSION_LABELS[dp.dimension] || dp.dimension}
                       </td>
-                      <td className="py-2.5 px-3 text-right tabular-nums text-text-secondary">
-                        {dp.current_value.toFixed(2)}
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`inline-block w-7 text-center text-xs font-bold rounded px-1 py-0.5 ${currentColor}`}>{currentLevel}</span>
                       </td>
-                      <td
-                        className={`py-2.5 px-3 text-right tabular-nums font-medium ${
-                          up
-                            ? "text-positive"
-                            : down
-                              ? "text-negative"
-                              : "text-text-primary"
-                        }`}
-                      >
-                        {dp.predicted_value.toFixed(2)}
+                      <td className={`py-2.5 px-3 text-center text-xs font-medium ${arrowColor}`}>
+                        {arrow}
                       </td>
-                      <td className="py-2.5 pl-3 text-right tabular-nums">
-                        <span
-                          className={
-                            rate > 0
-                              ? "text-positive"
-                              : rate < 0
-                                ? "text-negative"
-                                : "text-text-tertiary"
-                          }
-                        >
-                          {rate > 0 ? "+" : ""}
-                          {rate.toFixed(1)}%
-                        </span>
+                      <td className="py-2.5 pl-3 text-center">
+                        <span className={`inline-block w-7 text-center text-xs font-bold rounded px-1 py-0.5 ${predictedColor}`}>{predictedLevel}</span>
                       </td>
                     </tr>
                   );
