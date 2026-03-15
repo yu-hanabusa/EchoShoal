@@ -220,13 +220,12 @@ class BaseAgent(ABC):
             f"{scenario_section}\n"
             f"【あなたの性格・判断傾向】\n{personality_text}\n\n"
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
-            "上記の性格とシナリオに基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
-            "あなたは完全に合理的ではありません。上記の性格傾向に従って判断してください。\n"
-            "self_impactには、この行動によるあなた自身の状態変化を推定してください。\n"
-            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", '
-            '"parameters": {"dimension": "ディメンション名", ...}, '
-            '"self_impact": {"cost_delta": 数値, "revenue_delta": 数値, "reputation_delta": -0.1〜0.1, '
-            '"satisfaction_delta": -0.1〜0.1, "headcount_delta": 整数, "contracts_delta": 整数}}]}'
+            "Choose 1-2 actions and respond with EXACTLY this JSON format:\n"
+            '{"actions": [{"action_type": "' + (self.available_actions()[0] if self.available_actions() else "wait") + '", '
+            '"description": "reason for this action", '
+            '"parameters": {}, '
+            '"self_impact": {"cost_delta": 10, "revenue_delta": 5, "reputation_delta": 0.02, '
+            '"satisfaction_delta": 0.01, "headcount_delta": 0, "contracts_delta": 0}}]}'
         )
 
     def _build_personality_prompt(self) -> str:

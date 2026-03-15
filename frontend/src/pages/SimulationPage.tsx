@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { getSimulation, getSimulationDocuments, getSimulationGraph } from "../api/client";
+import { getSimulation, getSimulationDocuments } from "../api/client";
 import ActionTimeline from "../components/ActionTimeline";
 import ProgressBar from "../components/ProgressBar";
 import MarketChart from "../components/MarketChart";
 import AgentTable from "../components/AgentTable";
 import type { DocumentInfo } from "../api/types";
 
-type Tab = "results" | "documents" | "graph";
+type Tab = "results" | "documents";
 
 export default function SimulationPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -90,7 +90,7 @@ export default function SimulationPage() {
           <>
             {/* Tab Bar */}
             <div className="flex gap-1 border-b border-border">
-              {(["results", "documents", "graph"] as Tab[]).map((tab) => (
+              {(["results", "documents"] as Tab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -100,7 +100,7 @@ export default function SimulationPage() {
                       : "border-transparent text-text-tertiary hover:text-text-secondary"
                   }`}
                 >
-                  {tab === "results" ? "結果" : tab === "documents" ? "投入資料" : "知識グラフ"}
+                  {tab === "results" ? "結果" : "投入資料"}
                 </button>
               ))}
             </div>
@@ -150,9 +150,6 @@ export default function SimulationPage() {
 
             {/* Documents Tab */}
             {activeTab === "documents" && <DocumentsTab jobId={jobId!} />}
-
-            {/* Graph Tab */}
-            {activeTab === "graph" && <GraphTab jobId={jobId!} />}
           </>
         )}
       </main>
@@ -170,118 +167,47 @@ function DocumentsTab({ jobId }: { jobId: string }) {
   if (!docs || docs.length === 0) {
     return (
       <div className="rounded-md border border-border bg-surface-0 p-8 text-center">
-        <p className="text-text-tertiary text-sm">No documents uploaded for this simulation.</p>
+        <p className="text-text-tertiary text-sm">このシミュレーションに投入された資料はありません。</p>
+        <p className="text-text-tertiary text-xs mt-1">新規作成時にファイルを添付すると、NLPでエンティティを抽出しシミュレーションの参考情報にします。</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-border bg-surface-0 p-5 overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-text-tertiary">
-            <th className="py-2 pr-3 font-medium">Filename</th>
-            <th className="py-2 px-3 font-medium">Source</th>
-            <th className="py-2 px-3 font-medium text-right">Size</th>
-            <th className="py-2 pl-3 font-medium text-right">Entities</th>
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map((doc: DocumentInfo) => (
-            <tr key={doc.doc_id} className="border-b border-border last:border-b-0">
-              <td className="py-2.5 pr-3 font-medium">{doc.filename}</td>
-              <td className="py-2.5 px-3 text-text-secondary">{doc.source || "\u2014"}</td>
-              <td className="py-2.5 px-3 text-right tabular-nums">
-                {doc.text_length > 1000 ? `${(doc.text_length / 1000).toFixed(1)}K` : doc.text_length} chars
-              </td>
-              <td className="py-2.5 pl-3 text-right tabular-nums">{doc.entity_count}</td>
+    <div className="space-y-4">
+      <div className="rounded-md border border-border bg-surface-0 p-5 overflow-x-auto">
+        <h3 className="text-sm font-medium text-text-primary mb-3">投入資料一覧</h3>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-text-tertiary">
+              <th className="py-2 pr-3 font-medium">ファイル名</th>
+              <th className="py-2 px-3 font-medium">ソース</th>
+              <th className="py-2 px-3 font-medium text-right">文字数</th>
+              <th className="py-2 pl-3 font-medium text-right">抽出エンティティ数</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {docs.map((doc: DocumentInfo) => (
+              <tr key={doc.doc_id} className="border-b border-border last:border-b-0">
+                <td className="py-2.5 pr-3 font-medium">{doc.filename}</td>
+                <td className="py-2.5 px-3 text-text-secondary">{doc.source || "\u2014"}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums">
+                  {doc.text_length > 1000 ? `${(doc.text_length / 1000).toFixed(1)}K` : doc.text_length}
+                </td>
+                <td className="py-2.5 pl-3 text-right tabular-nums">{doc.entity_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="rounded-md border border-border bg-surface-1 p-4">
+        <p className="text-xs text-text-tertiary">
+          投入資料がシミュレーション結果にどう影響したかの詳細分析は、
+          <span className="font-medium text-interactive">「View Report」</span>
+          の「資料影響分析」セクションで確認できます。
+        </p>
+      </div>
     </div>
   );
 }
 
-function GraphTab({ jobId }: { jobId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["sim-graph", jobId],
-    queryFn: () => getSimulationGraph(jobId),
-  });
-
-  if (isLoading) return <p className="text-sm text-text-tertiary py-6 text-center">Loading graph...</p>;
-  if (!data?.elements?.length) {
-    return (
-      <div className="rounded-md border border-border bg-surface-0 p-8 text-center">
-        <p className="text-text-tertiary text-sm">No knowledge graph data for this simulation.</p>
-      </div>
-    );
-  }
-
-  const NODE_COLORS: Record<string, string> = {
-    Agent: "#3b82f6", Skill: "#10b981", Document: "#8b5cf6",
-    Company: "#f97316", Policy: "#ef4444", StatRecord: "#9ca3af",
-  };
-
-  const nodes: Array<{ id: string; label: string; type: string; x: number; y: number }> = [];
-  const edges: Array<{ source: string; target: string }> = [];
-  const seenIds = new Set<string>();
-
-  for (const el of data.elements) {
-    if (el.data.source && el.data.target) {
-      edges.push({ source: el.data.source, target: el.data.target });
-    } else if (el.data.id && !seenIds.has(el.data.id)) {
-      seenIds.add(el.data.id);
-      nodes.push({ id: el.data.id, label: el.data.label || el.data.id, type: el.data.type || "Unknown", x: 0, y: 0 });
-    }
-  }
-
-  // Layout by type
-  const byType: Record<string, typeof nodes> = {};
-  for (const n of nodes) {
-    if (!byType[n.type]) byType[n.type] = [];
-    byType[n.type].push(n);
-  }
-  const width = 900;
-  let y = 50;
-  for (const group of Object.values(byType)) {
-    const spacing = Math.min(100, (width - 80) / Math.max(group.length, 1));
-    const startX = (width - spacing * (group.length - 1)) / 2;
-    group.forEach((n, i) => { n.x = startX + i * spacing; n.y = y + (Math.random() * 15 - 7); });
-    y += 90;
-  }
-
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-
-  return (
-    <div>
-      <div className="flex gap-3 mb-3 flex-wrap">
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1 text-xs text-text-secondary">
-            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-            {type}
-          </div>
-        ))}
-      </div>
-      <div className="rounded-lg border border-border overflow-hidden bg-surface-0">
-        <svg width="100%" viewBox={`0 0 ${width} ${Math.max(y + 30, 300)}`}>
-          {edges.map((e, i) => {
-            const s = nodeMap.get(e.source);
-            const t = nodeMap.get(e.target);
-            if (!s || !t) return null;
-            return <line key={i} x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke="#d1d5db" strokeWidth={1} opacity={0.5} />;
-          })}
-          {nodes.map((n) => (
-            <g key={n.id}>
-              <circle cx={n.x} cy={n.y} r={8} fill={NODE_COLORS[n.type] || "#9ca3af"} opacity={0.85} />
-              <text x={n.x} y={n.y + 20} textAnchor="middle" fontSize={8} fill="#6b7280">
-                {n.label.length > 10 ? n.label.slice(0, 10) + ".." : n.label}
-              </text>
-            </g>
-          ))}
-        </svg>
-      </div>
-      <p className="text-xs text-text-tertiary mt-1">{nodes.length} nodes, {edges.length} edges</p>
-    </div>
-  );
-}

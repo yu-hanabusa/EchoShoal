@@ -333,27 +333,17 @@ class SimulationEngine:
 
     async def _initialize_from_scenario(self, enriched: EnrichedScenario) -> None:
         """LLMにシナリオを渡し、全ディメンション＋マクロ指標の初期値を推定させる."""
-        dim_names = ", ".join(d.value for d in MarketDimension)
         prompt = (
-            "以下のシナリオに基づき、シミュレーション開始時点の市場状態を推定してください。\n"
-            "各値は0.0〜1.0の範囲で設定してください。\n\n"
-            f"サービス名: {enriched.original.service_name or '未指定'}\n"
-            f"シナリオ: {enriched.original.description}\n"
-        )
-        if enriched.original.target_market:
-            prompt += f"ターゲット市場: {enriched.original.target_market}\n"
-        if enriched.context_summary:
-            prompt += f"\n補足情報:\n{enriched.context_summary}\n"
-
-        prompt += (
-            f"\n以下のJSON形式で回答してください:\n"
-            "{{\n"
-            f'  "dimensions": {{{dim_names}の各値}},\n'
-            '  "economic_sentiment": <0.0〜1.0>,\n'
-            '  "tech_hype_level": <0.0〜1.0>,\n'
-            '  "regulatory_pressure": <0.0〜1.0>,\n'
-            '  "ai_disruption_level": <0.0〜1.0>\n'
-            "}}"
+            f"Service: {enriched.original.service_name or 'unknown'}\n"
+            f"Scenario: {enriched.original.description[:500]}\n\n"
+            "Estimate the INITIAL market state (0.0-1.0 scale) for this service.\n"
+            "Return EXACTLY this JSON structure with your estimated values:\n"
+            '{"dimensions": {'
+            '"user_adoption": 0.1, "revenue_potential": 0.2, "tech_maturity": 0.3, '
+            '"competitive_pressure": 0.5, "regulatory_risk": 0.2, "market_awareness": 0.1, '
+            '"ecosystem_health": 0.2, "funding_climate": 0.3}, '
+            '"economic_sentiment": 0.5, "tech_hype_level": 0.4, '
+            '"regulatory_pressure": 0.3, "ai_disruption_level": 0.3}'
         )
 
         try:
@@ -413,25 +403,17 @@ class SimulationEngine:
         current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
 
         prompt = (
-            f"【ラウンド{round_number}】以下のアクションが実行されました。\n"
-            f"サービス: {self.market.service_name}\n\n"
-            f"現在の市場ディメンション: {json.dumps(current_dims, ensure_ascii=False)}\n"
-            f"経済センチメント: {self.market.economic_sentiment:.2f}\n"
-            f"技術ハイプ: {self.market.tech_hype_level:.2f}\n"
-            f"規制圧力: {self.market.regulatory_pressure:.2f}\n\n"
-        )
-        if graph_context:
-            prompt += f"{graph_context}\n\n"
-
-        prompt += (
-            f"実行されたアクション:\n{actions_text}\n\n"
-            "これらのアクションが市場に与える影響をJSON形式で回答してください。\n"
-            "各エージェントの評判・規模・行動内容を考慮し、現実的な影響度を判断してください。\n"
-            "{\n"
-            '  "dimension_deltas": {"user_adoption": <-0.1〜+0.1>, ...},\n'
-            '  "macro_deltas": {"economic_sentiment": <-0.05〜+0.05>, ...}\n'
-            "}\n"
-            "影響がないディメンションは0.0にしてください。"
+            f"Round {round_number}. Service: {self.market.service_name}\n"
+            f"Current dimensions: {json.dumps(current_dims)}\n"
+            f"Actions this round:\n{actions_text}\n\n"
+            "Estimate market impact of these actions. "
+            "Return EXACTLY this JSON structure with your estimated delta values (-0.1 to +0.1):\n"
+            '{"dimension_deltas": {'
+            '"user_adoption": 0.02, "revenue_potential": 0.01, "tech_maturity": 0.0, '
+            '"competitive_pressure": 0.0, "regulatory_risk": 0.0, "market_awareness": 0.01, '
+            '"ecosystem_health": 0.0, "funding_climate": 0.0}, '
+            '"macro_deltas": {"economic_sentiment": 0.0, "tech_hype_level": 0.0, '
+            '"regulatory_pressure": 0.0, "ai_disruption_level": 0.0}}'
         )
 
         try:

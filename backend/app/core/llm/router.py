@@ -105,15 +105,41 @@ class LLMRouter:
         prompt: str,
         system_prompt: str | None = None,
         temperature: float = 0.3,
+        max_retries: int = 2,
     ) -> dict[str, Any]:
-        """Generate a JSON response. Lower temperature for structured output."""
+        """Generate a JSON response with retry on parse failure."""
         import json
+        import logging
+        logger = logging.getLogger(__name__)
 
-        response = await self.generate(
-            task_type=task_type,
-            prompt=prompt,
-            system_prompt=system_prompt,
-            json_mode=True,
-            temperature=temperature,
-        )
-        return json.loads(response)
+        enhanced_system = (system_prompt or "") + "\n\nIMPORTANT: Respond ONLY with valid JSON. Follow the exact schema requested in the prompt. Do not add extra fields."
+
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.generate(
+                    task_type=task_type,
+                    prompt=prompt,
+                    system_prompt=enhanced_system,
+                    json_mode=True,
+                    temperature=max(0.1, temperature - attempt * 0.1),
+                )
+                # JSON内を抽出（前後にテキストがある場合に対応）
+                text = response.strip()
+                # ```json ... ``` ブロックの中身を抽出
+                if "```json" in text:
+                    text = text.split("```json")[-1].split("```")[0].strip()
+                elif "```" in text:
+                    text = text.split("```")[1].split("```")[0].strip()
+                # 最初の { から最後の } までを抽出
+                start = text.find("{")
+                end = text.rfind("}")
+                if start != -1 and end != -1:
+                    text = text[start:end + 1]
+                return json.loads(text)
+            except (json.JSONDecodeError, ValueError, KeyError) as e:
+                last_error = e
+                logger.warning("JSON parse attempt %d failed: %s", attempt + 1, str(e)[:100])
+                continue
+
+        raise ValueError(f"JSON parse failed after {max_retries + 1} attempts: {last_error}")
