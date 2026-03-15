@@ -133,8 +133,8 @@ export default function SimulationPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <MarketChart rounds={result.rounds} title="市場ディメンション推移（成長系）" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />
-              <MarketChart rounds={result.rounds} title="市場ディメンション推移（圧力系）" dimensions={["competitive_pressure", "regulatory_risk", "tech_maturity", "funding_climate"]} />
+              <MarketChart rounds={result.rounds} title="サービスの成長指標の変化" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />
+              <MarketChart rounds={result.rounds} title="サービスを取り巻くリスクの変化" dimensions={["competitive_pressure", "regulatory_risk", "tech_maturity", "funding_climate"]} />
             </div>
 
             <AgentTable agents={result.summary.agents} />

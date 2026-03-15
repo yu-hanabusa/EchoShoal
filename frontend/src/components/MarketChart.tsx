@@ -45,7 +45,8 @@ export default function MarketChart({
 
   return (
     <div className="bg-surface-0 rounded-lg border border-border p-5">
-      <h3 className="text-sm font-medium text-text-primary mb-4">{title}</h3>
+      <h3 className="text-sm font-medium text-text-primary mb-1">{title}</h3>
+      <p className="text-[10px] text-text-tertiary mb-3">縦軸: LLMによる評価（低←→高） / 横軸: 経過月数</p>
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

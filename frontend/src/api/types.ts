@@ -160,16 +160,16 @@ export interface DocumentInfo {
   uploaded_at: string;
 }
 
-/** マーケットディメンションの日本語ラベル */
+/** チャート凡例のラベル */
 export const DIMENSION_LABELS: Record<string, string> = {
-  user_adoption: "ユーザー獲得率",
-  revenue_potential: "収益ポテンシャル",
-  tech_maturity: "技術成熟度",
-  competitive_pressure: "競合圧力",
-  regulatory_risk: "規制リスク",
-  market_awareness: "市場認知度",
-  ecosystem_health: "エコシステム健全性",
-  funding_climate: "資金調達環境",
+  user_adoption: "ユーザーの広がり",
+  revenue_potential: "収益性の見通し",
+  tech_maturity: "技術の成熟度",
+  competitive_pressure: "競合の脅威",
+  regulatory_risk: "規制によるリスク",
+  market_awareness: "市場での認知度",
+  ecosystem_health: "連携・コミュニティの活発さ",
+  funding_climate: "投資・資金の集まりやすさ",
 };
 
 /** マーケットディメンションの表示色 */
