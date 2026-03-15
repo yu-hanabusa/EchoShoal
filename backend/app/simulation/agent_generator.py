@@ -114,11 +114,11 @@ class AgentGenerator:
 
         names_text = ", ".join(org_names[:30])
         prompt = (
-            f"Service: {scenario.service_name or 'unknown'}\n"
-            f"Context: {scenario.description[:300]}\n"
-            f"Organizations: {names_text}\n\n"
-            "For each organization, return JSON:\n"
-            '{"agents":[{"name":"Org Name","stakeholder_type":"enterprise","description":"role"}]}\n'
+            f"サービス: {scenario.service_name or '不明'}\n"
+            f"概要: {scenario.description[:300]}\n"
+            f"組織一覧: {names_text}\n\n"
+            "各組織の役割を判定しJSON返却:\n"
+            '{"agents":[{"name":"組織名","stakeholder_type":"enterprise","description":"日本語で役割説明"}]}\n'
             "stakeholder_type: enterprise/end_user/government/investor/platformer/community/freelancer/indie_developer"
         )
 
@@ -126,7 +126,7 @@ class AgentGenerator:
             response = await self.llm.generate_json(
                 task_type=TaskType.PERSONA_GENERATION,
                 prompt=prompt,
-                system_prompt="Return JSON only. Classify each organization.",
+                system_prompt="JSON形式で返答。descriptionは日本語で。",
             )
             return self._parse_agents(response)
         except Exception:
@@ -141,7 +141,7 @@ class AgentGenerator:
             agent = self._create_agent({
                 "name": name,
                 "stakeholder_type": "enterprise",
-                "description": f"Market participant: {name}",
+                "description": f"市場参加者: {name}",
             })
             if agent:
                 agents.append(agent)
@@ -157,14 +157,14 @@ class AgentGenerator:
         existing_list = ", ".join(existing_names) if existing_names else "none"
 
         prompt = (
-            f"Service: {scenario.service_name or 'unknown'}\n"
-            f"Context: {scenario.description[:300]}\n"
-            f"Existing agents: {existing_list}\n\n"
-            "Add MISSING agents. Include:\n"
-            "- End users (e.g. 'Existing Slack users', 'Potential SMB users')\n"
-            "- Named competitors (Slack, Microsoft Teams, etc.)\n"
-            "- Government, investors, communities if missing\n\n"
-            '{"agents":[{"name":"Name","stakeholder_type":"enterprise","description":"role"}]}\n'
+            f"サービス: {scenario.service_name or '不明'}\n"
+            f"概要: {scenario.description[:300]}\n"
+            f"既存エージェント: {existing_list}\n\n"
+            "不足しているエージェントを追加:\n"
+            "- エンドユーザー（例: '既存Slackユーザー', '中小企業の潜在ユーザー'）\n"
+            "- 具体的な競合（Slack, Microsoft Teams等の実名）\n"
+            "- 行政、投資家、コミュニティ\n\n"
+            '{"agents":[{"name":"名前","stakeholder_type":"enterprise","description":"日本語で役割説明"}]}\n'
             "stakeholder_type: enterprise/end_user/government/investor/platformer/community"
         )
 
@@ -172,7 +172,7 @@ class AgentGenerator:
             response = await self.llm.generate_json(
                 task_type=TaskType.PERSONA_GENERATION,
                 prompt=prompt,
-                system_prompt="Return JSON only. Generate missing market participants.",
+                system_prompt="JSON形式で返答。descriptionは日本語で。",
             )
             agents = self._parse_agents(response)
             return [a for a in agents if a.name not in existing_names]
@@ -260,12 +260,12 @@ class AgentGenerator:
 
         # シナリオ内の既知の企業名/サービス名を検出
         known_competitors = [
-            ("Slack", "platformer", "Leading business chat with 2600+ integrations"),
-            ("Microsoft Teams", "platformer", "Dominant enterprise communication platform"),
-            ("LINE WORKS", "enterprise", "Japanese business chat, strong in SMB sector"),
-            ("Chatwork", "enterprise", "Popular Japanese business chat for SMBs"),
-            ("Google Chat", "platformer", "Part of Google Workspace ecosystem"),
-            ("Discord", "community", "Communication platform expanding into business use"),
+            ("Slack", "platformer", "2600以上の連携機能を持つビジネスチャットの先駆者"),
+            ("Microsoft Teams", "platformer", "Microsoft 365統合で圧倒的シェアを持つ企業向けチャット"),
+            ("LINE WORKS", "enterprise", "46万社導入の日本市場に強いビジネスチャット"),
+            ("Chatwork", "enterprise", "中小企業に人気の国産ビジネスチャット"),
+            ("Google Chat", "platformer", "Google Workspace連携のチャットサービス"),
+            ("Discord", "community", "ゲーマー発のコミュニケーションツール、ビジネス展開中"),
         ]
 
         for name, stype, description in known_competitors:
@@ -280,9 +280,9 @@ class AgentGenerator:
 
         # ユーザー層を必ず追加
         user_segments = [
-            ("既存チャットツールユーザー", "Current users of competing chat services, evaluating alternatives"),
-            ("セキュリティ重視企業ユーザー", "Enterprise users prioritizing security and compliance"),
-            ("中小企業の潜在ユーザー", "SMB users not yet using business chat tools"),
+            ("既存チャットツールユーザー", "競合サービスの既存利用者。乗り換えコストと比較検討を行う"),
+            ("セキュリティ重視企業ユーザー", "セキュリティ・コンプライアンスを最優先とする企業のIT担当者"),
+            ("中小企業の潜在ユーザー", "まだビジネスチャットを導入していない中小企業の経営者・管理者"),
         ]
         for name, description in user_segments:
             if name not in existing_names:
@@ -305,7 +305,7 @@ class AgentGenerator:
             agent = self._create_agent({
                 "name": "デジタル庁",
                 "stakeholder_type": "government",
-                "description": "Digital Agency promoting IT adoption in government",
+                "description": "デジタル社会推進を担う政府機関。IT導入促進と規制のバランスを取る",
             })
             if agent:
                 agents.append(agent)
@@ -314,7 +314,7 @@ class AgentGenerator:
             agent = self._create_agent({
                 "name": "国内SaaS投資ファンド",
                 "stakeholder_type": "investor",
-                "description": "VC fund focused on Japanese SaaS market",
+                "description": "日本のSaaS市場に注力するVCファンド",
             })
             if agent:
                 agents.append(agent)

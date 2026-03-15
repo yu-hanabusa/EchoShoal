@@ -220,30 +220,57 @@ class DocumentProcessor:
         ]
 
     async def _extract_orgs_with_llm(self, text: str) -> list[str]:
-        """LLMを使って文書テキストから組織名・サービス名を抽出する.
+        """文書テキストから組織名・サービス名を抽出する.
 
-        NLPのルールベース抽出では英語名・略称・カタカナ名が取りこぼされるため、
-        LLMで補完する。
+        1. LLMで抽出を試みる
+        2. LLM失敗時は正規表現ベースのフォールバック
         """
+        orgs: list[str] = []
+
+        # LLM抽出
         try:
             from app.core.llm.router import LLMRouter, TaskType
             llm = LLMRouter()
             response = await llm.generate_json(
                 task_type=TaskType.AGENT_DECISION,
                 prompt=(
-                    "Extract ALL organization names, company names, product/service names, "
-                    "and government agencies from this text. Include English names, abbreviations, and Japanese names.\n\n"
-                    f"Text (first 2000 chars):\n{text[:2000]}\n\n"
-                    'Return: {"organizations": ["Slack", "Microsoft Teams", "LINE WORKS", ...]}'
+                    f"Text:\n{text[:1500]}\n\n"
+                    'List all company/service/agency names.\n'
+                    '{"organizations":["Slack","Microsoft Teams","LINE WORKS"]}'
                 ),
-                system_prompt="Extract entity names from text. Return JSON only.",
+                system_prompt="Extract names. JSON only.",
             )
-            orgs = response.get("organizations", [])
-            if isinstance(orgs, list):
-                return [str(o).strip() for o in orgs if o and len(str(o).strip()) > 1]
+            raw = response.get("organizations", [])
+            if isinstance(raw, list):
+                orgs = [str(o).strip() for o in raw if o and len(str(o).strip()) > 1]
         except Exception:
-            logger.warning("LLMによる組織名抽出失敗")
-        return []
+            logger.warning("LLMによる組織名抽出失敗、正規表現フォールバック使用")
+
+        # 正規表現フォールバック: 既知のサービス名・企業名をパターンマッチ
+        if len(orgs) < 3:
+            import re
+            known_patterns = [
+                r"Slack", r"Microsoft\s+Teams", r"Teams", r"LINE\s+WORKS",
+                r"Chatwork", r"Google\s+Chat", r"Discord", r"Zoom",
+                r"Salesforce", r"AWS", r"Azure", r"Google\s+Cloud",
+                r"デジタル庁", r"総務省", r"金融庁", r"経済産業省",
+                r"サイボウズ", r"freee", r"マネーフォワード",
+                r"NTT", r"富士通", r"NEC", r"日立",
+            ]
+            found_regex = set(orgs)
+            for pattern in known_patterns:
+                if re.search(pattern, text, re.IGNORECASE):
+                    # パターンにマッチした実際のテキストを使う
+                    match = re.search(pattern, text, re.IGNORECASE)
+                    if match:
+                        name = match.group(0).strip()
+                        if name not in found_regex:
+                            orgs.append(name)
+                            found_regex.add(name)
+            if len(orgs) > len(found_regex) - len(set(orgs)):
+                logger.info("正規表現で%d件の組織名を追加抽出", len(orgs))
+
+        return orgs
 
     async def get_document_entities(self) -> dict[str, list[str]]:
         """このシミュレーションの文書から抽出された全エンティティを集約する."""
