@@ -25,14 +25,18 @@ export default function ActionTimeline({ rounds }: Props) {
   agents.forEach((a, i) => { agentColorMap[a] = AGENT_COLORS[i % AGENT_COLORS.length]; });
 
   // ラウンドごとのエージェント行動マップ
-  const roundActions: Record<number, Record<string, { type: string; description: string }[]>> = {};
+  const roundActions: Record<number, Record<string, { type: string; description: string; reacting_to?: string }[]>> = {};
   for (const r of rounds) {
     roundActions[r.round_number] = {};
     for (const a of r.actions_taken) {
       if (!roundActions[r.round_number][a.agent]) {
         roundActions[r.round_number][a.agent] = [];
       }
-      roundActions[r.round_number][a.agent].push({ type: a.type, description: a.description });
+      roundActions[r.round_number][a.agent].push({
+        type: a.type,
+        description: a.description,
+        reacting_to: a.reacting_to,
+      });
     }
   }
 
@@ -151,7 +155,7 @@ export default function ActionTimeline({ rounds }: Props) {
             {Object.entries(roundActions[selectedRound] || {}).map(([agent, actions]) => (
               <div key={agent}>
                 {actions.map((action, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm py-1">
+                  <div key={i} className="flex items-start gap-2 text-sm py-1 flex-wrap">
                     <span
                       className="inline-block w-2.5 h-2.5 rounded-full mt-1 shrink-0"
                       style={{ backgroundColor: agentColorMap[agent] }}
@@ -162,6 +166,17 @@ export default function ActionTimeline({ rounds }: Props) {
                       {action.type}
                     </span>
                     <span className="text-text-secondary">{action.description}</span>
+                    {action.reacting_to && (
+                      <span className="flex items-center gap-1 text-xs text-interactive ml-1">
+                        <span>⟵</span>
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: agentColorMap[action.reacting_to] || "#94a3b8" }}
+                        />
+                        <span className="font-medium">{action.reacting_to}</span>
+                        <span className="text-text-tertiary">への反応</span>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

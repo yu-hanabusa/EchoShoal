@@ -320,3 +320,42 @@ class AgentMemoryStore:
                 )
             except Exception:
                 logger.warning("スキル記録失敗: agent=%s, skill=%s", agent_id, skill_name)
+
+    async def record_relationship(
+        self,
+        from_id: str,
+        to_id: str,
+        relation_type: str,
+        round_number: int,
+        description: str = "",
+    ) -> None:
+        """エージェント間の関係をグラフに記録する（冪等: 同じ関係は上書き）."""
+        await self.graph.execute_write(
+            "MATCH (a:Agent {agent_id: $from_id, simulation_id: $sim_id}) "
+            "MATCH (b:Agent {agent_id: $to_id, simulation_id: $sim_id}) "
+            "MERGE (a)-[r:RELATES_TO {relation_type: $rel_type}]->(b) "
+            "SET r.since_round = $round, r.description = $desc",
+            {
+                "from_id": from_id,
+                "to_id": to_id,
+                "sim_id": self.simulation_id,
+                "rel_type": relation_type,
+                "round": round_number,
+                "desc": description,
+            },
+        )
+
+    async def get_related_agents(
+        self, agent_id: str
+    ) -> list[dict[str, Any]]:
+        """このエージェントと関係のあるエージェント一覧を取得する."""
+        return await self.graph.execute_read(
+            "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
+            "-[r:RELATES_TO]-(b:Agent) "
+            "RETURN b.agent_id AS agent_id, b.name AS name, "
+            "       r.relation_type AS relation_type, "
+            "       r.description AS description, "
+            "       r.since_round AS since_round "
+            "ORDER BY r.since_round DESC",
+            {"agent_id": agent_id, "sim_id": self.simulation_id},
+        )

@@ -143,7 +143,9 @@ class SimulationEngine:
                     event_lines.append(f"  - {evt.name}: {evt.description}")
                 active_events_text = "\n".join(event_lines)
 
-        # Each agent decides and applies actions
+        # Each agent decides and applies actions (sequential: later agents see earlier actions)
+        round_actions_so_far: list[dict[str, str]] = []
+
         for agent in active_agents:
             try:
                 # エージェント固有のRAGコンテキスト取得（可視性制御付き）
@@ -169,6 +171,11 @@ class SimulationEngine:
                     except Exception:
                         logger.warning("RAGコンテキスト取得失敗: agent=%s", agent.name)
 
+                # 同一ラウンド内の先行エージェント行動を注入（public/partialのみ）
+                intra_round = self._format_intra_round_actions(round_actions_so_far, agent.name)
+                if intra_round:
+                    rag_context += intra_round
+
                 # LLM意思決定（性格バイアス + ノイズ注入済み）
                 actions = await agent.decide_actions(self.market, rag_context=rag_context)
                 self._llm_call_count += 1
@@ -176,9 +183,9 @@ class SimulationEngine:
                 # 行動を適用
                 await agent.apply_actions(actions, self.market)
 
-                # 行動をグラフに記録
+                # 行動をグラフに記録 + ラウンド内行動リストに追加
                 for action in actions:
-                    all_actions.append({
+                    action_record = {
                         "agent": agent.name,
                         "agent_id": agent.id,
                         "type": action.action_type,
@@ -187,7 +194,11 @@ class SimulationEngine:
                         "dimension": action.parameters.get("dimension", ""),
                         "count": action.parameters.get("count", 1),
                         "reputation": agent.state.reputation,
-                    })
+                        "reacting_to": action.reacting_to,
+                    }
+                    all_actions.append(action_record)
+                    round_actions_so_far.append(action_record)
+
                     if self._memory:
                         try:
                             await self._memory.record_action(
@@ -199,6 +210,12 @@ class SimulationEngine:
                             )
                         except Exception:
                             logger.warning("行動記録失敗: agent=%s", agent.name)
+
+                    # アクションに基づく関係記録
+                    if self._memory and action.reacting_to:
+                        await self._record_relationship_from_action(
+                            agent, action, round_number,
+                        )
 
                 # 状態スナップショット + capabilitiesをグラフに記録
                 if self._memory:
@@ -325,6 +342,67 @@ class SimulationEngine:
             return "\n".join(lines)
         except Exception:
             return ""
+
+    @staticmethod
+    def _format_intra_round_actions(
+        actions_so_far: list[dict[str, str]], current_agent: str
+    ) -> str:
+        """同一ラウンド内の先行エージェントのpublic/partial行動をテキスト化する."""
+        visible = [
+            a for a in actions_so_far
+            if a.get("visibility") in ("public", "partial") and a.get("agent") != current_agent
+        ]
+        if not visible:
+            return ""
+        lines = ["\n【このラウンドで先に行動したステークホルダー】"]
+        for a in visible:
+            lines.append(f"  - {a['agent']}: {a['type']}「{a.get('description', '')[:60]}」")
+        return "\n".join(lines)
+
+    # アクション→関係タイプのマッピング
+    _ACTION_TO_RELATION: dict[str, str] = {
+        "build_competitor": "competitor",
+        "launch_competing_product": "competitor",
+        "launch_competing_feature": "competitor",
+        "price_undercut": "competitor",
+        "partner": "partner",
+        "partner_integrate": "partner",
+        "partner_public": "partner",
+        "invest_seed": "investor",
+        "invest_series": "investor",
+        "fund_competitor": "investor",
+        "regulate": "regulator",
+        "investigate": "regulator",
+        "acquire_service": "acquirer",
+        "acquire_startup": "acquirer",
+    }
+
+    async def _record_relationship_from_action(
+        self,
+        agent: BaseAgent,
+        action: "AgentAction",
+        round_number: int,
+    ) -> None:
+        """アクションのreacting_toに基づいてエージェント間関係をNeo4jに記録する."""
+        if not self._memory or not action.reacting_to:
+            return
+        # reacting_toからターゲットエージェントを特定
+        target = next(
+            (a for a in self.agents if a.name == action.reacting_to), None
+        )
+        if not target:
+            return
+        relation_type = self._ACTION_TO_RELATION.get(action.action_type, "interaction")
+        try:
+            await self._memory.record_relationship(
+                from_id=agent.id,
+                to_id=target.id,
+                relation_type=relation_type,
+                round_number=round_number,
+                description=f"{agent.name} → {action.action_type} → {target.name}",
+            )
+        except Exception:
+            pass
 
     def _select_active_agents(self) -> list[BaseAgent]:
         """Randomly activate a subset of agents each round."""

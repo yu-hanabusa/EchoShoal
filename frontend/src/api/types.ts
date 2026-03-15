@@ -44,6 +44,7 @@ export interface ActionTaken {
   type: string;
   description: string;
   visibility: ActionVisibility;
+  reacting_to?: string;
 }
 
 export interface RoundResult {

@@ -74,6 +74,7 @@ class AgentAction(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     impact: dict[str, float] = Field(default_factory=dict)
     self_impact: dict[str, float] = Field(default_factory=dict)
+    reacting_to: str = ""  # 誰の行動に対する反応か（エージェント名）
 
 
 # デフォルトの性格（パラメータ指定がない場合に使用）
@@ -220,9 +221,11 @@ class BaseAgent(ABC):
             f"{scenario_section}\n"
             f"【あなたの性格・判断傾向】\n{personality_text}\n\n"
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
-            "Choose 1-2 actions and respond with EXACTLY this JSON format:\n"
+            "Choose 1-2 actions. If reacting to another agent, set reacting_to to their name.\n"
+            "Respond with EXACTLY this JSON format:\n"
             '{"actions": [{"action_type": "' + (self.available_actions()[0] if self.available_actions() else "wait") + '", '
             '"description": "reason for this action", '
+            '"reacting_to": "", '
             '"parameters": {}, '
             '"self_impact": {"cost_delta": 10, "revenue_delta": 5, "reputation_delta": 0.02, '
             '"satisfaction_delta": 0.01, "headcount_delta": 0, "contracts_delta": 0}}]}'
@@ -293,9 +296,12 @@ class BaseAgent(ABC):
         )
 
         if rag_context:
-            prompt += rag_context
+            prompt += f"\n{rag_context}"
 
-        prompt += "\n\n最大2つのアクションを選んでください。"
+        prompt += (
+            "\n\n他のステークホルダーの行動を踏まえてアクションを選んでください。"
+            "特定のエージェントの行動に反応する場合は reacting_to にそのエージェント名を入れてください。"
+        )
         return prompt
 
     def _parse_actions(self, response: dict[str, Any]) -> list[AgentAction]:
@@ -315,6 +321,7 @@ class BaseAgent(ABC):
                     description=raw.get("description", ""),
                     parameters=raw.get("parameters", {}),
                     self_impact=raw.get("self_impact", {}),
+                    reacting_to=str(raw.get("reacting_to", "")),
                 )
             )
         return actions
