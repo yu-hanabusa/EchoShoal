@@ -67,13 +67,23 @@ class DocumentProcessor:
         """文書を解析し、知識グラフに格納する.
 
         1. NLP解析（GiNZA + ルールベース）
-        2. Documentノード作成
-        3. 抽出エンティティを既存ノードにリンク
+        2. LLMによる組織名補完（NLPで取れなかった分）
+        3. Documentノード作成
+        4. 抽出エンティティを既存ノードにリンク
         """
         # NLP解析
         analysis = self.nlp.analyze(doc.text)
+
+        # LLMで組織名を補完（NLPは英語名・略称を取りこぼすため）
+        llm_orgs = await self._extract_orgs_with_llm(doc.text)
+        if llm_orgs:
+            existing = set(analysis.organizations)
+            for org in llm_orgs:
+                if org not in existing:
+                    analysis.organizations.append(org)
+
         logger.info(
-            "文書 '%s' を解析: 技術%d件, 組織%d件, 政策%d件",
+            "文書 '%s' を解析: 技術%d件, 組織%d件（LLM補完含む）, 政策%d件",
             doc.filename,
             len(analysis.technologies),
             len(analysis.organizations),
@@ -208,6 +218,32 @@ class DocumentProcessor:
             )
             for r in results
         ]
+
+    async def _extract_orgs_with_llm(self, text: str) -> list[str]:
+        """LLMを使って文書テキストから組織名・サービス名を抽出する.
+
+        NLPのルールベース抽出では英語名・略称・カタカナ名が取りこぼされるため、
+        LLMで補完する。
+        """
+        try:
+            from app.core.llm.router import LLMRouter, TaskType
+            llm = LLMRouter()
+            response = await llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=(
+                    "Extract ALL organization names, company names, product/service names, "
+                    "and government agencies from this text. Include English names, abbreviations, and Japanese names.\n\n"
+                    f"Text (first 2000 chars):\n{text[:2000]}\n\n"
+                    'Return: {"organizations": ["Slack", "Microsoft Teams", "LINE WORKS", ...]}'
+                ),
+                system_prompt="Extract entity names from text. Return JSON only.",
+            )
+            orgs = response.get("organizations", [])
+            if isinstance(orgs, list):
+                return [str(o).strip() for o in orgs if o and len(str(o).strip()) > 1]
+        except Exception:
+            logger.warning("LLMによる組織名抽出失敗")
+        return []
 
     async def get_document_entities(self) -> dict[str, list[str]]:
         """このシミュレーションの文書から抽出された全エンティティを集約する."""
