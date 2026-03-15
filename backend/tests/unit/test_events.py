@@ -63,7 +63,7 @@ class TestApplyEvent:
         assert market.dimensions[MarketDimension.USER_ADOPTION] == pytest.approx(original_ua + 0.2)
 
     def test_economic_sentiment_delta(self):
-        market = ServiceMarketState()
+        market = ServiceMarketState(economic_sentiment=0.5)
         original = market.economic_sentiment
         event = MarketEvent(
             name="景気後退", event_type=EventType.ECONOMIC_SHOCK,
@@ -157,7 +157,7 @@ class TestApplyActiveEvents:
 
         assert len(msgs) == 1
         assert "早期" in msgs[0]
-        assert market.economic_sentiment == pytest.approx(0.45)  # 0.5 - 0.05
+        assert market.economic_sentiment == pytest.approx(0.0)  # 0.0 - 0.05, clamped to 0.0
 
     def test_no_events_active(self):
         events = [
@@ -204,34 +204,36 @@ class TestEventScheduler:
 
     @pytest.mark.asyncio
     async def test_generate_static_fallback_without_llm(self):
+        """LLMなしの場合、静的イベントは空リストを返す（固定係数を使わない方針）."""
         scheduler = EventScheduler(llm=None)
         scenario = ScenarioInput(
             description="AI技術の急速な普及によるサービス市場の変化",
             tech_disruption=0.5,
         )
         events = await scheduler.generate_from_scenario(scenario)
-        assert len(events) >= 1
-        assert any(e.event_type == EventType.TECH_DISRUPTION for e in events)
+        assert len(events) == 0
 
     @pytest.mark.asyncio
     async def test_generate_static_economic_shock(self):
+        """LLMなしの場合、静的イベントは空リストを返す."""
         scheduler = EventScheduler(llm=None)
         scenario = ScenarioInput(
             description="深刻な景気後退によるサービス市場への影響を予測する",
             economic_climate=-0.5,
         )
         events = await scheduler.generate_from_scenario(scenario)
-        assert any(e.event_type == EventType.ECONOMIC_SHOCK for e in events)
+        assert len(events) == 0
 
     @pytest.mark.asyncio
     async def test_generate_static_regulatory_change(self):
+        """LLMなしの場合、静的イベントは空リストを返す."""
         scheduler = EventScheduler(llm=None)
         scenario = ScenarioInput(
             description="新しい規制によるサービス市場への影響予測シナリオ",
             regulatory_change="データ保護法改正",
         )
         events = await scheduler.generate_from_scenario(scenario)
-        assert any(e.event_type == EventType.POLICY_CHANGE for e in events)
+        assert len(events) == 0
 
     @pytest.mark.asyncio
     async def test_generate_with_llm(self):
@@ -273,8 +275,8 @@ class TestEventScheduler:
         )
         events = await scheduler.generate_from_scenario(scenario)
 
-        # フォールバックで静的イベントが生成される
-        assert len(events) >= 1
+        # フォールバックで静的イベント（現在は空リスト）が返される
+        assert len(events) == 0
 
     @pytest.mark.asyncio
     async def test_parse_skips_invalid_event_type(self):

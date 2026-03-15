@@ -19,20 +19,20 @@ class TestServiceMarketState:
         state = ServiceMarketState()
         assert state.round_number == 0
         assert len(state.dimensions) == len(MarketDimension)
-        # All dimensions default to 0.3
+        # All dimensions default to 0.0 (LLM initializes from scenario)
         for dim in MarketDimension:
-            assert state.dimensions[dim] == 0.3
+            assert state.dimensions[dim] == 0.0
 
     def test_macro_defaults(self):
         state = ServiceMarketState()
-        assert state.economic_sentiment == 0.5
-        assert state.tech_hype_level == 0.5
-        assert state.regulatory_pressure == 0.3
-        assert state.ai_disruption_level == 0.3
+        assert state.economic_sentiment == 0.0
+        assert state.tech_hype_level == 0.0
+        assert state.regulatory_pressure == 0.0
+        assert state.ai_disruption_level == 0.0
 
     def test_pressure_ratio(self):
         state = ServiceMarketState()
-        assert state.pressure_ratio(MarketDimension.USER_ADOPTION) == 0.3
+        assert state.pressure_ratio(MarketDimension.USER_ADOPTION) == 0.0
 
     def test_pressure_ratio_custom_value(self):
         state = ServiceMarketState(

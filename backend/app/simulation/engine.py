@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 from collections.abc import Callable, Coroutine
@@ -14,7 +15,7 @@ from typing import Any
 from app.config import settings
 from app.core.graph.agent_memory import AgentMemoryStore, get_visibility
 from app.core.graph.rag import GraphRAGRetriever
-from app.core.llm.router import LLMRouter
+from app.core.llm.router import LLMRouter, TaskType
 from app.simulation.agents.base import BaseAgent
 from app.simulation.events.effects import apply_active_events
 from app.simulation.events.scheduler import EventScheduler
@@ -79,9 +80,9 @@ class SimulationEngine:
 
         logger.info("Starting simulation: %d rounds, %d agents", rounds, len(self.agents))
 
-        # シナリオ解析結果で市場初期状態を調整
+        # シナリオ解析結果で市場初期状態をLLMが設定
         if self._enriched_scenario:
-            self._initialize_from_scenario(self._enriched_scenario)
+            await self._initialize_from_scenario(self._enriched_scenario)
 
         # シナリオ要約をエージェントに渡す
         if self._scenario_summary:
@@ -125,8 +126,8 @@ class SimulationEngine:
         events: list[str] = []
         doc_refs: list[DocumentReference] = []
 
-        # グラフからディメンション供給を同期（定量的フィードバック）
-        await self._sync_market_from_graph()
+        # グラフからエージェント能力分布を取得（市場更新時の参考情報として使用）
+        graph_context = await self._get_graph_context_for_market()
 
         # Activate subset of agents
         active_agents = self._select_active_agents()
@@ -229,7 +230,7 @@ class SimulationEngine:
                 events.append(f"Agent {agent.name} encountered an error")
 
         # Update market state based on aggregate actions
-        market_effects = self._update_market(all_actions)
+        market_effects = await self._update_market(all_actions, round_number, graph_context)
 
         # 因果チェーンをグラフに記録
         if self._memory and market_effects:
@@ -302,10 +303,10 @@ class SimulationEngine:
         except Exception:
             return ""
 
-    async def _sync_market_from_graph(self) -> None:
-        """グラフのCAPABLE_OFデータから市場のディメンションを同期する."""
+    async def _get_graph_context_for_market(self) -> str:
+        """グラフからエージェントの能力分布を取得し、市場更新の参考テキストを返す."""
         if not self._memory:
-            return
+            return ""
         try:
             dim_data = await self._memory.graph.execute_read(
                 "MATCH (a:Agent {simulation_id: $sim_id})-[r:SKILLED_IN]->(s:Skill) "
@@ -313,143 +314,170 @@ class SimulationEngine:
                 "       count(a) AS agent_count",
                 {"sim_id": self._memory.simulation_id},
             )
+            if not dim_data:
+                return ""
+            lines = ["【グラフ上のエージェント能力分布】"]
             for row in dim_data:
-                try:
-                    dim = MarketDimension(row["dimension"])
-                    graph_value = min(1.0, row["avg_influence"] * row["agent_count"] * 0.05)
-                    current = self.market.dimensions[dim]
-                    self.market.dimensions[dim] = current * 0.7 + graph_value * 0.3
-                except ValueError:
-                    pass
+                lines.append(
+                    f"  {row['dimension']}: 平均影響力={row['avg_influence']:.2f}, "
+                    f"関与エージェント数={row['agent_count']}"
+                )
+            return "\n".join(lines)
         except Exception:
-            logger.warning("グラフからのディメンション同期に失敗")
+            return ""
 
     def _select_active_agents(self) -> list[BaseAgent]:
         """Randomly activate a subset of agents each round."""
         rate = settings.agent_activation_rate
         return [a for a in self.agents if random.random() < rate]
 
-    def _initialize_from_scenario(self, enriched: EnrichedScenario) -> None:
-        """シナリオ解析結果で市場初期状態を調整する."""
-        for dim in enriched.detected_dimensions:
-            self.market.dimensions[dim] = min(
-                1.0, self.market.dimensions[dim] + 0.1
+    async def _initialize_from_scenario(self, enriched: EnrichedScenario) -> None:
+        """LLMにシナリオを渡し、全ディメンション＋マクロ指標の初期値を推定させる."""
+        dim_names = ", ".join(d.value for d in MarketDimension)
+        prompt = (
+            "以下のシナリオに基づき、シミュレーション開始時点の市場状態を推定してください。\n"
+            "各値は0.0〜1.0の範囲で設定してください。\n\n"
+            f"サービス名: {enriched.original.service_name or '未指定'}\n"
+            f"シナリオ: {enriched.original.description}\n"
+        )
+        if enriched.original.target_market:
+            prompt += f"ターゲット市場: {enriched.original.target_market}\n"
+        if enriched.context_summary:
+            prompt += f"\n補足情報:\n{enriched.context_summary}\n"
+
+        prompt += (
+            f"\n以下のJSON形式で回答してください:\n"
+            "{{\n"
+            f'  "dimensions": {{{dim_names}の各値}},\n'
+            '  "economic_sentiment": <0.0〜1.0>,\n'
+            '  "tech_hype_level": <0.0〜1.0>,\n'
+            '  "regulatory_pressure": <0.0〜1.0>,\n'
+            '  "ai_disruption_level": <0.0〜1.0>\n'
+            "}}"
+        )
+
+        try:
+            response = await self.llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt=(
+                    "あなたはサービスビジネスの市場アナリストです。"
+                    "シナリオの内容から、シミュレーション開始時点の市場状態を客観的に推定してください。"
+                ),
             )
-            logger.info("シナリオ初期化: %s の値を+0.1", dim.value)
+            self._llm_call_count += 1
+
+            # ディメンション初期値を設定
+            raw_dims = response.get("dimensions", {})
+            for dim in MarketDimension:
+                if dim.value in raw_dims:
+                    val = max(0.0, min(1.0, float(raw_dims[dim.value])))
+                    self.market.dimensions[dim] = val
+
+            # マクロ指標の初期値を設定
+            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"):
+                if key in response:
+                    val = max(0.0, min(1.0, float(response[key])))
+                    setattr(self.market, key, val)
+
+            logger.info("LLMによる市場初期化完了: %s", {d.value: self.market.dimensions[d] for d in MarketDimension})
+
+        except Exception:
+            logger.warning("LLM市場初期化失敗、値は0.0のまま")
 
         if enriched.detected_policies:
-            logger.info(
-                "シナリオ初期化: 検出政策 %s",
-                ", ".join(enriched.detected_policies),
-            )
+            logger.info("検出政策: %s", ", ".join(enriched.detected_policies))
 
-    def _update_market(self, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Update market state based on aggregate agent actions.
+    async def _update_market(
+        self, actions: list[dict[str, Any]], round_number: int, graph_context: str = ""
+    ) -> list[dict[str, Any]]:
+        """LLMにアクション一覧と市場状態を渡し、市場への影響を判断させる.
 
-        すべてのアクションが市場に影響を与える。
-        因果チェーン記録用のeffectsリストを返す。
+        固定係数テーブルは使用しない。LLMが状況に応じて影響度を判断する。
         """
+        if not actions:
+            return []
+
         market_effects: list[dict[str, Any]] = []
 
-        # アクション → ディメンション影響のマッピング
-        # {action_type: {dimension: delta}}
-        _ACTION_EFFECTS: dict[str, dict[str, float]] = {
-            # 企業アクション
-            "adopt_service": {"user_adoption": 0.02, "revenue_potential": 0.01},
-            "reject_service": {"user_adoption": -0.01},
-            "build_competitor": {"competitive_pressure": 0.03, "tech_maturity": 0.01},
-            "acquire_startup": {"competitive_pressure": -0.02, "market_awareness": 0.02},
-            "invest_rd": {"tech_maturity": 0.015},
-            "lobby_regulation": {"regulatory_risk": 0.02},
-            "partner": {"ecosystem_health": 0.015, "user_adoption": 0.01},
-            # フリーランス
-            "adopt_tool": {"user_adoption": 0.01, "market_awareness": 0.005},
-            "offer_service": {"revenue_potential": 0.01, "ecosystem_health": 0.005},
-            "upskill": {"tech_maturity": 0.005},
-            "build_portfolio": {"market_awareness": 0.005},
-            "raise_rate": {"revenue_potential": 0.005},
-            "switch_platform": {"ecosystem_health": -0.005},
-            "network": {"market_awareness": 0.005},
-            # 個人開発者
-            "launch_competing_product": {"competitive_pressure": 0.02, "tech_maturity": 0.01},
-            "pivot_product": {"user_adoption": 0.005},
-            "open_source": {"ecosystem_health": 0.02, "market_awareness": 0.01},
-            "monetize": {"revenue_potential": 0.01},
-            "seek_funding": {"funding_climate": 0.01},
-            "build_community": {"ecosystem_health": 0.01, "user_adoption": 0.005},
-            # 行政
-            "regulate": {"regulatory_risk": 0.03},
-            "subsidize": {"funding_climate": 0.02, "user_adoption": 0.01},
-            "certify": {"market_awareness": 0.015, "regulatory_risk": -0.01},
-            "investigate": {"regulatory_risk": 0.02},
-            "deregulate": {"regulatory_risk": -0.02, "ecosystem_health": 0.01},
-            "partner_public": {"user_adoption": 0.015, "market_awareness": 0.01},
-            "issue_guideline": {"regulatory_risk": 0.01, "tech_maturity": 0.005},
-            # 投資家
-            "invest_seed": {"funding_climate": 0.02, "market_awareness": 0.01},
-            "invest_series": {"funding_climate": 0.03, "revenue_potential": 0.015},
-            "divest": {"funding_climate": -0.02},
-            "fund_competitor": {"competitive_pressure": 0.02, "funding_climate": 0.005},
-            "market_signal": {"market_awareness": 0.01},
-            "mentor": {"tech_maturity": 0.005, "ecosystem_health": 0.005},
-            # プラットフォーマー
-            "launch_competing_feature": {"competitive_pressure": 0.04, "market_awareness": 0.02},
-            "acquire_service": {"competitive_pressure": -0.02, "market_awareness": 0.02},
-            "partner_integrate": {"ecosystem_health": 0.02, "user_adoption": 0.015},
-            "restrict_api": {"competitive_pressure": 0.02, "ecosystem_health": -0.015},
-            "price_undercut": {"competitive_pressure": 0.03, "revenue_potential": -0.02},
-            "open_platform": {"ecosystem_health": 0.015, "user_adoption": 0.01},
-            # 業界団体
-            "endorse": {"market_awareness": 0.015, "user_adoption": 0.01},
-            "set_standard": {"tech_maturity": 0.02, "ecosystem_health": 0.015},
-            "reject_standard": {"competitive_pressure": 0.01, "market_awareness": -0.005},
-            "create_alternative": {"competitive_pressure": 0.02, "ecosystem_health": 0.01},
-            "educate_market": {"market_awareness": 0.02, "user_adoption": 0.005},
-            "publish_report": {"market_awareness": 0.015},
-            # 共通: 影響なし
-            "wait_and_observe": {},
-            "wait_and_see": {},
-            "ignore": {},
-            "observe": {},
-            "rest": {},
-            "abandon_project": {"competitive_pressure": -0.005},
-        }
+        # アクションサマリーを構築
+        actions_summary = []
+        for a in actions[:15]:
+            rep = a.get("reputation", 0.0)
+            actions_summary.append(
+                f"- {a.get('agent', '?')}（評判{rep:.1f}）: {a['type']}「{a.get('description', '')[:60]}」"
+            )
+        actions_text = "\n".join(actions_summary)
 
-        for action in actions:
-            action_type = action["type"]
-            dim_str = action.get("dimension")
+        # 現在の市場状態
+        current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
 
-            effects = _ACTION_EFFECTS.get(action_type, {})
-            # 評判が高いエージェントほどアクションの市場影響が大きい
-            rep = action.get("reputation", 0.5)
-            rep_multiplier = 0.5 + rep  # 0.5〜1.5の範囲
+        prompt = (
+            f"【ラウンド{round_number}】以下のアクションが実行されました。\n"
+            f"サービス: {self.market.service_name}\n\n"
+            f"現在の市場ディメンション: {json.dumps(current_dims, ensure_ascii=False)}\n"
+            f"経済センチメント: {self.market.economic_sentiment:.2f}\n"
+            f"技術ハイプ: {self.market.tech_hype_level:.2f}\n"
+            f"規制圧力: {self.market.regulatory_pressure:.2f}\n\n"
+        )
+        if graph_context:
+            prompt += f"{graph_context}\n\n"
 
-            for dim_key, delta in effects.items():
+        prompt += (
+            f"実行されたアクション:\n{actions_text}\n\n"
+            "これらのアクションが市場に与える影響をJSON形式で回答してください。\n"
+            "各エージェントの評判・規模・行動内容を考慮し、現実的な影響度を判断してください。\n"
+            "{\n"
+            '  "dimension_deltas": {"user_adoption": <-0.1〜+0.1>, ...},\n'
+            '  "macro_deltas": {"economic_sentiment": <-0.05〜+0.05>, ...}\n'
+            "}\n"
+            "影響がないディメンションは0.0にしてください。"
+        )
+
+        try:
+            response = await self.llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt=(
+                    "あなたはサービスビジネスの市場アナリストです。"
+                    "エージェントの行動がサービスの市場にどう影響するかを、"
+                    "行動の種類・エージェントの評判と規模・現在の市場状況を考慮して判断してください。"
+                ),
+            )
+            self._llm_call_count += 1
+
+            # ディメンションdeltaを適用
+            raw_dims = response.get("dimension_deltas", {})
+            for dim_key, delta in raw_dims.items():
                 try:
                     dim = MarketDimension(dim_key)
-                    scaled_delta = delta * rep_multiplier
+                    clamped_delta = max(-0.1, min(0.1, float(delta)))
                     self.market.dimensions[dim] = max(
-                        0.0, min(1.0, self.market.dimensions[dim] + scaled_delta)
+                        0.0, min(1.0, self.market.dimensions[dim] + clamped_delta)
                     )
-                    market_effects.append({
-                        "agent_id": action.get("agent_id", ""),
-                        "action_type": action_type,
-                        "dimension": dim_key,
-                        "dimension_delta": scaled_delta,
-                    })
-                except ValueError:
+                    if abs(clamped_delta) > 0.001:
+                        market_effects.append({
+                            "agent_id": actions[0].get("agent_id", "") if actions else "",
+                            "action_type": "aggregate",
+                            "dimension": dim_key,
+                            "dimension_delta": clamped_delta,
+                        })
+                except (ValueError, TypeError):
                     pass
 
-            # パラメータで指定されたディメンションにも追加影響
-            if dim_str and dim_str not in effects:
-                try:
-                    dim = MarketDimension(dim_str)
-                    extra_delta = 0.005 * rep_multiplier
-                    self.market.dimensions[dim] = max(
-                        0.0, min(1.0, self.market.dimensions[dim] + extra_delta)
-                    )
-                except ValueError:
-                    pass
+            # マクロdeltaを適用
+            raw_macros = response.get("macro_deltas", {})
+            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"):
+                if key in raw_macros:
+                    try:
+                        delta = max(-0.05, min(0.05, float(raw_macros[key])))
+                        current = getattr(self.market, key)
+                        setattr(self.market, key, max(0.0, min(1.0, current + delta)))
+                    except (ValueError, TypeError):
+                        pass
+
+        except Exception:
+            logger.warning("LLM市場更新失敗、市場は変化なし")
 
         return market_effects
 

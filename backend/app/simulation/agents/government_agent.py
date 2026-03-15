@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from app.simulation.agents.base import AgentAction, BaseAgent
-from app.simulation.models import ServiceMarketState
+from app.simulation.agents.base import BaseAgent
 
 
 class GovernmentAgent(BaseAgent):
@@ -23,39 +22,3 @@ class GovernmentAgent(BaseAgent):
             "partner_public",     # 官民連携
             "issue_guideline",    # ガイドライン策定
         ]
-
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        match action.action_type:
-            case "regulate":
-                self.state.cost += 20
-                self._improve_capability("regulatory_risk", 0.2)
-                self.state.reputation += 0.02
-            case "subsidize":
-                self.state.cost += 50
-                self._improve_capability("funding_climate", 0.15)
-                self._improve_capability("user_adoption", 0.08)
-                self.state.reputation += 0.05
-            case "certify":
-                self.state.cost += 10
-                self._improve_capability("market_awareness", 0.1)
-                self._improve_capability("regulatory_risk", -0.05)
-                self.state.reputation += 0.03
-            case "investigate":
-                self.state.cost += 15
-                self._improve_capability("regulatory_risk", 0.15)
-                self.state.reputation -= 0.02
-            case "deregulate":
-                self.state.cost += 5
-                self._improve_capability("regulatory_risk", -0.15)
-                self._improve_capability("ecosystem_health", 0.08)
-            case "partner_public":
-                self.state.cost += 30
-                self._improve_capability("user_adoption", 0.1)
-                self._improve_capability("market_awareness", 0.08)
-                self.state.reputation += 0.05
-            case "issue_guideline":
-                self.state.cost += 10
-                self._improve_capability("regulatory_risk", 0.05)
-                self._improve_capability("tech_maturity", 0.05)
-
-        self._clamp_state()

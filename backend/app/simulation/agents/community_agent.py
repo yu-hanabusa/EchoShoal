@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from app.simulation.agents.base import AgentAction, BaseAgent
-from app.simulation.models import ServiceMarketState
+from app.simulation.agents.base import BaseAgent
 
 
 class CommunityAgent(BaseAgent):
@@ -22,38 +21,3 @@ class CommunityAgent(BaseAgent):
             "observe",              # 様子見
             "publish_report",       # 調査レポート公開
         ]
-
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        match action.action_type:
-            case "endorse":
-                self.state.cost += 5
-                self._improve_capability("market_awareness", 0.12)
-                self._improve_capability("user_adoption", 0.08)
-                self.state.reputation += 0.05
-            case "set_standard":
-                self.state.cost += 20
-                self._improve_capability("tech_maturity", 0.15)
-                self._improve_capability("ecosystem_health", 0.1)
-                self.state.reputation += 0.08
-            case "reject_standard":
-                self.state.cost += 5
-                self._improve_capability("competitive_pressure", 0.1)
-                self._improve_capability("market_awareness", -0.05)
-                self.state.reputation -= 0.03
-            case "create_alternative":
-                self.state.cost += 30
-                self._improve_capability("competitive_pressure", 0.15)
-                self._improve_capability("ecosystem_health", 0.08)
-            case "educate_market":
-                self.state.cost += 10
-                self._improve_capability("market_awareness", 0.15)
-                self._improve_capability("user_adoption", 0.05)
-                self.state.reputation += 0.03
-            case "publish_report":
-                self.state.cost += 8
-                self._improve_capability("market_awareness", 0.1)
-                self.state.reputation += 0.05
-            case "observe":
-                pass  # 影響なし
-
-        self._clamp_state()

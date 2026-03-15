@@ -73,6 +73,7 @@ class AgentAction(BaseModel):
     description: str
     parameters: dict[str, Any] = Field(default_factory=dict)
     impact: dict[str, float] = Field(default_factory=dict)
+    self_impact: dict[str, float] = Field(default_factory=dict)
 
 
 # デフォルトの性格（パラメータ指定がない場合に使用）
@@ -175,10 +176,21 @@ class BaseAgent(ABC):
             self._execute_action(action, market)
             self._action_history.append(action)
 
-    @abstractmethod
     def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        """Execute a single action and update internal state."""
-        ...
+        """LLMが決めたself_impactに基づいてエージェント状態を更新する.
+
+        固定値は使用しない。LLMが行動選択時にself_impactも返すため、
+        それをそのまま適用する。
+        """
+        si = action.self_impact
+        if si:
+            self.state.cost += si.get("cost_delta", 0.0)
+            self.state.revenue += si.get("revenue_delta", 0.0)
+            self.state.reputation += si.get("reputation_delta", 0.0)
+            self.state.satisfaction += si.get("satisfaction_delta", 0.0)
+            self.state.headcount += int(si.get("headcount_delta", 0))
+            self.state.active_contracts += int(si.get("contracts_delta", 0))
+        self._clamp_state()
 
     def _clamp_state(self) -> None:
         """reputation と satisfaction を [0, 1] の範囲に制限する。"""
@@ -210,8 +222,11 @@ class BaseAgent(ABC):
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
             "上記の性格とシナリオに基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
             "あなたは完全に合理的ではありません。上記の性格傾向に従って判断してください。\n"
-            "parametersには必ず dimension（対象マーケットディメンション名）を含めてください。\n"
-            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {"dimension": "ディメンション名", ...}}]}'
+            "self_impactには、この行動によるあなた自身の状態変化を推定してください。\n"
+            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", '
+            '"parameters": {"dimension": "ディメンション名", ...}, '
+            '"self_impact": {"cost_delta": 数値, "revenue_delta": 数値, "reputation_delta": -0.1〜0.1, '
+            '"satisfaction_delta": -0.1〜0.1, "headcount_delta": 整数, "contracts_delta": 整数}}]}'
         )
 
     def _build_personality_prompt(self) -> str:
@@ -300,6 +315,7 @@ class BaseAgent(ABC):
                     action_type=action_type,
                     description=raw.get("description", ""),
                     parameters=raw.get("parameters", {}),
+                    self_impact=raw.get("self_impact", {}),
                 )
             )
         return actions

@@ -146,71 +146,9 @@ class EventScheduler:
         return events
 
     def _generate_static_events(self, scenario: ScenarioInput) -> list[MarketEvent]:
-        """LLM なしで静的にイベントを生成する（フォールバック）."""
-        events = []
-        mid = scenario.num_rounds // 2
+        """LLM なしのフォールバック — イベントなしを返す.
 
-        # 技術破壊シナリオ
-        if scenario.tech_disruption > 0.3:
-            events.append(MarketEvent(
-                name="競合技術の急速な進化",
-                event_type=EventType.TECH_DISRUPTION,
-                description="AIや新技術の急速な進化により市場環境が激変",
-                trigger_round=max(1, mid - 2),
-                duration=4,
-                impact=EventImpact(
-                    dimension_delta={
-                        "tech_maturity": 0.15,
-                        "competitive_pressure": 0.1,
-                    },
-                    tech_hype_delta=0.05,
-                ),
-            ))
-
-        # 経済ショック
-        if scenario.economic_climate < -0.3:
-            events.append(MarketEvent(
-                name="景気後退",
-                event_type=EventType.ECONOMIC_SHOCK,
-                description="景気後退によりIT投資が縮小",
-                trigger_round=max(1, mid - 3),
-                duration=6,
-                impact=EventImpact(
-                    dimension_delta={
-                        "funding_climate": -0.1,
-                        "revenue_potential": -0.08,
-                    },
-                    economic_sentiment_delta=-0.05,
-                ),
-            ))
-        elif scenario.economic_climate > 0.3:
-            events.append(MarketEvent(
-                name="IT投資拡大",
-                event_type=EventType.ECONOMIC_SHOCK,
-                description="好景気によりデジタル投資が拡大",
-                trigger_round=max(1, mid - 2),
-                duration=4,
-                impact=EventImpact(
-                    dimension_delta={
-                        "funding_climate": 0.1,
-                        "user_adoption": 0.08,
-                    },
-                    economic_sentiment_delta=0.05,
-                ),
-            ))
-
-        # 規制変更
-        if scenario.regulatory_change:
-            events.append(MarketEvent(
-                name="規制変更",
-                event_type=EventType.POLICY_CHANGE,
-                description=scenario.regulatory_change,
-                trigger_round=max(1, mid),
-                duration=3,
-                impact=EventImpact(
-                    dimension_delta={"regulatory_risk": 0.1},
-                    regulatory_pressure_delta=0.05,
-                ),
-            ))
-
-        return events
+        LLMが利用できない場合、根拠のない固定係数でイベントを作るより
+        イベントなしの方が誠実。
+        """
+        return []

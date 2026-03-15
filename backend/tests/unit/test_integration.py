@@ -20,10 +20,6 @@ class StubAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["adopt_service", "upskill"]
 
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        if action.action_type == "adopt_service":
-            self.state.headcount += 1
-
 
 def make_stub_agent(llm=None) -> StubAgent:
     profile = AgentProfile(name="Stub", agent_type="stub", stakeholder_type=StakeholderType.ENTERPRISE)
@@ -89,6 +85,7 @@ class TestScenarioToEngine:
 
     @pytest.mark.asyncio
     async def test_event_scheduler_generates_events(self):
+        """LLMなしの場合、静的イベントは空リストを返す."""
         scenario = ScenarioInput(
             description="AI技術の急速な普及によるサービス市場の変化を予測する",
             tech_disruption=0.8,
@@ -96,8 +93,7 @@ class TestScenarioToEngine:
         scheduler = EventScheduler(llm=None)
         events = await scheduler.generate_from_scenario(scenario)
 
-        assert len(events) >= 1
-        assert any(e.event_type == EventType.TECH_DISRUPTION for e in events)
+        assert len(events) == 0
 
     @pytest.mark.asyncio
     async def test_engine_with_events(self):
@@ -116,8 +112,12 @@ class TestScenarioToEngine:
             AgentAction(agent_id=agent.id, action_type="adopt_service", description="テスト")
         ])
 
+        mock_llm = MagicMock()
+        mock_llm.generate_json = AsyncMock(return_value={"dimension_deltas": {}, "macro_deltas": {}})
+        mock_llm.generate = AsyncMock(return_value="")
+
         engine = SimulationEngine(
-            agents=[agent], llm=MagicMock(),
+            agents=[agent], llm=mock_llm,
             event_scheduler=scheduler,
         )
 
@@ -141,8 +141,12 @@ class TestScenarioToEngine:
         agent = make_stub_agent()
         agent.decide_actions = AsyncMock(return_value=[])
 
+        mock_llm = MagicMock()
+        mock_llm.generate_json = AsyncMock(return_value={"dimension_deltas": {}, "macro_deltas": {}})
+        mock_llm.generate = AsyncMock(return_value="")
+
         engine = SimulationEngine(
-            agents=[agent], llm=MagicMock(), on_progress=on_progress
+            agents=[agent], llm=mock_llm, on_progress=on_progress
         )
 
         with patch.object(engine, "_select_active_agents", return_value=[]):
@@ -155,7 +159,8 @@ class TestScenarioToEngine:
 # --- Enterprise adopt_service テスト ---
 
 class TestEnterpriseAdoptService:
-    def test_adopt_service_improves_capability(self):
+    def test_adopt_service_applies_self_impact(self):
+        """adopt_service with self_impact updates agent state."""
         profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
         state = AgentState(headcount=50)
         agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
@@ -164,14 +169,15 @@ class TestEnterpriseAdoptService:
             agent_id=agent.id,
             action_type="adopt_service",
             description="サービス採用",
-            parameters={"dimension": "user_adoption"},
+            self_impact={"cost_delta": 20, "satisfaction_delta": 0.05},
         )
         agent._execute_action(action, ServiceMarketState())
 
-        assert agent.state.capabilities.get(MarketDimension.USER_ADOPTION, 0) == pytest.approx(0.1)
         assert agent.state.cost == 20
+        assert agent.state.satisfaction == pytest.approx(0.55)
 
-    def test_partner_boosts_ecosystem(self):
+    def test_partner_applies_self_impact(self):
+        """partner with self_impact updates agent state."""
         profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
         state = AgentState(headcount=50)
         agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
@@ -180,10 +186,11 @@ class TestEnterpriseAdoptService:
             agent_id=agent.id,
             action_type="partner",
             description="提携",
+            self_impact={"reputation_delta": 0.08},
         )
         agent._execute_action(action, ServiceMarketState())
 
-        assert agent.state.capabilities.get(MarketDimension.ECOSYSTEM_HEALTH, 0) == pytest.approx(0.08)
+        assert agent.state.reputation == pytest.approx(0.58)
 
 
 # --- レートリミットテスト ---

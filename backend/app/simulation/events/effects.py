@@ -24,7 +24,7 @@ def apply_event(event: MarketEvent, market: ServiceMarketState) -> list[str]:
             dim = MarketDimension(dim_key)
         except ValueError:
             continue
-        old = market.dimensions.get(dim, 0.3)
+        old = market.dimensions.get(dim, 0.0)
         market.dimensions[dim] = max(0.0, min(1.0, old + delta))
 
     # マクロ指標

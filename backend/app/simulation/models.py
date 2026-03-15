@@ -41,21 +41,21 @@ class ServiceMarketState(BaseModel):
     service_name: str = ""
     service_category: str = ""
 
-    # 各ディメンションの値 (0.0〜1.0)
+    # 各ディメンションの値 (0.0〜1.0, LLMがシナリオから初期化)
     dimensions: dict[MarketDimension, float] = Field(
-        default_factory=lambda: {d: 0.3 for d in MarketDimension}
+        default_factory=lambda: {d: 0.0 for d in MarketDimension}
     )
 
-    # マクロ環境指標 (0.0〜1.0)
-    economic_sentiment: float = 0.5       # 経済センチメント
-    tech_hype_level: float = 0.5          # 技術ハイプレベル
-    regulatory_pressure: float = 0.3      # 規制圧力
-    remote_work_adoption: float = 0.45    # リモートワーク普及率
-    ai_disruption_level: float = 0.3      # AI破壊的変化の度合い
+    # マクロ環境指標 (0.0〜1.0, LLMがシナリオから初期化)
+    economic_sentiment: float = 0.0
+    tech_hype_level: float = 0.0
+    regulatory_pressure: float = 0.0
+    remote_work_adoption: float = 0.0
+    ai_disruption_level: float = 0.0
 
     def pressure_ratio(self, dim: MarketDimension) -> float:
         """Returns dimension pressure ratio. >0.5 means high pressure."""
-        return self.dimensions.get(dim, 0.3)
+        return self.dimensions.get(dim, 0.0)
 
 
 class ScenarioInput(BaseModel):
