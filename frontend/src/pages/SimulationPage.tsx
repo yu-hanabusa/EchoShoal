@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSimulation } from "../api/client";
-import ActionTimeline from "../components/ActionTimeline";
+import RelationshipGraph from "../components/RelationshipGraph";
 import ProgressBar from "../components/ProgressBar";
 import MarketChart from "../components/MarketChart";
 import AgentTable from "../components/AgentTable";
@@ -132,16 +132,13 @@ export default function SimulationPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <MarketChart rounds={result.rounds} title="サービスの成長指標の変化" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />
-              <MarketChart rounds={result.rounds} title="サービスを取り巻くリスクの変化" dimensions={["competitive_pressure", "regulatory_risk", "tech_maturity", "funding_climate"]} />
-            </div>
+            <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} />
 
             <AgentTable agents={result.summary.agents} />
 
-            <div className="bg-surface-0 rounded-lg border border-border p-5">
-              <h3 className="text-sm font-medium text-text-primary mb-4">行動タイムライン</h3>
-              <ActionTimeline rounds={result.rounds} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <MarketChart rounds={result.rounds} title="サービスの成長指標の変化" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />
+              <MarketChart rounds={result.rounds} title="サービスを取り巻くリスクの変化" dimensions={["competitive_pressure", "regulatory_risk", "tech_maturity", "funding_climate"]} />
             </div>
           </div>
         )}
