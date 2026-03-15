@@ -9,78 +9,64 @@ from app.simulation.agents.base import (
     AgentState,
     BaseAgent,
 )
-from app.simulation.agents.enterprise import EnterpriseITAgent
-from app.simulation.agents.freelancer import FreelancerAgent
-from app.simulation.agents.ses_company import SESCompanyAgent
-from app.simulation.agents.sier_company import SIerCompanyAgent
-from app.simulation.models import Industry, SkillCategory
+from app.simulation.agents.community_agent import CommunityAgent
+from app.simulation.agents.enterprise_agent import EnterpriseAgent
+from app.simulation.agents.freelancer_agent import FreelancerAgent
+from app.simulation.agents.government_agent import GovernmentAgent
+from app.simulation.agents.indie_dev_agent import IndieDevAgent
+from app.simulation.agents.investor_agent import InvestorAgent
+from app.simulation.agents.platformer_agent import PlatformerAgent
+from app.simulation.models import StakeholderType, MarketDimension
 
 
 def create_default_agents(llm: LLMRouter) -> list[BaseAgent]:
-    """Create a representative set of agents for the Japanese IT market.
+    """Create a representative set of stakeholder agents for service impact simulation.
 
-    各エージェントには業界・規模に応じた性格（ペルソナ）を設定する。
+    各エージェントにはステークホルダー種別に応じた性格（ペルソナ）を設定する。
     """
     agents: list[BaseAgent] = []
 
-    # --- SES企業 (3社: 大手・中堅・零細) ---
+    # --- 企業 (2社: 大手・スタートアップ) ---
 
-    agents.append(SESCompanyAgent(
+    agents.append(EnterpriseAgent(
         profile=AgentProfile(
-            name="テックスタッフ",
-            agent_type="SES企業",
-            industry=Industry.SES,
-            description="老舗SES大手。安定した顧客基盤を持つが組織が硬直化している。",
+            name="大手テクノロジー企業A",
+            agent_type="大手企業",
+            stakeholder_type=StakeholderType.ENTERPRISE,
+            description="国内大手IT企業。既存事業の防衛意識が強く、新サービスには慎重だが資金力は豊富。",
         ),
         state=AgentState(
-            headcount=200, revenue=600, cost=400,
-            skills={SkillCategory.WEB_BACKEND: 0.5, SkillCategory.CLOUD_INFRA: 0.4},
+            headcount=500, revenue=3000, cost=2500,
+            capabilities={
+                MarketDimension.TECH_MATURITY: 0.6,
+                MarketDimension.MARKET_AWARENESS: 0.7,
+            },
         ),
         llm=llm,
         personality=AgentPersonality(
             conservatism=0.8,
-            bandwagon=0.4,
-            overconfidence=0.3,
-            sunk_cost_bias=0.7,
-            info_sensitivity=0.5,
-            noise=0.05,
-            description="大企業特有の意思決定の遅さがあり、既存顧客を失う恐怖から新規事業に踏み切れない。",
+            bandwagon=0.3,
+            overconfidence=0.4,
+            sunk_cost_bias=0.8,
+            info_sensitivity=0.6,
+            noise=0.03,
+            description="大企業特有の意思決定の遅さ。既存事業を守る意識が強く、破壊的サービスには防衛的に反応する。",
         ),
     ))
 
-    agents.append(SESCompanyAgent(
+    agents.append(EnterpriseAgent(
         profile=AgentProfile(
-            name="ITサービス中部",
-            agent_type="SES企業",
-            industry=Industry.SES,
-            description="名古屋拠点の中堅SES。製造業向けが主力だが情報が遅い。",
+            name="スタートアップB",
+            agent_type="スタートアップ",
+            stakeholder_type=StakeholderType.ENTERPRISE,
+            description="設立2年のスタートアップ。アグレッシブに市場を狙うが経験不足。",
         ),
         state=AgentState(
-            headcount=50, revenue=150, cost=100,
-            skills={SkillCategory.WEB_BACKEND: 0.4, SkillCategory.LEGACY: 0.6},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.6,
-            bandwagon=0.7,
-            overconfidence=0.3,
-            sunk_cost_bias=0.5,
-            info_sensitivity=0.3,
-            noise=0.15,
-            description="地方企業で東京のトレンドに半年遅れで追随する。判断にムラがある。",
-        ),
-    ))
-
-    agents.append(SESCompanyAgent(
-        profile=AgentProfile(
-            name="エスイーネクスト",
-            agent_type="SES企業",
-            industry=Industry.SES,
-            description="設立3年の少数精鋭SES。成長意欲が強いが経験不足。",
-        ),
-        state=AgentState(
-            headcount=15, revenue=40, cost=30,
-            skills={SkillCategory.WEB_FRONTEND: 0.3, SkillCategory.MOBILE: 0.3},
+            headcount=15, revenue=30, cost=50,
+            capabilities={
+                MarketDimension.TECH_MATURITY: 0.4,
+                MarketDimension.USER_ADOPTION: 0.3,
+            },
         ),
         llm=llm,
         personality=AgentPersonality(
@@ -89,175 +75,176 @@ def create_default_agents(llm: LLMRouter) -> list[BaseAgent]:
             overconfidence=0.8,
             sunk_cost_bias=0.2,
             info_sensitivity=0.6,
-            noise=0.1,
-            description="若い経営者が率いており、身の丈に合わない案件にも挑戦しがち。失敗から学ぶタイプ。",
-        ),
-    ))
-
-    # --- SIer企業 (2社: 大手・中堅) ---
-
-    agents.append(SIerCompanyAgent(
-        profile=AgentProfile(
-            name="日本システム開発",
-            agent_type="SIer企業",
-            industry=Industry.SIER,
-            description="官公庁・金融向け大手SIer。レガシー資産が膨大。",
-        ),
-        state=AgentState(
-            headcount=500, revenue=3000, cost=2500,
-            skills={SkillCategory.ERP: 0.6, SkillCategory.LEGACY: 0.7, SkillCategory.CLOUD_INFRA: 0.3},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.9,
-            bandwagon=0.3,
-            overconfidence=0.4,
-            sunk_cost_bias=0.9,
-            info_sensitivity=0.6,
-            noise=0.03,
-            description="巨大組織で変化が極端に遅い。COBOL・メインフレームの既存資産に強い愛着がある。稟議に3ヶ月かかる。",
-        ),
-    ))
-
-    agents.append(SIerCompanyAgent(
-        profile=AgentProfile(
-            name="デジタルソリューションズ",
-            agent_type="SIer企業",
-            industry=Industry.SIER,
-            description="DX支援に注力する中堅SIer。大手の動向を気にする。",
-        ),
-        state=AgentState(
-            headcount=80, revenue=500, cost=400,
-            skills={SkillCategory.WEB_BACKEND: 0.5, SkillCategory.AI_ML: 0.3},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.4,
-            bandwagon=0.6,
-            overconfidence=0.4,
-            sunk_cost_bias=0.3,
-            info_sensitivity=0.7,
-            noise=0.08,
-            description="中堅で柔軟だが、大手SIerの動向を見て追随することが多い。独自色を出そうとしつつ結局は横並び。",
-        ),
-    ))
-
-    # --- フリーランス (3人: ベテラン・中堅・新人) ---
-
-    agents.append(FreelancerAgent(
-        profile=AgentProfile(
-            name="田中太郎",
-            agent_type="フリーランス",
-            industry=Industry.FREELANCE,
-            description="クラウドインフラに強いベテランフリーランス。15年のキャリア。",
-        ),
-        state=AgentState(
-            headcount=1, revenue=90, cost=5,
-            skills={SkillCategory.CLOUD_INFRA: 0.9, SkillCategory.WEB_BACKEND: 0.8},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.1,
-            bandwagon=0.2,
-            overconfidence=0.9,
-            sunk_cost_bias=0.3,
-            info_sensitivity=0.6,
             noise=0.12,
-            description="経験豊富で自信過剰。「俺なら何でもできる」と思いがち。高単価案件を狙いすぎて空振りすることも。",
+            description="若い経営チームが率いる。市場機会に素早く反応するが、身の丈に合わない勝負をしがち。",
         ),
     ))
+
+    # --- フリーランス (1人) ---
 
     agents.append(FreelancerAgent(
         profile=AgentProfile(
-            name="佐藤花子",
+            name="フリーランスC",
             agent_type="フリーランス",
-            industry=Industry.FREELANCE,
-            description="フロントエンド中心の堅実なフリーランス。7年目。",
+            stakeholder_type=StakeholderType.FREELANCER,
+            description="フルスタックエンジニア。新しいツールやサービスの早期採用者。",
         ),
         state=AgentState(
-            headcount=1, revenue=65, cost=3,
-            skills={SkillCategory.WEB_FRONTEND: 0.7, SkillCategory.MOBILE: 0.5},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.5,
-            bandwagon=0.3,
-            overconfidence=0.3,
-            sunk_cost_bias=0.4,
-            info_sensitivity=0.7,
-            noise=0.08,
-            description="バランスの取れた判断ができる堅実派。データを見て意思決定するタイプ。",
-        ),
-    ))
-
-    agents.append(FreelancerAgent(
-        profile=AgentProfile(
-            name="鈴木一郎",
-            agent_type="フリーランス",
-            industry=Industry.FREELANCE,
-            description="独立1年目の駆け出しフリーランス。不安と期待が入り混じる。",
-        ),
-        state=AgentState(
-            headcount=1, revenue=40, cost=2,
-            skills={SkillCategory.WEB_BACKEND: 0.3, SkillCategory.AI_ML: 0.2},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.4,
-            bandwagon=0.8,
-            overconfidence=0.3,
-            sunk_cost_bias=0.2,
-            info_sensitivity=0.4,
-            noise=0.2,
-            description="新人で不安が大きく、SNSやコミュニティの意見に流されやすい。「みんながAIやってるから自分も」と考えがち。判断が大きくブレる。",
-        ),
-    ))
-
-    # --- 事業会社IT部門 (2社) ---
-
-    agents.append(EnterpriseITAgent(
-        profile=AgentProfile(
-            name="メガバンクIT部",
-            agent_type="事業会社IT",
-            industry=Industry.ENTERPRISE_IT,
-            description="メガバンクの情報システム部。金融規制下で極めて保守的。",
-        ),
-        state=AgentState(
-            headcount=30, revenue=0, cost=500,
-            skills={SkillCategory.LEGACY: 0.8, SkillCategory.SECURITY: 0.6},
-        ),
-        llm=llm,
-        personality=AgentPersonality(
-            conservatism=0.95,
-            bandwagon=0.2,
-            overconfidence=0.1,
-            sunk_cost_bias=0.9,
-            info_sensitivity=0.5,
-            noise=0.02,
-            description="金融庁の規制と内部監査があり、新技術の導入は年単位の検討が必要。COBOLの基幹系を20年以上運用しており、刷新の議論は出るが毎回見送り。",
-        ),
-    ))
-
-    agents.append(EnterpriseITAgent(
-        profile=AgentProfile(
-            name="製造業DX推進室",
-            agent_type="事業会社IT",
-            industry=Industry.ENTERPRISE_IT,
-            description="製造業のDX推進専門チーム。経営の期待は大きいが経験不足。",
-        ),
-        state=AgentState(
-            headcount=8, revenue=0, cost=150,
-            skills={SkillCategory.ERP: 0.4, SkillCategory.CLOUD_INFRA: 0.2},
+            headcount=1, revenue=80, cost=5,
+            capabilities={
+                MarketDimension.TECH_MATURITY: 0.7,
+                MarketDimension.USER_ADOPTION: 0.5,
+            },
         ),
         llm=llm,
         personality=AgentPersonality(
             conservatism=0.3,
-            bandwagon=0.6,
+            bandwagon=0.4,
             overconfidence=0.5,
             sunk_cost_bias=0.3,
-            info_sensitivity=0.5,
+            info_sensitivity=0.7,
             noise=0.1,
-            description="経営陣から「DXやれ」と言われて作られた部署。やる気はあるが何から手をつけていいか分からず、展示会で見たソリューションに飛びつきがち。",
+            description="技術的な好奇心が強く、新サービスを積極的に試す。実務での有用性を重視する堅実な判断。",
+        ),
+    ))
+
+    # --- 個人開発者 (1人) ---
+
+    agents.append(IndieDevAgent(
+        profile=AgentProfile(
+            name="個人開発者D",
+            agent_type="個人開発者",
+            stakeholder_type=StakeholderType.INDIE_DEVELOPER,
+            description="副業で個人開発を行う。対象サービスと類似の領域で競合プロダクトを検討中。",
+        ),
+        state=AgentState(
+            headcount=1, revenue=10, cost=2,
+            capabilities={
+                MarketDimension.TECH_MATURITY: 0.5,
+                MarketDimension.COMPETITIVE_PRESSURE: 0.2,
+            },
+        ),
+        llm=llm,
+        personality=AgentPersonality(
+            conservatism=0.3,
+            bandwagon=0.7,
+            overconfidence=0.4,
+            sunk_cost_bias=0.3,
+            info_sensitivity=0.5,
+            noise=0.15,
+            description="SNSやコミュニティの意見に影響されやすい。「自分でも作れる」と考えがちだが、完成まで持っていく力はある。",
+        ),
+    ))
+
+    # --- 行政 (1機関) ---
+
+    agents.append(GovernmentAgent(
+        profile=AgentProfile(
+            name="デジタル庁",
+            agent_type="行政",
+            stakeholder_type=StakeholderType.GOVERNMENT,
+            description="デジタル社会推進を担う政府機関。規制とイノベーション促進のバランスを取る。",
+        ),
+        state=AgentState(
+            headcount=200, revenue=0, cost=500,
+            capabilities={
+                MarketDimension.REGULATORY_RISK: 0.7,
+                MarketDimension.MARKET_AWARENESS: 0.4,
+            },
+        ),
+        llm=llm,
+        personality=AgentPersonality(
+            conservatism=0.7,
+            bandwagon=0.3,
+            overconfidence=0.2,
+            sunk_cost_bias=0.6,
+            info_sensitivity=0.5,
+            noise=0.05,
+            description="政策決定に時間がかかるが、一度方針を決めると大きな影響力を持つ。国際動向を見て判断する傾向。",
+        ),
+    ))
+
+    # --- 投資家/VC (1社) ---
+
+    agents.append(InvestorAgent(
+        profile=AgentProfile(
+            name="VCファンドE",
+            agent_type="投資家/VC",
+            stakeholder_type=StakeholderType.INVESTOR,
+            description="国内有力VCファンド。SaaS・AI領域に注力。ポートフォリオとのシナジーを重視。",
+        ),
+        state=AgentState(
+            headcount=20, revenue=500, cost=100,
+            capabilities={
+                MarketDimension.FUNDING_CLIMATE: 0.8,
+                MarketDimension.MARKET_AWARENESS: 0.6,
+            },
+        ),
+        llm=llm,
+        personality=AgentPersonality(
+            conservatism=0.4,
+            bandwagon=0.5,
+            overconfidence=0.6,
+            sunk_cost_bias=0.4,
+            info_sensitivity=0.8,
+            noise=0.08,
+            description="データドリブンな投資判断。ハイプに敏感だが、最終的にはユニットエコノミクスを重視する。",
+        ),
+    ))
+
+    # --- プラットフォーマー (1社) ---
+
+    agents.append(PlatformerAgent(
+        profile=AgentProfile(
+            name="グローバルクラウドF",
+            agent_type="プラットフォーマー",
+            stakeholder_type=StakeholderType.PLATFORMER,
+            description="グローバルクラウドプラットフォーム。あらゆる領域で類似サービスを展開可能。",
+        ),
+        state=AgentState(
+            headcount=10000, revenue=50000, cost=40000,
+            capabilities={
+                MarketDimension.TECH_MATURITY: 0.9,
+                MarketDimension.COMPETITIVE_PRESSURE: 0.8,
+            },
+        ),
+        llm=llm,
+        personality=AgentPersonality(
+            conservatism=0.3,
+            bandwagon=0.2,
+            overconfidence=0.7,
+            sunk_cost_bias=0.3,
+            info_sensitivity=0.8,
+            noise=0.05,
+            description="市場が十分に大きいと判断すれば競合機能を即座にリリースする。小さい市場は無視する合理的判断。",
+        ),
+    ))
+
+    # --- 業界団体/コミュニティ (1団体) ---
+
+    agents.append(CommunityAgent(
+        profile=AgentProfile(
+            name="業界コミュニティG",
+            agent_type="業界団体",
+            stakeholder_type=StakeholderType.COMMUNITY,
+            description="関連技術のオープンソースコミュニティ。標準化と知識共有を推進。",
+        ),
+        state=AgentState(
+            headcount=50, revenue=10, cost=15,
+            capabilities={
+                MarketDimension.ECOSYSTEM_HEALTH: 0.7,
+                MarketDimension.MARKET_AWARENESS: 0.5,
+            },
+        ),
+        llm=llm,
+        personality=AgentPersonality(
+            conservatism=0.4,
+            bandwagon=0.3,
+            overconfidence=0.3,
+            sunk_cost_bias=0.5,
+            info_sensitivity=0.6,
+            noise=0.08,
+            description="技術的公正性を重視。オープン性を好み、ベンダーロックインには批判的。",
         ),
     ))
 

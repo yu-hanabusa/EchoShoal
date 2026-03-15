@@ -2,57 +2,68 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.llm.router import LLMRouter, TaskType
 from app.core.nlp.analyzer import AnalysisResult, JapaneseAnalyzer
-from app.simulation.models import Industry, ScenarioInput, SkillCategory
+from app.simulation.models import StakeholderType, ScenarioInput, MarketDimension
 
 logger = logging.getLogger(__name__)
 
-# 技術名 → SkillCategory へのマッピング
-_TECH_TO_CATEGORY: dict[str, SkillCategory] = {
-    # レガシー
-    "COBOL": SkillCategory.LEGACY, "VB.NET": SkillCategory.LEGACY,
-    "メインフレーム": SkillCategory.LEGACY, "AS/400": SkillCategory.LEGACY,
-    # Web フロントエンド
-    "React": SkillCategory.WEB_FRONTEND, "Vue.js": SkillCategory.WEB_FRONTEND,
-    "TypeScript": SkillCategory.WEB_FRONTEND, "Angular": SkillCategory.WEB_FRONTEND,
-    "Next.js": SkillCategory.WEB_FRONTEND,
-    # Web バックエンド
-    "Python": SkillCategory.WEB_BACKEND, "Go": SkillCategory.WEB_BACKEND,
-    "Node.js": SkillCategory.WEB_BACKEND, "Java": SkillCategory.WEB_BACKEND,
-    "PHP": SkillCategory.WEB_BACKEND, "Ruby": SkillCategory.WEB_BACKEND,
-    # クラウド
-    "AWS": SkillCategory.CLOUD_INFRA, "GCP": SkillCategory.CLOUD_INFRA,
-    "Azure": SkillCategory.CLOUD_INFRA, "Kubernetes": SkillCategory.CLOUD_INFRA,
-    "Docker": SkillCategory.CLOUD_INFRA, "Terraform": SkillCategory.CLOUD_INFRA,
-    # AI/ML
-    "PyTorch": SkillCategory.AI_ML, "TensorFlow": SkillCategory.AI_ML,
-    "LLM": SkillCategory.AI_ML, "ChatGPT": SkillCategory.AI_ML,
-    "GPT-4": SkillCategory.AI_ML, "Claude": SkillCategory.AI_ML,
-    "Gemini": SkillCategory.AI_ML, "生成AI": SkillCategory.AI_ML,
-    "機械学習": SkillCategory.AI_ML, "深層学習": SkillCategory.AI_ML,
-    # モバイル
-    "Swift": SkillCategory.MOBILE, "Kotlin": SkillCategory.MOBILE,
-    "Flutter": SkillCategory.MOBILE, "React Native": SkillCategory.MOBILE,
-    # ERP
-    "SAP": SkillCategory.ERP, "Oracle ERP": SkillCategory.ERP,
-    "Salesforce": SkillCategory.ERP, "ServiceNow": SkillCategory.ERP,
+# 技術名 → MarketDimension へのマッピング
+_TECH_TO_DIMENSION: dict[str, MarketDimension] = {
+    # AI/ML関連 → tech_maturity
+    "PyTorch": MarketDimension.TECH_MATURITY, "TensorFlow": MarketDimension.TECH_MATURITY,
+    "LLM": MarketDimension.TECH_MATURITY, "ChatGPT": MarketDimension.TECH_MATURITY,
+    "GPT-4": MarketDimension.TECH_MATURITY, "Claude": MarketDimension.TECH_MATURITY,
+    "Gemini": MarketDimension.TECH_MATURITY, "生成AI": MarketDimension.TECH_MATURITY,
+    "機械学習": MarketDimension.TECH_MATURITY, "深層学習": MarketDimension.TECH_MATURITY,
+    # クラウド → ecosystem_health
+    "AWS": MarketDimension.ECOSYSTEM_HEALTH, "GCP": MarketDimension.ECOSYSTEM_HEALTH,
+    "Azure": MarketDimension.ECOSYSTEM_HEALTH, "Kubernetes": MarketDimension.ECOSYSTEM_HEALTH,
+    "Docker": MarketDimension.ECOSYSTEM_HEALTH,
+    # Web技術 → tech_maturity
+    "React": MarketDimension.TECH_MATURITY, "Vue.js": MarketDimension.TECH_MATURITY,
+    "Next.js": MarketDimension.TECH_MATURITY, "Python": MarketDimension.TECH_MATURITY,
+    "Go": MarketDimension.TECH_MATURITY, "Node.js": MarketDimension.TECH_MATURITY,
+    # モバイル → user_adoption
+    "Swift": MarketDimension.USER_ADOPTION, "Kotlin": MarketDimension.USER_ADOPTION,
+    "Flutter": MarketDimension.USER_ADOPTION, "React Native": MarketDimension.USER_ADOPTION,
+    # SaaS/プラットフォーム → competitive_pressure
+    "SAP": MarketDimension.COMPETITIVE_PRESSURE, "Salesforce": MarketDimension.COMPETITIVE_PRESSURE,
+    "ServiceNow": MarketDimension.COMPETITIVE_PRESSURE,
 }
 
-# 組織名キーワード → Industry へのマッピング
-_ORG_KEYWORDS_TO_INDUSTRY: dict[str, Industry] = {
-    "SIer": Industry.SIER, "SI企業": Industry.SIER,
-    "SES": Industry.SES,
-    "フリーランス": Industry.FREELANCE,
-    "スタートアップ": Industry.WEB_STARTUP, "Web系": Industry.WEB_STARTUP,
-    "情シス": Industry.ENTERPRISE_IT, "情報システム": Industry.ENTERPRISE_IT,
-    "DX推進": Industry.ENTERPRISE_IT,
+# 組織名キーワード → StakeholderType へのマッピング
+_ORG_KEYWORDS_TO_STAKEHOLDER: dict[str, StakeholderType] = {
+    "企業": StakeholderType.ENTERPRISE, "大手": StakeholderType.ENTERPRISE,
+    "スタートアップ": StakeholderType.ENTERPRISE,
+    "フリーランス": StakeholderType.FREELANCER,
+    "個人開発": StakeholderType.INDIE_DEVELOPER, "インディー": StakeholderType.INDIE_DEVELOPER,
+    "行政": StakeholderType.GOVERNMENT, "政府": StakeholderType.GOVERNMENT,
+    "デジタル庁": StakeholderType.GOVERNMENT,
+    "VC": StakeholderType.INVESTOR, "投資": StakeholderType.INVESTOR,
+    "ファンド": StakeholderType.INVESTOR,
+    "AWS": StakeholderType.PLATFORMER, "Google": StakeholderType.PLATFORMER,
+    "Microsoft": StakeholderType.PLATFORMER, "Apple": StakeholderType.PLATFORMER,
+    "コミュニティ": StakeholderType.COMMUNITY, "OSS": StakeholderType.COMMUNITY,
+    "業界団体": StakeholderType.COMMUNITY,
 }
+
+
+@dataclass
+class InterpolatedInfo:
+    """LLMが推定した不足情報（ユーザー未入力の情報を補間）."""
+    revenue_model: str = ""
+    price_range: str = ""
+    competitors: list[str] = field(default_factory=list)
+    target_users: str = ""
+    tech_stack: str = ""
+    team_size_estimate: str = ""
+    market_size_estimate: str = ""
+    confidence_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -60,10 +71,11 @@ class EnrichedScenario:
     """NLP解析で強化されたシナリオ情報."""
     original: ScenarioInput
     analysis: AnalysisResult
-    detected_skills: list[SkillCategory] = field(default_factory=list)
-    detected_industries: list[Industry] = field(default_factory=list)
+    detected_dimensions: list[MarketDimension] = field(default_factory=list)
+    detected_stakeholders: list[StakeholderType] = field(default_factory=list)
     detected_policies: list[str] = field(default_factory=list)
     context_summary: str = ""
+    interpolated_info: InterpolatedInfo = field(default_factory=InterpolatedInfo)
 
 
 class ScenarioAnalyzer:
@@ -78,27 +90,47 @@ class ScenarioAnalyzer:
         enriched = self.analyze(scenario)
 
         # LLMでパラメータを推定
-        if self._llm and (scenario.ai_acceleration == 0 and scenario.economic_shock == 0):
-            estimated = await self._estimate_params_with_llm(scenario.description)
+        if self._llm and (scenario.economic_climate == 0 and scenario.tech_disruption == 0):
+            estimated = await self._estimate_params_with_llm(scenario)
             if estimated:
-                enriched.original.ai_acceleration = estimated.get("ai_acceleration", 0.0)
-                enriched.original.economic_shock = estimated.get("economic_shock", 0.0)
-                if not scenario.policy_change and estimated.get("policy_change"):
-                    enriched.original.policy_change = estimated["policy_change"]
+                enriched.original.economic_climate = estimated.get("economic_climate", 0.0)
+                enriched.original.tech_disruption = estimated.get("tech_disruption", 0.0)
+                if not scenario.regulatory_change and estimated.get("regulatory_change"):
+                    enriched.original.regulatory_change = estimated["regulatory_change"]
                 logger.info(
-                    "LLMパラメータ推定: AI=%.1f, 経済=%.1f, 政策=%s",
-                    enriched.original.ai_acceleration,
-                    enriched.original.economic_shock,
-                    enriched.original.policy_change or "なし",
+                    "LLMパラメータ推定: 経済=%.1f, 技術破壊=%.1f, 規制=%s",
+                    enriched.original.economic_climate,
+                    enriched.original.tech_disruption,
+                    enriched.original.regulatory_change or "なし",
                 )
 
             # context_summaryを再構築（推定値を反映）
             enriched.context_summary = self._build_context_summary(
                 enriched.original,
-                enriched.detected_skills,
-                enriched.detected_industries,
+                enriched.detected_dimensions,
+                enriched.detected_stakeholders,
                 enriched.detected_policies,
             )
+
+        # LLMで不足情報を補間
+        if self._llm:
+            interpolated = await self._interpolate_missing_info(scenario)
+            if interpolated:
+                enriched.interpolated_info = interpolated
+                # 補間情報をcontext_summaryに追加
+                enriched.context_summary = self._build_context_summary(
+                    enriched.original,
+                    enriched.detected_dimensions,
+                    enriched.detected_stakeholders,
+                    enriched.detected_policies,
+                    interpolated,
+                )
+                logger.info(
+                    "LLM情報補間: 収益モデル=%s, 競合%d件, 信頼度メモ%d件",
+                    interpolated.revenue_model or "未推定",
+                    len(interpolated.competitors),
+                    len(interpolated.confidence_notes),
+                )
 
         return enriched
 
@@ -106,61 +138,114 @@ class ScenarioAnalyzer:
         """シナリオを解析して強化情報を返す."""
         analysis = self._analyzer.analyze(scenario.description)
 
-        # 技術名 → SkillCategory
-        detected_skills = list(set(
-            _TECH_TO_CATEGORY[tech]
+        # 技術名 → MarketDimension
+        detected_dimensions = list(set(
+            _TECH_TO_DIMENSION[tech]
             for tech in analysis.technologies
-            if tech in _TECH_TO_CATEGORY
+            if tech in _TECH_TO_DIMENSION
         ))
 
-        # 組織名キーワード → Industry
-        detected_industries = list(set(
-            industry
-            for keyword, industry in _ORG_KEYWORDS_TO_INDUSTRY.items()
+        # 組織名キーワード → StakeholderType
+        detected_stakeholders = list(set(
+            stakeholder
+            for keyword, stakeholder in _ORG_KEYWORDS_TO_STAKEHOLDER.items()
             if keyword in scenario.description
         ))
 
-        # ユーザー指定を優先しつつ、NLP検出を補完
-        merged_skills = list(set(scenario.focus_skills + detected_skills))
-        merged_industries = list(set(scenario.focus_industries + detected_industries))
-
         context_summary = self._build_context_summary(
-            scenario, merged_skills, merged_industries, analysis.policies,
+            scenario, detected_dimensions, detected_stakeholders, analysis.policies,
         )
 
         enriched = EnrichedScenario(
             original=scenario,
             analysis=analysis,
-            detected_skills=merged_skills,
-            detected_industries=merged_industries,
+            detected_dimensions=detected_dimensions,
+            detected_stakeholders=detected_stakeholders,
             detected_policies=analysis.policies,
             context_summary=context_summary,
         )
 
         logger.info(
-            "シナリオ解析完了: スキル%d件, 業界%d件, 政策%d件",
-            len(merged_skills), len(merged_industries), len(analysis.policies),
+            "シナリオ解析完了: ディメンション%d件, ステークホルダー%d件, 政策%d件",
+            len(detected_dimensions), len(detected_stakeholders), len(analysis.policies),
         )
 
         # ポリシー自動検出（NLPルールベース、LLM不要）
-        if not scenario.policy_change and analysis.policies:
-            enriched.original.policy_change = ", ".join(analysis.policies)
+        if not scenario.regulatory_change and analysis.policies:
+            enriched.original.regulatory_change = ", ".join(analysis.policies)
 
         return enriched
 
-    async def _estimate_params_with_llm(self, description: str) -> dict[str, Any] | None:
+    async def _interpolate_missing_info(self, scenario: ScenarioInput) -> InterpolatedInfo | None:
+        """LLMにサービス情報を渡し、不足している市場情報を推定させる."""
+        if not self._llm:
+            return None
+
+        prompt = (
+            "以下のサービス情報を分析し、シミュレーションに必要な不足情報を推定してください。\n"
+            "推定に自信がない項目は空文字にしてください。\n\n"
+            f"サービス名: {scenario.service_name or '未指定'}\n"
+            f"説明: {scenario.description}\n"
+            f"ターゲット市場: {scenario.target_market or '未指定'}\n"
+            f"URL: {scenario.service_url or 'なし'}\n\n"
+            "以下のJSON形式で回答してください:\n"
+            "{\n"
+            '  "revenue_model": "SaaS月額/フリーミアム/広告/マーケットプレイス等",\n'
+            '  "price_range": "無料/月額500円〜/年額10万円〜 等の推定価格帯",\n'
+            '  "competitors": ["競合サービス1", "競合サービス2", ...],\n'
+            '  "target_users": "ターゲットユーザー像の推定",\n'
+            '  "tech_stack": "推定される技術スタック",\n'
+            '  "team_size_estimate": "推定チーム規模（例: 5-10人のスタートアップ）",\n'
+            '  "market_size_estimate": "推定市場規模（例: 国内100億円規模）",\n'
+            '  "confidence_notes": ["推定根拠1", "推定根拠2", ...]\n'
+            "}"
+        )
+
+        try:
+            response = await self._llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt=(
+                    "あなたはサービスビジネスの専門アナリストです。"
+                    "入力された情報から、類似サービスの知識に基づいて不足情報を推定してください。"
+                    "推定に自信がない場合は空文字にしてください。"
+                ),
+            )
+            competitors = response.get("competitors", [])
+            if not isinstance(competitors, list):
+                competitors = []
+            notes = response.get("confidence_notes", [])
+            if not isinstance(notes, list):
+                notes = []
+
+            return InterpolatedInfo(
+                revenue_model=str(response.get("revenue_model", "")),
+                price_range=str(response.get("price_range", "")),
+                competitors=[str(c) for c in competitors[:10]],
+                target_users=str(response.get("target_users", "")),
+                tech_stack=str(response.get("tech_stack", "")),
+                team_size_estimate=str(response.get("team_size_estimate", "")),
+                market_size_estimate=str(response.get("market_size_estimate", "")),
+                confidence_notes=[str(n) for n in notes[:10]],
+            )
+        except Exception:
+            logger.warning("LLM情報補間失敗")
+            return None
+
+    async def _estimate_params_with_llm(self, scenario: ScenarioInput) -> dict[str, Any] | None:
         """LLMにシナリオテキストを渡してパラメータを推定させる."""
         if not self._llm:
             return None
 
         prompt = (
-            "以下のシナリオテキストを分析し、日本のIT人材市場シミュレーションのパラメータを推定してください。\n\n"
-            f"シナリオ:\n{description}\n\n"
+            "以下のシナリオテキストを分析し、サービスビジネスインパクトシミュレーションのパラメータを推定してください。\n\n"
+            f"対象サービス: {scenario.service_name or '未指定'}\n"
+            f"シナリオ:\n{scenario.description}\n\n"
             "以下のJSON形式で回答してください:\n"
             "{\n"
-            '  "ai_acceleration": <-1.0〜1.0の数値。AI技術の普及加速度。正=AI普及が加速、負=停滞>,\n'
-            '  "economic_shock": <-1.0〜1.0の数値。経済ショック。正=好景気、負=不況>,\n'
-            '  "policy_change": <関連する政策変更があれば文字列、なければnull>,\n'
+            '  "economic_climate": <-1.0〜1.0の数値。正=好景気、負=不況>,\n'
+            '  "tech_disruption": <-1.0〜1.0の数値。正=技術破壊が加速、負=安定>,\n'
+            '  "regulatory_change": <関連する規制変更があれば文字列、なければnull>,\n'
             '  "reasoning": <判断の根拠を1-2文で説明>\n'
             "}"
         )
@@ -169,19 +254,18 @@ class ScenarioAnalyzer:
             response = await self._llm.generate_json(
                 task_type=TaskType.AGENT_DECISION,
                 prompt=prompt,
-                system_prompt="あなたは日本のIT市場の専門アナリストです。シナリオテキストからシミュレーションパラメータを客観的に推定してください。",
+                system_prompt="あなたはサービスビジネスの専門アナリストです。シナリオからシミュレーションパラメータを客観的に推定してください。",
             )
-            # 値を -1.0〜1.0 にクランプ
-            ai = max(-1.0, min(1.0, float(response.get("ai_acceleration", 0))))
-            econ = max(-1.0, min(1.0, float(response.get("economic_shock", 0))))
+            econ = max(-1.0, min(1.0, float(response.get("economic_climate", 0))))
+            tech = max(-1.0, min(1.0, float(response.get("tech_disruption", 0))))
             reasoning = response.get("reasoning", "")
             if reasoning:
                 logger.info("LLMパラメータ推定根拠: %s", reasoning)
 
             return {
-                "ai_acceleration": ai,
-                "economic_shock": econ,
-                "policy_change": response.get("policy_change"),
+                "economic_climate": econ,
+                "tech_disruption": tech,
+                "regulatory_change": response.get("regulatory_change"),
             }
         except Exception:
             logger.warning("LLMパラメータ推定失敗、デフォルト値を使用")
@@ -190,30 +274,54 @@ class ScenarioAnalyzer:
     def _build_context_summary(
         self,
         scenario: ScenarioInput,
-        skills: list[SkillCategory],
-        industries: list[Industry],
+        dimensions: list[MarketDimension],
+        stakeholders: list[StakeholderType],
         policies: list[str],
+        interpolated: InterpolatedInfo | None = None,
     ) -> str:
         """シナリオの要約テキストを生成する（エージェントプロンプト注入用）."""
-        lines: list[str] = [scenario.description]
+        lines: list[str] = []
 
-        if skills:
-            skill_names = ", ".join(s.value for s in skills)
-            lines.append(f"注目スキル: {skill_names}")
-        if industries:
-            ind_names = ", ".join(i.value for i in industries)
-            lines.append(f"関連業界: {ind_names}")
+        if scenario.service_name:
+            lines.append(f"対象サービス: {scenario.service_name}")
+        lines.append(scenario.description)
+
+        if scenario.target_market:
+            lines.append(f"ターゲット市場: {scenario.target_market}")
+        if dimensions:
+            dim_names = ", ".join(d.value for d in dimensions)
+            lines.append(f"注目ディメンション: {dim_names}")
+        if stakeholders:
+            st_names = ", ".join(s.value for s in stakeholders)
+            lines.append(f"関連ステークホルダー: {st_names}")
         if policies:
             lines.append(f"関連政策: {', '.join(policies)}")
-        if scenario.ai_acceleration > 0.3:
-            lines.append(f"AI加速度が高い（{scenario.ai_acceleration:+.1f}）: AI技術の急速な普及が予想される")
-        elif scenario.ai_acceleration < -0.3:
-            lines.append(f"AI減速（{scenario.ai_acceleration:+.1f}）: AI導入が停滞する見通し")
-        if scenario.economic_shock < -0.3:
-            lines.append(f"経済ショック（{scenario.economic_shock:+.1f}）: 景気後退による投資縮小")
-        elif scenario.economic_shock > 0.3:
-            lines.append(f"経済好調（{scenario.economic_shock:+.1f}）: IT投資拡大の見通し")
-        if scenario.policy_change:
-            lines.append(f"政策変更: {scenario.policy_change}")
+        if scenario.tech_disruption > 0.3:
+            lines.append(f"技術破壊度が高い（{scenario.tech_disruption:+.1f}）: 急速な技術変化が予想される")
+        elif scenario.tech_disruption < -0.3:
+            lines.append(f"技術安定（{scenario.tech_disruption:+.1f}）: 技術変化は緩やか")
+        if scenario.economic_climate < -0.3:
+            lines.append(f"経済後退（{scenario.economic_climate:+.1f}）: 投資縮小の見通し")
+        elif scenario.economic_climate > 0.3:
+            lines.append(f"経済好調（{scenario.economic_climate:+.1f}）: 投資拡大の見通し")
+        if scenario.regulatory_change:
+            lines.append(f"規制変更: {scenario.regulatory_change}")
+
+        # LLM補間情報を追加
+        if interpolated:
+            interp_lines: list[str] = []
+            if interpolated.revenue_model:
+                interp_lines.append(f"収益モデル（推定）: {interpolated.revenue_model}")
+            if interpolated.price_range:
+                interp_lines.append(f"価格帯（推定）: {interpolated.price_range}")
+            if interpolated.competitors:
+                interp_lines.append(f"推定競合: {', '.join(interpolated.competitors)}")
+            if interpolated.target_users:
+                interp_lines.append(f"ターゲットユーザー（推定）: {interpolated.target_users}")
+            if interpolated.market_size_estimate:
+                interp_lines.append(f"市場規模（推定）: {interpolated.market_size_estimate}")
+            if interp_lines:
+                lines.append("\n【LLM推定による補間情報】")
+                lines.extend(interp_lines)
 
         return "\n".join(lines)

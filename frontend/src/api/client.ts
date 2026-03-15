@@ -84,6 +84,14 @@ export async function getSimulationGraph(jobId: string): Promise<{
   return request(`/simulations/${jobId}/graph`);
 }
 
+/** 2つのシミュレーションを比較 */
+export async function compareSimulations(
+  baseJobId: string,
+  altJobId: string,
+): Promise<Record<string, unknown>> {
+  return request(`/simulations/${baseJobId}/compare/${altJobId}`);
+}
+
 /** シミュレーションを削除 */
 export async function deleteSimulation(jobId: string): Promise<void> {
   await request(`/simulations/${jobId}`, { method: "DELETE" });

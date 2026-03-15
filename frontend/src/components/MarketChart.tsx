@@ -9,22 +9,20 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { RoundResult } from "../api/types";
-import { SKILL_COLORS, SKILL_LABELS } from "../api/types";
+import { DIMENSION_COLORS, DIMENSION_LABELS } from "../api/types";
 
 interface Props {
   rounds: RoundResult[];
-  dataKey: "skill_demand" | "unit_prices";
   title: string;
-  skills?: string[];
+  dimensions?: string[];
 }
 
 export default function MarketChart({
   rounds,
-  dataKey,
   title,
-  skills,
+  dimensions,
 }: Props) {
-  const allSkills = skills || Object.keys(SKILL_LABELS);
+  const allDimensions = dimensions || Object.keys(DIMENSION_LABELS);
 
   if (rounds.length === 0) {
     return (
@@ -39,9 +37,8 @@ export default function MarketChart({
 
   const chartData = rounds.map((r) => {
     const point: Record<string, number> = { round: r.round_number };
-    for (const skill of allSkills) {
-      const source = r.market_state[dataKey] as Record<string, number>;
-      point[skill] = Number((source[skill] ?? 0).toFixed(3));
+    for (const dim of allDimensions) {
+      point[dim] = Number((r.market_state.dimensions[dim] ?? 0).toFixed(3));
     }
     return point;
   });
@@ -87,13 +84,13 @@ export default function MarketChart({
             iconType="plainline"
             wrapperStyle={{ fontSize: "12px", color: "#475569" }}
           />
-          {allSkills.map((skill) => (
+          {allDimensions.map((dim) => (
             <Line
-              key={skill}
+              key={dim}
               type="monotone"
-              dataKey={skill}
-              name={SKILL_LABELS[skill] || skill}
-              stroke={SKILL_COLORS[skill] || "#94a3b8"}
+              dataKey={dim}
+              name={DIMENSION_LABELS[dim] || dim}
+              stroke={DIMENSION_COLORS[dim] || "#94a3b8"}
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 3, strokeWidth: 0 }}

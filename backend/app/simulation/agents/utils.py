@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from app.simulation.models import SkillCategory
+from app.simulation.models import MarketDimension
 
-_SKILL_VALUES = {s.value for s in SkillCategory}
+_DIMENSION_VALUES = {d.value for d in MarketDimension}
 
 
-def _parse_skill(raw: str | None) -> SkillCategory | None:
-    """Parse a skill string (value like 'ai_ml') into SkillCategory, or None."""
+def _parse_dimension(raw: str | None) -> MarketDimension | None:
+    """Parse a dimension string (value like 'user_adoption') into MarketDimension, or None."""
     if not raw:
         return None
     val = raw.lower()
-    if val in _SKILL_VALUES:
-        return SkillCategory(val)
+    if val in _DIMENSION_VALUES:
+        return MarketDimension(val)
     return None

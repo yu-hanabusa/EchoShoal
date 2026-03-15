@@ -11,7 +11,7 @@ from app.simulation.agents.base import (
     AgentState,
     BaseAgent,
 )
-from app.simulation.models import Industry, MarketState, SkillCategory
+from app.simulation.models import StakeholderType, ServiceMarketState, MarketDimension
 
 
 class PersonalityTestAgent(BaseAgent):
@@ -20,12 +20,12 @@ class PersonalityTestAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["action_a", "action_b", "action_c"]
 
-    def _execute_action(self, action: AgentAction, market: MarketState) -> None:
+    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
         pass
 
 
 def make_test_agent(personality: AgentPersonality | None = None, llm=None):
-    profile = AgentProfile(name="テスト", agent_type="test", industry=Industry.SES)
+    profile = AgentProfile(name="テスト", agent_type="test", stakeholder_type=StakeholderType.ENTERPRISE)
     state = AgentState(headcount=10, revenue=100, cost=50)
     return PersonalityTestAgent(
         profile=profile, state=state,
@@ -108,7 +108,7 @@ class TestNoiseInjection:
             llm=mock_llm,
         )
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
         assert len(actions) == 1
         assert actions[0].action_type == "action_a"
         assert actions[0].description == "LLM判断"
@@ -125,7 +125,7 @@ class TestNoiseInjection:
             llm=mock_llm,
         )
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
         assert len(actions) == 1
         assert actions[0].description == "直感的判断（合理的根拠なし）"
         assert actions[0].action_type in agent.available_actions()

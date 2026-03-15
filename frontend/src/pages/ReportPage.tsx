@@ -1,7 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getReport, getPrediction } from "../api/client";
-import { SKILL_LABELS } from "../api/types";
+import { DIMENSION_LABELS } from "../api/types";
 
 export default function ReportPage() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -56,7 +56,62 @@ export default function ReportPage() {
           </div>
         )}
 
-        {/* Hero: Executive Summary — the most important thing on this page */}
+        {/* Success Score Card */}
+        {report?.success_score && (
+          <div className={`rounded-lg border p-6 ${
+            report.success_score.score >= 70 ? "bg-positive/5 border-positive/30" :
+            report.success_score.score >= 40 ? "bg-caution/5 border-caution/30" :
+            "bg-negative/5 border-negative/30"
+          }`}>
+            <div className="flex items-center gap-4 mb-3">
+              <span className={`text-5xl font-bold tabular-nums ${
+                report.success_score.score >= 70 ? "text-positive" :
+                report.success_score.score >= 40 ? "text-caution" :
+                "text-negative"
+              }`}>
+                {report.success_score.score}
+              </span>
+              <div>
+                <p className="text-base font-semibold text-text-primary">
+                  {report.success_score.verdict || "サービス成功スコア"}
+                </p>
+                <p className="text-xs text-text-tertiary">/ 100</p>
+              </div>
+            </div>
+            {report.success_score.key_factors.length > 0 && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-text-tertiary mb-1">判定根拠</p>
+                <ul className="text-sm text-text-secondary space-y-0.5">
+                  {report.success_score.key_factors.map((f, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-text-tertiary shrink-0">•</span>{f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              {report.success_score.risks.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-negative mb-1">リスク</p>
+                  <ul className="text-xs text-text-secondary space-y-0.5">
+                    {report.success_score.risks.map((r, i) => <li key={i}>• {r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {report.success_score.opportunities.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-positive mb-1">機会</p>
+                  <ul className="text-xs text-text-secondary space-y-0.5">
+                    {report.success_score.opportunities.map((o, i) => <li key={i}>• {o}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Hero: Executive Summary */}
         {report?.executive_summary && (
           <div className="bg-surface-0 rounded-lg border border-border p-6">
             <h2 className="text-base font-semibold text-text-primary mb-3">
@@ -68,7 +123,7 @@ export default function ReportPage() {
           </div>
         )}
 
-        {/* Prediction highlights — key takeaways */}
+        {/* Prediction highlights */}
         {prediction && prediction.highlights.length > 0 && (
           <div className="bg-surface-0 rounded-lg border border-border p-6">
             <h2 className="text-sm font-semibold text-text-primary mb-3">
@@ -90,63 +145,56 @@ export default function ReportPage() {
           </div>
         )}
 
-        {/* Comparison: Skill predictions table */}
-        {prediction && prediction.skill_predictions.length > 0 && (
+        {/* Dimension predictions table */}
+        {prediction && prediction.dimension_predictions.length > 0 && (
           <div className="bg-surface-0 rounded-lg border border-border p-5 overflow-x-auto">
             <h2 className="text-sm font-semibold text-text-primary mb-4">
-              スキル別予測
+              ディメンション別予測
             </h2>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-text-tertiary">
-                  <th className="py-2 pr-3 font-medium">スキル</th>
+                  <th className="py-2 pr-3 font-medium">ディメンション</th>
                   <th className="py-2 px-3 font-medium text-right">
-                    現在単価
+                    現在値
                   </th>
                   <th className="py-2 px-3 font-medium text-right">
-                    予測単価
-                  </th>
-                  <th className="py-2 px-3 font-medium text-right">
-                    需要変化
+                    予測値
                   </th>
                   <th className="py-2 pl-3 font-medium text-right">
-                    不足人数
+                    変化率
                   </th>
                 </tr>
               </thead>
               <tbody className="text-text-primary">
-                {prediction.skill_predictions.map((sp) => {
-                  const rate = sp.demand_trend.change_rate;
-                  const priceUp = sp.predicted_price > sp.current_price;
-                  const priceDown = sp.predicted_price < sp.current_price;
+                {prediction.dimension_predictions.map((dp) => {
+                  const rate = dp.trend.change_rate;
+                  const up = dp.predicted_value > dp.current_value;
+                  const down = dp.predicted_value < dp.current_value;
 
                   return (
                     <tr
-                      key={sp.skill}
+                      key={dp.dimension}
                       className="border-b border-border last:border-b-0"
                     >
                       <td className="py-2.5 pr-3 font-medium">
-                        {SKILL_LABELS[sp.skill] || sp.skill}
+                        {DIMENSION_LABELS[dp.dimension] || dp.dimension}
                       </td>
                       <td className="py-2.5 px-3 text-right tabular-nums text-text-secondary">
-                        {sp.current_price > 0
-                          ? `${sp.current_price.toFixed(0)}万`
-                          : "—"}
+                        {dp.current_value.toFixed(2)}
                       </td>
                       <td
                         className={`py-2.5 px-3 text-right tabular-nums font-medium ${
-                          priceUp
+                          up
                             ? "text-positive"
-                            : priceDown
+                            : down
                               ? "text-negative"
                               : "text-text-primary"
                         }`}
                       >
-                        {sp.predicted_price > 0
-                          ? `${sp.predicted_price.toFixed(0)}万`
-                          : "—"}
+                        {dp.predicted_value.toFixed(2)}
                       </td>
-                      <td className="py-2.5 px-3 text-right tabular-nums">
+                      <td className="py-2.5 pl-3 text-right tabular-nums">
                         <span
                           className={
                             rate > 0
@@ -159,15 +207,6 @@ export default function ReportPage() {
                           {rate > 0 ? "+" : ""}
                           {rate.toFixed(1)}%
                         </span>
-                      </td>
-                      <td className="py-2.5 pl-3 text-right tabular-nums">
-                        {sp.shortage_estimate > 0 ? (
-                          <span className="text-negative">
-                            {sp.shortage_estimate.toLocaleString()}人
-                          </span>
-                        ) : (
-                          <span className="text-text-tertiary">—</span>
-                        )}
                       </td>
                     </tr>
                   );

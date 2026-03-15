@@ -67,13 +67,13 @@ class TestKnowledgeGraphRepository:
         mock_client.execute_write = AsyncMock()
 
         repo = KnowledgeGraphRepository(mock_client)
-        await repo.add_company("テスト企業", "ses", {"size": "large"})
+        await repo.add_company("テスト企業", "enterprise", {"size": "large"})
 
         mock_client.execute_write.assert_called_once()
         # パラメータ辞書は第2位置引数
         params = mock_client.execute_write.call_args[0][1]
         assert params["name"] == "テスト企業"
-        assert params["industry"] == "ses"
+        assert params["industry"] == "enterprise"
 
     @pytest.mark.asyncio
     async def test_add_skill_relation_invalid_type(self):
@@ -92,7 +92,7 @@ class TestKnowledgeGraphRepository:
         await repo.add_policy(
             "DX推進法",
             "デジタル変革を推進する法律",
-            [{"type": "Industry", "name": "enterprise_it", "impact_type": "positive", "magnitude": 0.8}],
+            [{"type": "Industry", "name": "enterprise", "impact_type": "positive", "magnitude": 0.8}],
         )
 
         assert mock_client.execute_write.call_count == 2  # ポリシー作成 + 影響先紐付け

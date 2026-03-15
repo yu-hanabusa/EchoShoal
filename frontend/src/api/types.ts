@@ -18,22 +18,23 @@ export interface JobInfo {
 export interface ScenarioInput {
   description: string;
   num_rounds?: number;
-  focus_industries?: string[];
-  focus_skills?: string[];
-  ai_acceleration?: number;
-  economic_shock?: number;
-  policy_change?: string | null;
+  service_name?: string;
+  service_url?: string | null;
+  target_market?: string | null;
+  economic_climate?: number;
+  tech_disruption?: number;
+  regulatory_change?: string | null;
 }
 
-export interface MarketState {
+export interface ServiceMarketState {
   round_number: number;
-  skill_demand: Record<string, number>;
-  skill_supply: Record<string, number>;
-  unit_prices: Record<string, number>;
-  unemployment_rate: number;
-  ai_automation_rate: number;
-  remote_work_rate: number;
-  overseas_outsource_rate: number;
+  service_name: string;
+  dimensions: Record<string, number>;
+  economic_sentiment: number;
+  tech_hype_level: number;
+  regulatory_pressure: number;
+  remote_work_adoption: number;
+  ai_disruption_level: number;
 }
 
 export type ActionVisibility = "public" | "private" | "partial";
@@ -47,7 +48,7 @@ export interface ActionTaken {
 
 export interface RoundResult {
   round_number: number;
-  market_state: MarketState;
+  market_state: ServiceMarketState;
   actions_taken: ActionTaken[];
   events: string[];
 }
@@ -66,7 +67,7 @@ export interface AgentSummary {
   id: string;
   name: string;
   type: string;
-  industry: string;
+  stakeholder_type: string;
   description?: string;
   headcount: number;
   revenue: number;
@@ -79,7 +80,7 @@ export interface SimulationResult {
   scenario: ScenarioInput;
   summary: {
     total_rounds: number;
-    final_market: MarketState;
+    final_market: ServiceMarketState;
     agents: AgentSummary[];
     llm_calls: number;
   };
@@ -95,23 +96,26 @@ export interface TrendData {
   moving_avg: number[];
 }
 
-export interface SkillPrediction {
-  skill: string;
-  current_demand: number;
-  predicted_demand: number;
-  demand_trend: TrendData;
-  current_price: number;
-  predicted_price: number;
-  price_trend: TrendData;
-  shortage_estimate: number;
+export interface DimensionPrediction {
+  dimension: string;
+  current_value: number;
+  predicted_value: number;
+  trend: TrendData;
 }
 
 export interface PredictionResult {
   simulation_months: number;
-  total_engineers: number;
-  skill_predictions: SkillPrediction[];
+  dimension_predictions: DimensionPrediction[];
   macro_predictions: Record<string, TrendData>;
   highlights: string[];
+}
+
+export interface SuccessScore {
+  score: number;
+  verdict: string;
+  key_factors: string[];
+  risks: string[];
+  opportunities: string[];
 }
 
 export interface ReportSection {
@@ -125,6 +129,7 @@ export interface SimulationReport {
   scenario_description: string;
   executive_summary: string;
   sections: ReportSection[];
+  success_score?: SuccessScore | null;
   generated_at: string;
 }
 
@@ -150,26 +155,26 @@ export interface DocumentInfo {
   uploaded_at: string;
 }
 
-/** スキルカテゴリの日本語ラベル */
-export const SKILL_LABELS: Record<string, string> = {
-  legacy: "レガシー",
-  web_frontend: "Webフロントエンド",
-  web_backend: "Webバックエンド",
-  cloud_infra: "クラウド・インフラ",
-  ai_ml: "AI・機械学習",
-  security: "セキュリティ",
-  mobile: "モバイル",
-  erp: "ERP",
+/** マーケットディメンションの日本語ラベル */
+export const DIMENSION_LABELS: Record<string, string> = {
+  user_adoption: "ユーザー獲得率",
+  revenue_potential: "収益ポテンシャル",
+  tech_maturity: "技術成熟度",
+  competitive_pressure: "競合圧力",
+  regulatory_risk: "規制リスク",
+  market_awareness: "市場認知度",
+  ecosystem_health: "エコシステム健全性",
+  funding_climate: "資金調達環境",
 };
 
-/** スキルカテゴリの表示色 */
-export const SKILL_COLORS: Record<string, string> = {
-  legacy: "#9ca3af",
-  web_frontend: "#60a5fa",
-  web_backend: "#34d399",
-  cloud_infra: "#f97316",
-  ai_ml: "#a78bfa",
-  security: "#ef4444",
-  mobile: "#fbbf24",
-  erp: "#06b6d4",
+/** マーケットディメンションの表示色 */
+export const DIMENSION_COLORS: Record<string, string> = {
+  user_adoption: "#34d399",
+  revenue_potential: "#60a5fa",
+  tech_maturity: "#a78bfa",
+  competitive_pressure: "#ef4444",
+  regulatory_risk: "#f97316",
+  market_awareness: "#fbbf24",
+  ecosystem_health: "#06b6d4",
+  funding_climate: "#9ca3af",
 };

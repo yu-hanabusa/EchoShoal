@@ -6,31 +6,31 @@ import pytest
 
 from app.simulation.agents.base import AgentAction, AgentProfile, AgentState, BaseAgent
 from app.simulation.engine import SimulationEngine
-from app.simulation.models import Industry, MarketState, ScenarioInput, SkillCategory
+from app.simulation.models import StakeholderType, ServiceMarketState, ScenarioInput, MarketDimension
 
 
 class StubAgent(BaseAgent):
     """Deterministic agent for engine tests."""
 
     def available_actions(self) -> list[str]:
-        return ["recruit", "upskill"]
+        return ["adopt_service", "upskill"]
 
-    def _execute_action(self, action: AgentAction, market: MarketState) -> None:
-        if action.action_type == "recruit":
+    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
+        if action.action_type == "adopt_service":
             self.state.headcount += 1
 
-    async def decide_actions(self, market: MarketState, rag_context: str = "") -> list[AgentAction]:
+    async def decide_actions(self, market: ServiceMarketState, rag_context: str = "") -> list[AgentAction]:
         return [
             AgentAction(
                 agent_id=self.id,
-                action_type="recruit",
-                description="Auto recruit",
+                action_type="adopt_service",
+                description="Auto adopt",
             )
         ]
 
 
 def make_stub_agent(name: str = "Stub") -> StubAgent:
-    profile = AgentProfile(name=name, agent_type="stub", industry=Industry.SES)
+    profile = AgentProfile(name=name, agent_type="stub", stakeholder_type=StakeholderType.ENTERPRISE)
     state = AgentState(headcount=5)
     return StubAgent(profile=profile, state=state, llm=MagicMock())
 
@@ -84,10 +84,10 @@ class TestSimulationEngine:
         assert any("error" in e for e in results[0].events)
 
     @pytest.mark.asyncio
-    async def test_scenario_ai_acceleration(self):
+    async def test_scenario_tech_disruption(self):
         scenario = ScenarioInput(
             description="AI技術の急速な普及テスト",
-            ai_acceleration=1.0,
+            tech_disruption=1.0,
             num_rounds=5,
         )
         engine = SimulationEngine(
@@ -99,13 +99,13 @@ class TestSimulationEngine:
         with patch.object(engine, "_select_active_agents", return_value=[]):
             await engine.run()
 
-        assert engine.market.ai_automation_rate > 0.05  # Increased from default
+        assert engine.market.ai_disruption_level > 0.3  # Increased from default
 
     @pytest.mark.asyncio
-    async def test_scenario_economic_shock(self):
+    async def test_scenario_economic_climate(self):
         scenario = ScenarioInput(
             description="経済ショックのテストシナリオ",
-            economic_shock=-0.5,
+            economic_climate=-0.5,
             num_rounds=3,
         )
         engine = SimulationEngine(
@@ -114,10 +114,10 @@ class TestSimulationEngine:
             scenario=scenario,
         )
 
-        original_price = engine.market.unit_prices[SkillCategory.AI_ML]
+        original_sentiment = engine.market.economic_sentiment
         await engine.run()
 
-        assert engine.market.unit_prices[SkillCategory.AI_ML] < original_price
+        assert engine.market.economic_sentiment < original_sentiment
 
     def test_get_summary(self):
         agents = [make_stub_agent("A")]
@@ -128,24 +128,22 @@ class TestSimulationEngine:
         assert len(summary["agents"]) == 1
         assert summary["agents"][0]["name"] == "A"
 
-    def test_update_market_hire_increases_demand(self):
+    def test_update_market_adopt_increases_user_adoption(self):
         engine = SimulationEngine(agents=[], llm=MagicMock())
-        original = engine.market.skill_demand[SkillCategory.WEB_BACKEND]
+        original = engine.market.dimensions[MarketDimension.USER_ADOPTION]
 
         engine._update_market([
-            {"type": "recruit", "agent": "A", "description": ""},
-            {"type": "hire_engineers", "agent": "B", "description": ""},
+            {"type": "adopt_service", "agent": "A", "description": ""},
         ])
 
-        assert engine.market.skill_demand[SkillCategory.WEB_BACKEND] > original
+        assert engine.market.dimensions[MarketDimension.USER_ADOPTION] > original
 
-    def test_update_market_price_adjustment(self):
+    def test_update_market_build_competitor_increases_pressure(self):
         engine = SimulationEngine(agents=[], llm=MagicMock())
-        # Set high demand, low supply
-        engine.market.skill_demand[SkillCategory.AI_ML] = 0.9
-        engine.market.skill_supply[SkillCategory.AI_ML] = 0.3
-        original_price = engine.market.unit_prices[SkillCategory.AI_ML]
+        original = engine.market.dimensions[MarketDimension.COMPETITIVE_PRESSURE]
 
-        engine._update_market([])
+        engine._update_market([
+            {"type": "build_competitor", "agent": "A", "description": ""},
+        ])
 
-        assert engine.market.unit_prices[SkillCategory.AI_ML] > original_price
+        assert engine.market.dimensions[MarketDimension.COMPETITIVE_PRESSURE] > original

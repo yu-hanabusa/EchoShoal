@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.simulation.models import SuccessScore
+
 
 class ReportSection(BaseModel):
     """レポートの1セクション."""
@@ -14,10 +16,11 @@ class ReportSection(BaseModel):
 
 class SimulationReport(BaseModel):
     """シミュレーション分析レポート."""
-    title: str = "IT人材市場予測レポート"
+    title: str = "サービスビジネスインパクトレポート"
     scenario_description: str = ""
     executive_summary: str = ""
     sections: list[ReportSection] = Field(default_factory=list)
+    success_score: SuccessScore | None = None
     generated_at: str = ""
 
     def to_markdown(self) -> str:

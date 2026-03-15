@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.simulation.agents.base import AgentAction, AgentPersonality, AgentProfile, AgentState, BaseAgent
-from app.simulation.agents.ses_company import SESCompanyAgent
+from app.simulation.agents.enterprise_agent import EnterpriseAgent
 from app.simulation.engine import SimulationEngine
 from app.simulation.events.effects import apply_active_events
 from app.simulation.events.models import EventImpact, EventType, MarketEvent
 from app.simulation.events.scheduler import EventScheduler
-from app.simulation.models import Industry, MarketState, ScenarioInput, SkillCategory
+from app.simulation.models import StakeholderType, ServiceMarketState, ScenarioInput, MarketDimension
 from app.simulation.scenario_analyzer import ScenarioAnalyzer
 
 
@@ -18,15 +18,15 @@ from app.simulation.scenario_analyzer import ScenarioAnalyzer
 
 class StubAgent(BaseAgent):
     def available_actions(self) -> list[str]:
-        return ["recruit", "upskill"]
+        return ["adopt_service", "upskill"]
 
-    def _execute_action(self, action: AgentAction, market: MarketState) -> None:
-        if action.action_type == "recruit":
+    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
+        if action.action_type == "adopt_service":
             self.state.headcount += 1
 
 
 def make_stub_agent(llm=None) -> StubAgent:
-    profile = AgentProfile(name="Stub", agent_type="stub", industry=Industry.SES)
+    profile = AgentProfile(name="Stub", agent_type="stub", stakeholder_type=StakeholderType.ENTERPRISE)
     state = AgentState(headcount=5)
     return StubAgent(
         profile=profile, state=state, llm=llm or MagicMock(),
@@ -42,10 +42,10 @@ class TestLLMFallback:
         mock_llm.generate_json = AsyncMock(side_effect=RuntimeError("LLM down"))
         agent = make_stub_agent(llm=mock_llm)
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
 
         assert len(actions) == 1
-        assert actions[0].action_type == "recruit"  # 最初のavailable_action
+        assert actions[0].action_type == "adopt_service"  # 最初のavailable_action
         assert "フォールバック" in actions[0].description
 
     @pytest.mark.asyncio
@@ -55,10 +55,10 @@ class TestLLMFallback:
         mock_llm.generate_json = AsyncMock(return_value={"actions": []})
         agent = make_stub_agent(llm=mock_llm)
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
 
         assert len(actions) == 1
-        assert actions[0].action_type == "recruit"
+        assert actions[0].action_type == "adopt_service"
 
     @pytest.mark.asyncio
     async def test_normal_llm_response_no_fallback(self):
@@ -69,7 +69,7 @@ class TestLLMFallback:
         })
         agent = make_stub_agent(llm=mock_llm)
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
 
         assert len(actions) == 1
         assert actions[0].action_type == "upskill"
@@ -78,21 +78,20 @@ class TestLLMFallback:
 # --- シナリオ解析 → イベント → エンジン統合テスト ---
 
 class TestScenarioToEngine:
-    def test_scenario_analyzer_detects_skills(self):
+    def test_scenario_analyzer_detects_dimensions(self):
         scenario = ScenarioInput(
             description="生成AIとLLMの普及で Python エンジニアの需要が増加するシナリオ"
         )
         analyzer = ScenarioAnalyzer()
         enriched = analyzer.analyze(scenario)
 
-        assert SkillCategory.AI_ML in enriched.detected_skills
-        assert SkillCategory.WEB_BACKEND in enriched.detected_skills
+        assert MarketDimension.TECH_MATURITY in enriched.detected_dimensions
 
     @pytest.mark.asyncio
     async def test_event_scheduler_generates_events(self):
         scenario = ScenarioInput(
-            description="AI技術の急速な普及によるIT人材市場の変化を予測する",
-            ai_acceleration=0.8,
+            description="AI技術の急速な普及によるサービス市場の変化を予測する",
+            tech_disruption=0.8,
         )
         scheduler = EventScheduler(llm=None)
         events = await scheduler.generate_from_scenario(scenario)
@@ -109,12 +108,12 @@ class TestScenarioToEngine:
             event_type=EventType.TECH_DISRUPTION,
             trigger_round=1,
             duration=2,
-            impact=EventImpact(skill_demand_delta={"ai_ml": 0.1}),
+            impact=EventImpact(dimension_delta={"tech_maturity": 0.1}),
         ))
 
         agent = make_stub_agent()
         agent.decide_actions = AsyncMock(return_value=[
-            AgentAction(agent_id=agent.id, action_type="recruit", description="テスト")
+            AgentAction(agent_id=agent.id, action_type="adopt_service", description="テスト")
         ])
 
         engine = SimulationEngine(
@@ -153,42 +152,38 @@ class TestScenarioToEngine:
         assert progress_calls[-1] == (3, 3)
 
 
-# --- SES shift_domain テスト ---
+# --- Enterprise adopt_service テスト ---
 
-class TestShiftDomain:
-    def test_shift_domain_improves_new_skill(self):
-        profile = AgentProfile(name="SES", agent_type="SES企業", industry=Industry.SES)
-        state = AgentState(
-            headcount=10,
-            skills={SkillCategory.LEGACY: 0.6},
-        )
-        agent = SESCompanyAgent(profile=profile, state=state, llm=MagicMock())
+class TestEnterpriseAdoptService:
+    def test_adopt_service_improves_capability(self):
+        profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
+        state = AgentState(headcount=50)
+        agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
 
         action = AgentAction(
             agent_id=agent.id,
-            action_type="shift_domain",
-            description="ドメイン変更",
-            parameters={"to_skill": "ai_ml", "from_skill": "legacy"},
+            action_type="adopt_service",
+            description="サービス採用",
+            parameters={"dimension": "user_adoption"},
         )
-        agent._execute_action(action, MarketState())
+        agent._execute_action(action, ServiceMarketState())
 
-        assert agent.state.skills.get(SkillCategory.AI_ML, 0) == pytest.approx(0.15)
-        assert agent.state.skills[SkillCategory.LEGACY] == pytest.approx(0.55)
+        assert agent.state.capabilities.get(MarketDimension.USER_ADOPTION, 0) == pytest.approx(0.1)
+        assert agent.state.cost == 20
 
-    def test_shift_domain_without_from_skill(self):
-        profile = AgentProfile(name="SES", agent_type="SES企業", industry=Industry.SES)
-        state = AgentState(headcount=10)
-        agent = SESCompanyAgent(profile=profile, state=state, llm=MagicMock())
+    def test_partner_boosts_ecosystem(self):
+        profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
+        state = AgentState(headcount=50)
+        agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
 
         action = AgentAction(
             agent_id=agent.id,
-            action_type="shift_domain",
-            description="新規ドメイン参入",
-            parameters={"to_skill": "cloud_infra"},
+            action_type="partner",
+            description="提携",
         )
-        agent._execute_action(action, MarketState())
+        agent._execute_action(action, ServiceMarketState())
 
-        assert agent.state.skills.get(SkillCategory.CLOUD_INFRA, 0) == pytest.approx(0.15)
+        assert agent.state.capabilities.get(MarketDimension.ECOSYSTEM_HEALTH, 0) == pytest.approx(0.08)
 
 
 # --- レートリミットテスト ---

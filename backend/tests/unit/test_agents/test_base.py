@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.simulation.agents.base import AgentAction, AgentPersonality, AgentProfile, AgentState, BaseAgent
-from app.simulation.models import Industry, MarketState, SkillCategory
+from app.simulation.models import StakeholderType, ServiceMarketState, MarketDimension
 
 
 class ConcreteAgent(BaseAgent):
@@ -14,7 +14,7 @@ class ConcreteAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["action_a", "action_b"]
 
-    def _execute_action(self, action: AgentAction, market: MarketState) -> None:
+    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
         if action.action_type == "action_a":
             self.state.revenue += 10
 
@@ -23,11 +23,11 @@ def make_agent(llm=None) -> ConcreteAgent:
     profile = AgentProfile(
         name="テスト企業",
         agent_type="test",
-        industry=Industry.SES,
+        stakeholder_type=StakeholderType.ENTERPRISE,
         description="テスト用エージェント",
     )
     state = AgentState(
-        skills={SkillCategory.WEB_BACKEND: 0.6},
+        capabilities={MarketDimension.TECH_MATURITY: 0.6},
         revenue=100.0,
         cost=50.0,
         headcount=10,
@@ -40,12 +40,12 @@ def make_agent(llm=None) -> ConcreteAgent:
 
 class TestAgentProfile:
     def test_auto_id(self):
-        p = AgentProfile(name="Test", agent_type="test", industry=Industry.SES)
+        p = AgentProfile(name="Test", agent_type="test", stakeholder_type=StakeholderType.ENTERPRISE)
         assert len(p.id) > 0
 
     def test_unique_ids(self):
-        p1 = AgentProfile(name="A", agent_type="test", industry=Industry.SES)
-        p2 = AgentProfile(name="B", agent_type="test", industry=Industry.SES)
+        p1 = AgentProfile(name="A", agent_type="test", stakeholder_type=StakeholderType.ENTERPRISE)
+        p2 = AgentProfile(name="B", agent_type="test", stakeholder_type=StakeholderType.FREELANCER)
         assert p1.id != p2.id
 
 
@@ -55,6 +55,7 @@ class TestAgentState:
         assert state.satisfaction == 0.5
         assert state.reputation == 0.5
         assert state.risk_tolerance == 0.5
+        assert state.capabilities == {}
 
 
 class TestBaseAgent:
@@ -76,7 +77,7 @@ class TestBaseAgent:
             ]
         })
         agent = make_agent(llm=mock_llm)
-        market = MarketState()
+        market = ServiceMarketState()
 
         actions = await agent.decide_actions(market)
 
@@ -95,7 +96,7 @@ class TestBaseAgent:
         })
         agent = make_agent(llm=mock_llm)
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
 
         assert len(actions) == 1
         assert actions[0].action_type == "action_b"
@@ -112,7 +113,7 @@ class TestBaseAgent:
         })
         agent = make_agent(llm=mock_llm)
 
-        actions = await agent.decide_actions(MarketState())
+        actions = await agent.decide_actions(ServiceMarketState())
         assert len(actions) == 2
 
     @pytest.mark.asyncio
@@ -124,7 +125,7 @@ class TestBaseAgent:
             description="テスト",
         )
         original_revenue = agent.state.revenue
-        await agent.apply_actions([action], MarketState())
+        await agent.apply_actions([action], ServiceMarketState())
         assert agent.state.revenue == original_revenue + 10
 
     def test_to_summary(self):
@@ -133,10 +134,25 @@ class TestBaseAgent:
         assert summary["name"] == "テスト企業"
         assert summary["type"] == "test"
         assert summary["headcount"] == 10
+        assert summary["stakeholder_type"] == "enterprise"
 
     def test_build_decision_prompt_includes_market_data(self):
         agent = make_agent()
-        market = MarketState(round_number=5, unemployment_rate=0.03)
+        market = ServiceMarketState(
+            round_number=5,
+            service_name="TestService",
+        )
         prompt = agent._build_decision_prompt(market)
         assert "ラウンド 5" in prompt
-        assert "失業率" in prompt
+        assert "TestService" in prompt
+
+    def test_improve_capability(self):
+        agent = make_agent()
+        result = agent._improve_capability("user_adoption", 0.1)
+        assert result is True
+        assert agent.state.capabilities[MarketDimension.USER_ADOPTION] == pytest.approx(0.1)
+
+    def test_improve_capability_invalid_dimension(self):
+        agent = make_agent()
+        result = agent._improve_capability("nonexistent", 0.1)
+        assert result is False

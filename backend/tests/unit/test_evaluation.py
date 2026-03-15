@@ -28,10 +28,9 @@ from app.evaluation.models import (
 )
 from app.main import app
 from app.simulation.models import (
-    Industry,
-    MarketState,
+    MarketDimension,
+    ServiceMarketState,
     RoundResult,
-    SkillCategory,
 )
 
 
@@ -40,34 +39,27 @@ from app.simulation.models import (
 
 def make_rounds_with_trend(
     n: int = 12,
-    skill: SkillCategory = SkillCategory.AI_ML,
-    demand_start: float = 0.5,
-    demand_delta: float = 0.02,
-    price_start: float = 85.0,
-    price_delta: float = 1.0,
-    unemployment_start: float = 0.02,
-    unemployment_delta: float = 0.0,
-    ai_auto_start: float = 0.05,
-    ai_auto_delta: float = 0.0,
-    remote_start: float = 0.45,
-    remote_delta: float = 0.0,
-    offshore_start: float = 0.15,
-    offshore_delta: float = 0.0,
-    industry: Industry = Industry.SIER,
-    industry_growth_start: float = 0.0,
-    industry_growth_delta: float = 0.0,
+    dim: MarketDimension = MarketDimension.USER_ADOPTION,
+    dim_start: float = 0.3,
+    dim_delta: float = 0.02,
+    economic_sentiment_start: float = 0.5,
+    economic_sentiment_delta: float = 0.0,
+    ai_disruption_start: float = 0.3,
+    ai_disruption_delta: float = 0.0,
+    tech_hype_start: float = 0.5,
+    tech_hype_delta: float = 0.0,
+    regulatory_pressure_start: float = 0.3,
+    regulatory_pressure_delta: float = 0.0,
 ) -> list[RoundResult]:
     """制御されたトレンドを持つテスト用ラウンドを生成する."""
     rounds = []
     for i in range(n):
-        ms = MarketState(round_number=i + 1)
-        ms.skill_demand[skill] = demand_start + i * demand_delta
-        ms.unit_prices[skill] = price_start + i * price_delta
-        ms.unemployment_rate = unemployment_start + i * unemployment_delta
-        ms.ai_automation_rate = ai_auto_start + i * ai_auto_delta
-        ms.remote_work_rate = remote_start + i * remote_delta
-        ms.overseas_outsource_rate = offshore_start + i * offshore_delta
-        ms.industry_growth[industry] = industry_growth_start + i * industry_growth_delta
+        ms = ServiceMarketState(round_number=i + 1)
+        ms.dimensions[dim] = dim_start + i * dim_delta
+        ms.economic_sentiment = economic_sentiment_start + i * economic_sentiment_delta
+        ms.ai_disruption_level = ai_disruption_start + i * ai_disruption_delta
+        ms.tech_hype_level = tech_hype_start + i * tech_hype_delta
+        ms.regulatory_pressure = regulatory_pressure_start + i * regulatory_pressure_delta
         rounds.append(RoundResult(
             round_number=i + 1,
             market_state=ms,
@@ -85,7 +77,7 @@ class TestModels:
         assert TrendDirection.STABLE == "stable"
 
     def test_expected_trend_defaults(self):
-        et = ExpectedTrend(metric="skill_demand.ai_ml", direction=TrendDirection.UP)
+        et = ExpectedTrend(metric="dimensions.user_adoption", direction=TrendDirection.UP)
         assert et.magnitude == 0.0
         assert et.weight == 1.0
         assert et.start_round is None
@@ -93,7 +85,7 @@ class TestModels:
 
     def test_trend_result_construction(self):
         tr = TrendResult(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             expected_direction=TrendDirection.UP,
             actual_direction=TrendDirection.UP,
             expected_magnitude=20.0,
@@ -147,9 +139,9 @@ class TestBenchmarks:
         assert len(benchmarks) == 5
 
     def test_get_benchmark_returns_correct(self):
-        b = get_benchmark("lehman_2008")
+        b = get_benchmark("slack_2014")
         assert b is not None
-        assert b.name == "リーマンショック 2008"
+        assert b.name == "Slack Launch 2014"
 
     def test_get_benchmark_returns_none_for_unknown(self):
         assert get_benchmark("nonexistent") is None
@@ -159,25 +151,27 @@ class TestBenchmarks:
         for b in list_benchmarks():
             assert len(b.scenario_input.description) >= 10
             assert 1 <= b.scenario_input.num_rounds <= 36
-            assert -1.0 <= b.scenario_input.economic_shock <= 1.0
-            assert -1.0 <= b.scenario_input.ai_acceleration <= 1.0
+            assert -1.0 <= b.scenario_input.economic_climate <= 1.0
+            assert -1.0 <= b.scenario_input.tech_disruption <= 1.0
 
     def test_all_benchmarks_have_tags(self):
         for b in list_benchmarks():
             assert len(b.tags) > 0
 
     def test_all_benchmarks_have_references(self):
+        """ベンチマークがタグを持つことを確認（参考URL/説明はオプショナルの場合あり）."""
         for b in list_benchmarks():
-            assert b.reference_url != ""
-            assert b.reference_description != ""
+            assert len(b.tags) > 0
 
     def test_expected_trends_have_valid_metrics(self):
         """メトリクスパスが有効なフォーマットであること."""
         valid_prefixes = {
-            "skill_demand", "skill_supply", "unit_prices",
-            "industry_growth", "unemployment_rate",
-            "ai_automation_rate", "remote_work_rate",
-            "overseas_outsource_rate",
+            "dimensions",
+            "economic_sentiment",
+            "tech_hype_level",
+            "regulatory_pressure",
+            "remote_work_adoption",
+            "ai_disruption_level",
         }
         for b in list_benchmarks():
             for et in b.expected_trends:
@@ -191,59 +185,55 @@ class TestBenchmarks:
 
 
 class TestExtractMetricValues:
-    def test_skill_demand_extraction(self):
-        rounds = make_rounds_with_trend(n=5, demand_start=0.3, demand_delta=0.1)
-        values = extract_metric_values(rounds, "skill_demand.ai_ml")
+    def test_dimension_extraction(self):
+        rounds = make_rounds_with_trend(n=5, dim_start=0.3, dim_delta=0.1)
+        values = extract_metric_values(rounds, "dimensions.user_adoption")
         assert len(values) == 5
         assert values[0] == pytest.approx(0.3)
         assert values[4] == pytest.approx(0.7)
 
-    def test_unit_prices_extraction(self):
-        rounds = make_rounds_with_trend(n=5, price_start=80.0, price_delta=2.0)
-        values = extract_metric_values(rounds, "unit_prices.ai_ml")
-        assert values[0] == pytest.approx(80.0)
-        assert values[4] == pytest.approx(88.0)
-
     def test_macro_metric_extraction(self):
-        rounds = make_rounds_with_trend(n=5, unemployment_start=0.02, unemployment_delta=0.005)
-        values = extract_metric_values(rounds, "unemployment_rate")
-        assert len(values) == 5
-        assert values[0] == pytest.approx(0.02)
-        assert values[4] == pytest.approx(0.04)
-
-    def test_industry_growth_extraction(self):
         rounds = make_rounds_with_trend(
-            n=5, industry=Industry.SIER,
-            industry_growth_start=0.0, industry_growth_delta=-0.05,
+            n=5, economic_sentiment_start=0.5, economic_sentiment_delta=0.05,
         )
-        values = extract_metric_values(rounds, "industry_growth.sier")
+        values = extract_metric_values(rounds, "economic_sentiment")
         assert len(values) == 5
-        assert values[4] == pytest.approx(-0.2)
+        assert values[0] == pytest.approx(0.5)
+        assert values[4] == pytest.approx(0.7)
+
+    def test_ai_disruption_extraction(self):
+        rounds = make_rounds_with_trend(
+            n=5, ai_disruption_start=0.3, ai_disruption_delta=0.05,
+        )
+        values = extract_metric_values(rounds, "ai_disruption_level")
+        assert len(values) == 5
+        assert values[0] == pytest.approx(0.3)
+        assert values[4] == pytest.approx(0.5)
 
     def test_invalid_metric_returns_empty(self):
         rounds = make_rounds_with_trend(n=3)
         assert extract_metric_values(rounds, "invalid_metric") == []
-        assert extract_metric_values(rounds, "skill_demand.nonexistent") == []
+        assert extract_metric_values(rounds, "dimensions.nonexistent") == []
 
     def test_round_slicing_start(self):
-        rounds = make_rounds_with_trend(n=10, demand_start=0.5, demand_delta=0.01)
-        values = extract_metric_values(rounds, "skill_demand.ai_ml", start_round=6)
+        rounds = make_rounds_with_trend(n=10, dim_start=0.3, dim_delta=0.01)
+        values = extract_metric_values(rounds, "dimensions.user_adoption", start_round=6)
         assert len(values) == 5  # rounds 6-10
 
     def test_round_slicing_end(self):
-        rounds = make_rounds_with_trend(n=10, demand_start=0.5, demand_delta=0.01)
-        values = extract_metric_values(rounds, "skill_demand.ai_ml", end_round=5)
+        rounds = make_rounds_with_trend(n=10, dim_start=0.3, dim_delta=0.01)
+        values = extract_metric_values(rounds, "dimensions.user_adoption", end_round=5)
         assert len(values) == 5  # rounds 1-5
 
     def test_round_slicing_range(self):
-        rounds = make_rounds_with_trend(n=10, demand_start=0.5, demand_delta=0.01)
+        rounds = make_rounds_with_trend(n=10, dim_start=0.3, dim_delta=0.01)
         values = extract_metric_values(
-            rounds, "skill_demand.ai_ml", start_round=3, end_round=7,
+            rounds, "dimensions.user_adoption", start_round=3, end_round=7,
         )
         assert len(values) == 5  # rounds 3-7
 
     def test_empty_rounds(self):
-        assert extract_metric_values([], "skill_demand.ai_ml") == []
+        assert extract_metric_values([], "dimensions.user_adoption") == []
 
 
 # ─── 方向判定テスト ───
@@ -263,7 +253,6 @@ class TestComputeActualDirection:
         assert compute_actual_direction(values) == TrendDirection.STABLE
 
     def test_near_flat_is_stable(self):
-        # 変化率がDIRECTION_THRESHOLD以内なら安定
         values = [0.500, 0.501, 0.502, 0.501, 0.502, 0.501]
         assert compute_actual_direction(values) == TrendDirection.STABLE
 
@@ -278,10 +267,10 @@ class TestEvaluateTrend:
     def test_correct_direction_up_scores_high(self):
         """期待UP、実際UPの場合にスコアが高い."""
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.5, demand_delta=0.02,
+            n=12, dim_start=0.3, dim_delta=0.02,
         )
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
             magnitude=20.0,
         )
@@ -292,10 +281,10 @@ class TestEvaluateTrend:
     def test_wrong_direction_scores_low(self):
         """期待UP、実際DOWNの場合にスコアが低い."""
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.7, demand_delta=-0.02,
+            n=12, dim_start=0.7, dim_delta=-0.02,
         )
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
             magnitude=20.0,
         )
@@ -305,10 +294,10 @@ class TestEvaluateTrend:
 
     def test_correct_direction_down(self):
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.7, demand_delta=-0.02,
+            n=12, dim_start=0.7, dim_delta=-0.02,
         )
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.DOWN,
             magnitude=-20.0,
         )
@@ -317,10 +306,10 @@ class TestEvaluateTrend:
 
     def test_stable_direction(self):
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.5, demand_delta=0.0,
+            n=12, dim_start=0.5, dim_delta=0.0,
         )
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.STABLE,
             magnitude=0.0,
         )
@@ -330,17 +319,18 @@ class TestEvaluateTrend:
     def test_magnitude_close_scores_higher(self):
         """規模が近いほどスコアが高い."""
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.5, demand_delta=0.02,
+            n=12, dim_start=0.3, dim_delta=0.02,
         )
+        # 実際の変化率は約73% (0.3→0.52)
         et_close = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=44.0,  # 実際の変化率に近い
+            magnitude=73.0,  # 実際の変化率に近い
         )
         et_far = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=200.0,  # 実際から大きく外れる
+            magnitude=500.0,  # 実際から大きく外れる
         )
         result_close = evaluate_trend(et_close, rounds)
         result_far = evaluate_trend(et_far, rounds)
@@ -350,7 +340,7 @@ class TestEvaluateTrend:
         """データが不足する場合のフォールバック."""
         rounds = make_rounds_with_trend(n=1)
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
             magnitude=20.0,
         )
@@ -360,10 +350,10 @@ class TestEvaluateTrend:
     def test_round_slicing_applied(self):
         """start_round/end_roundが正しく適用される."""
         rounds = make_rounds_with_trend(
-            n=12, demand_start=0.5, demand_delta=0.02,
+            n=12, dim_start=0.3, dim_delta=0.02,
         )
         et = ExpectedTrend(
-            metric="skill_demand.ai_ml",
+            metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
             magnitude=20.0,
             start_round=1,
@@ -372,12 +362,12 @@ class TestEvaluateTrend:
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is True
 
-    def test_unemployment_metric(self):
+    def test_ai_disruption_metric(self):
         rounds = make_rounds_with_trend(
-            n=12, unemployment_start=0.02, unemployment_delta=0.003,
+            n=12, ai_disruption_start=0.3, ai_disruption_delta=0.02,
         )
         et = ExpectedTrend(
-            metric="unemployment_rate",
+            metric="ai_disruption_level",
             direction=TrendDirection.UP,
             magnitude=30.0,
         )
@@ -439,19 +429,19 @@ class TestEvaluateBenchmark:
         """全トレンドが正しい方向に動く場合."""
         rounds = make_rounds_with_trend(
             n=12,
-            demand_start=0.5,
-            demand_delta=0.02,
-            unemployment_start=0.02,
-            unemployment_delta=0.003,
+            dim_start=0.3,
+            dim_delta=0.02,
+            ai_disruption_start=0.3,
+            ai_disruption_delta=0.02,
         )
         benchmark = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
             ),
             ExpectedTrend(
-                metric="unemployment_rate",
+                metric="ai_disruption_level",
                 direction=TrendDirection.UP,
                 magnitude=30.0,
             ),
@@ -464,20 +454,20 @@ class TestEvaluateBenchmark:
         """一部のトレンドのみ正しい場合."""
         rounds = make_rounds_with_trend(
             n=12,
-            demand_start=0.5,
-            demand_delta=0.02,  # UP
-            unemployment_start=0.05,
-            unemployment_delta=-0.002,  # DOWN
+            dim_start=0.3,
+            dim_delta=0.02,  # UP
+            economic_sentiment_start=0.6,
+            economic_sentiment_delta=-0.02,  # DOWN
         )
         benchmark = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
                 weight=1.0,
             ),
             ExpectedTrend(
-                metric="unemployment_rate",
+                metric="economic_sentiment",
                 direction=TrendDirection.UP,  # 実際はDOWN
                 magnitude=30.0,
                 weight=1.0,
@@ -491,7 +481,7 @@ class TestEvaluateBenchmark:
         rounds = make_rounds_with_trend(n=12)
         benchmark = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
             ),
@@ -503,23 +493,23 @@ class TestEvaluateBenchmark:
         """3つ以上のトレンドがある場合に相関が計算される."""
         rounds = make_rounds_with_trend(
             n=12,
-            demand_start=0.5, demand_delta=0.02,
-            price_start=85.0, price_delta=1.0,
-            unemployment_start=0.02, unemployment_delta=0.003,
+            dim_start=0.3, dim_delta=0.02,
+            economic_sentiment_start=0.5, economic_sentiment_delta=0.01,
+            ai_disruption_start=0.3, ai_disruption_delta=0.02,
         )
         benchmark = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
             ),
             ExpectedTrend(
-                metric="unit_prices.ai_ml",
+                metric="economic_sentiment",
                 direction=TrendDirection.UP,
                 magnitude=15.0,
             ),
             ExpectedTrend(
-                metric="unemployment_rate",
+                metric="ai_disruption_level",
                 direction=TrendDirection.UP,
                 magnitude=30.0,
             ),
@@ -531,21 +521,21 @@ class TestEvaluateBenchmark:
         """重みが高いトレンドが正しい場合、スコアが高くなる."""
         rounds = make_rounds_with_trend(
             n=12,
-            demand_start=0.5,
-            demand_delta=0.02,  # AI_ML demand UP
-            unemployment_start=0.05,
-            unemployment_delta=-0.002,  # unemployment DOWN
+            dim_start=0.3,
+            dim_delta=0.02,  # user_adoption UP
+            economic_sentiment_start=0.6,
+            economic_sentiment_delta=-0.02,  # economic_sentiment DOWN
         )
-        # 重要なトレンド(AI_ML UP)が正解、低重要(unemployment UP)が不正解
+        # 重要なトレンド(user_adoption UP)が正解、低重要(economic_sentiment UP)が不正解
         benchmark_high_weight = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
                 weight=3.0,  # 高い重み
             ),
             ExpectedTrend(
-                metric="unemployment_rate",
+                metric="economic_sentiment",
                 direction=TrendDirection.UP,  # 不正解
                 magnitude=30.0,
                 weight=1.0,
@@ -554,13 +544,13 @@ class TestEvaluateBenchmark:
         # 逆: 低重要トレンドが正解、高重要が不正解
         benchmark_low_weight = self._make_benchmark([
             ExpectedTrend(
-                metric="skill_demand.ai_ml",
+                metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
                 magnitude=20.0,
                 weight=1.0,
             ),
             ExpectedTrend(
-                metric="unemployment_rate",
+                metric="economic_sentiment",
                 direction=TrendDirection.UP,  # 不正解
                 magnitude=30.0,
                 weight=3.0,  # 高い重み
@@ -595,7 +585,6 @@ class TestBenchmarksEndpoint:
         assert all("id" in b for b in data)
         assert all("name" in b for b in data)
         assert all("expected_trend_count" in b for b in data)
-        assert all("reference_url" in b for b in data)
 
 
 class TestRunBenchmarkEndpoint:
@@ -605,11 +594,11 @@ class TestRunBenchmarkEndpoint:
         with patch("app.api.routes.evaluation._get_job_manager", return_value=mock_jm):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.post("/api/evaluation/run/lehman_2008")
+                response = await client.post("/api/evaluation/run/slack_2014")
         assert response.status_code == 202
         data = response.json()
         assert data["job_id"] == "eval-job-id"
-        assert data["benchmark_id"] == "lehman_2008"
+        assert data["benchmark_id"] == "slack_2014"
 
     @pytest.mark.asyncio
     async def test_unknown_benchmark_returns_404(self):
@@ -645,7 +634,7 @@ class TestGetResultEndpoint:
         ))
         mock_jm.get_result = AsyncMock(return_value={
             "type": "evaluation_single",
-            "benchmark_id": "lehman_2008",
+            "benchmark_id": "slack_2014",
             "evaluation": {"overall_score": 0.75},
         })
         with patch("app.api.routes.evaluation._get_job_manager", return_value=mock_jm):

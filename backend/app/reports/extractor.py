@@ -4,31 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.simulation.models import RoundResult, SkillCategory
+from app.simulation.models import RoundResult, MarketDimension
 
 
-def extract_skill_demand_timeline(
+def extract_dimension_timeline(
     rounds: list[RoundResult],
 ) -> dict[str, list[float]]:
-    """各ラウンドのスキル別需要推移を抽出する."""
-    timeline: dict[str, list[float]] = {s.value: [] for s in SkillCategory}
+    """各ラウンドのディメンション別推移を抽出する."""
+    timeline: dict[str, list[float]] = {d.value: [] for d in MarketDimension}
     for r in rounds:
-        for skill in SkillCategory:
-            timeline[skill.value].append(
-                r.market_state.skill_demand.get(skill, 0.0)
-            )
-    return timeline
-
-
-def extract_price_timeline(
-    rounds: list[RoundResult],
-) -> dict[str, list[float]]:
-    """各ラウンドのスキル別単価推移を抽出する."""
-    timeline: dict[str, list[float]] = {s.value: [] for s in SkillCategory}
-    for r in rounds:
-        for skill in SkillCategory:
-            timeline[skill.value].append(
-                r.market_state.unit_prices.get(skill, 0.0)
+        for dim in MarketDimension:
+            timeline[dim.value].append(
+                r.market_state.dimensions.get(dim, 0.0)
             )
     return timeline
 
@@ -38,16 +25,16 @@ def extract_macro_timeline(
 ) -> dict[str, list[float]]:
     """マクロ指標の推移を抽出する."""
     keys = [
-        "unemployment_rate", "ai_automation_rate",
-        "remote_work_rate", "overseas_outsource_rate",
+        "economic_sentiment", "tech_hype_level",
+        "regulatory_pressure", "ai_disruption_level",
     ]
     timeline: dict[str, list[float]] = {k: [] for k in keys}
     for r in rounds:
         ms = r.market_state
-        timeline["unemployment_rate"].append(ms.unemployment_rate)
-        timeline["ai_automation_rate"].append(ms.ai_automation_rate)
-        timeline["remote_work_rate"].append(ms.remote_work_rate)
-        timeline["overseas_outsource_rate"].append(ms.overseas_outsource_rate)
+        timeline["economic_sentiment"].append(ms.economic_sentiment)
+        timeline["tech_hype_level"].append(ms.tech_hype_level)
+        timeline["regulatory_pressure"].append(ms.regulatory_pressure)
+        timeline["ai_disruption_level"].append(ms.ai_disruption_level)
     return timeline
 
 
@@ -76,15 +63,10 @@ def extract_significant_rounds(
         curr = rounds[i].market_state
 
         total_change = 0.0
-        for skill in SkillCategory:
-            d_prev = prev.skill_demand.get(skill, 0.5)
-            d_curr = curr.skill_demand.get(skill, 0.5)
+        for dim in MarketDimension:
+            d_prev = prev.dimensions.get(dim, 0.3)
+            d_curr = curr.dimensions.get(dim, 0.3)
             total_change += abs(d_curr - d_prev)
-
-            p_prev = prev.unit_prices.get(skill, 0.0)
-            p_curr = curr.unit_prices.get(skill, 0.0)
-            if p_prev > 0:
-                total_change += abs((p_curr - p_prev) / p_prev)
 
         changes.append({
             "round": rounds[i].round_number,
@@ -97,6 +79,22 @@ def extract_significant_rounds(
     return changes[:top_n]
 
 
+def extract_document_impact_data(
+    rounds: list[RoundResult],
+) -> list[dict[str, Any]]:
+    """ラウンドごとの文書参照ログを集計する."""
+    refs: list[dict[str, Any]] = []
+    for r in rounds:
+        for doc_ref in r.document_references:
+            refs.append({
+                "round": r.round_number,
+                "document_name": doc_ref.document_name,
+                "agent_name": doc_ref.agent_name,
+                "context_snippet": doc_ref.context_snippet,
+            })
+    return refs
+
+
 def build_report_data(
     rounds: list[RoundResult],
     scenario_description: str = "",
@@ -106,11 +104,11 @@ def build_report_data(
     return {
         "scenario_description": scenario_description,
         "total_rounds": len(rounds),
-        "skill_demand_timeline": extract_skill_demand_timeline(rounds),
-        "price_timeline": extract_price_timeline(rounds),
+        "dimension_timeline": extract_dimension_timeline(rounds),
         "macro_timeline": extract_macro_timeline(rounds),
         "action_summary": extract_action_summary(rounds),
         "significant_rounds": extract_significant_rounds(rounds),
+        "document_impact": extract_document_impact_data(rounds),
         "agents": agents_summary or [],
         "final_market": rounds[-1].market_state.model_dump() if rounds else {},
     }

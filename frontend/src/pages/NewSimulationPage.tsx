@@ -6,6 +6,8 @@ const BASE_URL = "/api";
 export default function NewSimulationPage() {
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
+  const [serviceName, setServiceName] = useState("");
+  const [serviceUrl, setServiceUrl] = useState("");
   const [numRounds, setNumRounds] = useState(24);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +39,8 @@ export default function NewSimulationPage() {
       const formData = new FormData();
       formData.append("description", description);
       formData.append("num_rounds", String(numRounds));
+      formData.append("service_name", serviceName);
+      if (serviceUrl) formData.append("service_url", serviceUrl);
       for (const file of files) {
         formData.append("files", file);
       }
@@ -73,11 +77,38 @@ export default function NewSimulationPage() {
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Scenario */}
           <div>
+            <label htmlFor="serviceName" className="block text-base font-medium text-text-primary mb-1">
+              Service Name
+            </label>
+            <p className="text-sm text-text-tertiary mb-2">
+              Name of the service to evaluate.
+            </p>
+            <input
+              id="serviceName"
+              type="text"
+              value={serviceName}
+              onChange={(e) => setServiceName(e.target.value)}
+              placeholder="Example: Slack, Notion, GitHub Copilot..."
+              className="w-full rounded-md bg-surface-0 border border-border px-4 py-2.5 text-text-primary placeholder-text-tertiary text-[15px] focus:border-interactive focus:ring-1 focus:ring-interactive outline-none mb-4"
+            />
+
+            <label htmlFor="serviceUrl" className="block text-sm font-medium text-text-secondary mb-1">
+              GitHub URL (optional)
+            </label>
+            <input
+              id="serviceUrl"
+              type="url"
+              value={serviceUrl}
+              onChange={(e) => setServiceUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="w-full rounded-md bg-surface-0 border border-border px-4 py-2.5 text-text-primary placeholder-text-tertiary text-[15px] focus:border-interactive focus:ring-1 focus:ring-interactive outline-none mb-6"
+            />
+
             <label htmlFor="scenario" className="block text-base font-medium text-text-primary mb-1">
               Scenario
             </label>
             <p className="text-sm text-text-tertiary mb-3">
-              Describe the market scenario you want to simulate. AI acceleration, economic impact, and policy changes will be automatically detected from your text.
+              Describe the service, its target market, and competitive landscape. Economic and technology parameters will be automatically detected from your text.
             </p>
             <textarea
               id="scenario"
@@ -87,7 +118,7 @@ export default function NewSimulationPage() {
               required
               minLength={10}
               maxLength={2000}
-              placeholder="Example: AI技術の急速な普及により、SES企業のエンジニア需要が変化する。大手SIerはAI導入支援に舵を切り、中小SES企業はレガシー保守案件の減少に直面する..."
+              placeholder="Example: チームコミュニケーションツールをフリーミアムモデルで投入。既存のメール・チャットツールを置換するUXで、スタートアップから口コミで拡大を目指す..."
               className="w-full rounded-md bg-surface-0 border border-border px-4 py-3 text-text-primary placeholder-text-tertiary text-[15px] leading-relaxed focus:border-interactive focus:ring-1 focus:ring-interactive outline-none resize-y min-h-[120px]"
             />
             <div className="mt-1.5 flex justify-end">
@@ -103,7 +134,7 @@ export default function NewSimulationPage() {
               Seed Documents (optional)
             </legend>
             <p className="text-sm text-text-tertiary mb-3">
-              Upload industry reports, job data, or news articles. NLP will extract entities to build the simulation's knowledge graph.
+              Upload service documentation, GitHub READMEs, competitor analysis, or market reports. NLP will extract entities to build the simulation's knowledge graph.
             </p>
             <input
               ref={fileInputRef}

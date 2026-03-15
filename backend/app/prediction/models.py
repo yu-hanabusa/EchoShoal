@@ -15,22 +15,17 @@ class TrendData(BaseModel):
     moving_avg: list[float] = Field(default_factory=list)
 
 
-class SkillPrediction(BaseModel):
-    """スキル別の予測結果."""
-    skill: str
-    current_demand: float         # 現在の需要指数
-    predicted_demand: float       # 予測需要指数（期間末）
-    demand_trend: TrendData
-    current_price: float          # 現在の単価（万円/月）
-    predicted_price: float        # 予測単価（万円/月）
-    price_trend: TrendData
-    shortage_estimate: int = 0    # 不足人数の推定
+class DimensionPrediction(BaseModel):
+    """ディメンション別の予測結果."""
+    dimension: str
+    current_value: float          # 現在のディメンション値
+    predicted_value: float        # 予測値（6ヶ月後）
+    trend: TrendData
 
 
 class PredictionResult(BaseModel):
     """シミュレーション結果に基づく定量予測."""
     simulation_months: int
-    total_engineers: int = 1_090_000
-    skill_predictions: list[SkillPrediction] = Field(default_factory=list)
+    dimension_predictions: list[DimensionPrediction] = Field(default_factory=list)
     macro_predictions: dict[str, TrendData] = Field(default_factory=dict)
-    highlights: list[str] = Field(default_factory=list)  # 主要な予測ハイライト
+    highlights: list[str] = Field(default_factory=list)

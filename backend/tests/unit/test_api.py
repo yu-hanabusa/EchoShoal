@@ -35,7 +35,7 @@ class TestCreateSimulation:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 response = await client.post("/api/simulations/", data={
-                    "description": "AI技術の普及によるIT人材市場の変化予測テスト",
+                    "description": "AI技術の普及によるサービス市場の変化予測テスト",
                 })
             assert response.status_code == 202
             data = response.json()

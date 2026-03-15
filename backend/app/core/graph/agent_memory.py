@@ -16,34 +16,64 @@ logger = logging.getLogger(__name__)
 
 # 行動の可視性定義
 ACTION_VISIBILITY: dict[str, str] = {
-    # SIer
-    "bid_project": "public",
-    "hire_engineers": "public",
-    "outsource": "partial",
-    "invest_rd": "public",
-    "offshore": "private",
-    "internal_training": "private",
-    # SES
-    "recruit": "public",
+    # 企業
+    "adopt_service": "public",
+    "reject_service": "private",
+    "build_competitor": "public",
+    "acquire_startup": "public",
+    "invest_rd": "partial",
+    "lobby_regulation": "partial",
+    "partner": "public",
+    "wait_and_observe": "private",
+    # フリーランス
+    "adopt_tool": "public",
+    "offer_service": "public",
     "upskill": "private",
-    "adjust_margin": "private",
-    "expand_sales": "public",
-    "release_bench": "private",
-    "shift_domain": "public",
-    # Freelance
-    "take_contract": "partial",
-    "learn_skill": "private",
+    "build_portfolio": "public",
     "raise_rate": "public",
-    "lower_rate": "public",
+    "switch_platform": "public",
     "network": "public",
     "rest": "private",
-    # Enterprise IT
-    "hire_internal": "public",
-    "outsource_project": "partial",
-    "start_dx": "public",
-    "maintain_legacy": "private",
-    "adopt_saas": "private",
-    "insource": "public",
+    # 個人開発者
+    "launch_competing_product": "public",
+    "pivot_product": "public",
+    "open_source": "public",
+    "monetize": "public",
+    "abandon_project": "private",
+    "seek_funding": "partial",
+    "build_community": "public",
+    # 行政
+    "regulate": "public",
+    "subsidize": "public",
+    "certify": "public",
+    "investigate": "public",
+    "deregulate": "public",
+    "partner_public": "public",
+    "issue_guideline": "public",
+    # 投資家/VC
+    "invest_seed": "public",
+    "invest_series": "public",
+    "divest": "partial",
+    "fund_competitor": "partial",
+    "market_signal": "public",
+    "wait_and_see": "private",
+    "mentor": "partial",
+    # プラットフォーマー
+    "launch_competing_feature": "public",
+    "acquire_service": "public",
+    "partner_integrate": "public",
+    "restrict_api": "public",
+    "price_undercut": "public",
+    "ignore": "private",
+    "open_platform": "public",
+    # 業界団体
+    "endorse": "public",
+    "set_standard": "public",
+    "reject_standard": "public",
+    "create_alternative": "public",
+    "educate_market": "public",
+    "observe": "private",
+    "publish_report": "public",
 }
 
 

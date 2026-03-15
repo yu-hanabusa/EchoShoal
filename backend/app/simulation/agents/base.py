@@ -1,4 +1,4 @@
-"""Base agent class for the IT labor market simulation."""
+"""Base agent class for the Service Business Impact Simulation."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 
 from app.core.llm.router import LLMRouter, TaskType
-from app.simulation.agents.utils import _parse_skill
-from app.simulation.models import Industry, MarketState, SkillCategory
+from app.simulation.agents.utils import _parse_dimension
+from app.simulation.models import StakeholderType, ServiceMarketState, MarketDimension
 
 
 class AgentPersonality(BaseModel):
@@ -24,16 +24,16 @@ class AgentPersonality(BaseModel):
     """
 
     conservatism: float = 0.5
-    """保守性: 高い→現状維持を好む、新技術や変化を嫌う"""
+    """保守性: 高い→現状維持を好む、変化を嫌う"""
 
     bandwagon: float = 0.5
-    """同調性: 高い→他社がやっていることを真似する"""
+    """同調性: 高い→他者がやっていることを真似する"""
 
     overconfidence: float = 0.5
-    """過信度: 高い→リスクを過小評価、自社能力を過大評価"""
+    """過信度: 高い→リスクを過小評価、自己能力を過大評価"""
 
     sunk_cost_bias: float = 0.5
-    """サンクコストバイアス: 高い→過去に投資した領域を捨てられない"""
+    """サンクコストバイアス: 高い→過去に投資した方向を捨てられない"""
 
     info_sensitivity: float = 0.5
     """情報感度: 低い→市場情報を見落とす/誤解する"""
@@ -50,13 +50,13 @@ class AgentProfile(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     agent_type: str
-    industry: Industry
+    stakeholder_type: StakeholderType
     description: str = ""
 
 
 class AgentState(BaseModel):
     """Mutable state of an agent that changes each round."""
-    skills: dict[SkillCategory, float] = Field(default_factory=dict)  # skill -> proficiency 0-1
+    capabilities: dict[MarketDimension, float] = Field(default_factory=dict)  # dimension -> influence 0-1
     revenue: float = 0.0        # 売上 (万円/月)
     cost: float = 0.0           # コスト (万円/月)
     headcount: int = 0          # 人数
@@ -82,7 +82,7 @@ DEFAULT_PERSONALITY = AgentPersonality()
 class BaseAgent(ABC):
     """Base class for all simulation agents.
 
-    Each agent observes the MarketState, decides actions using the LLM,
+    Each agent observes the ServiceMarketState, decides actions using the LLM,
     and updates its own state accordingly.
     Agents have personalities that bias their decisions and introduce noise.
     """
@@ -119,17 +119,13 @@ class BaseAgent(ABC):
         ...
 
     async def decide_actions(
-        self, market: MarketState, rag_context: str = ""
+        self, market: ServiceMarketState, rag_context: str = ""
     ) -> list[AgentAction]:
         """Use LLM to decide which actions to take this round.
 
         1. 性格バイアス付きプロンプトでLLMに判断させる
         2. 低確率でノイズ注入（ランダム行動に差し替え）
         3. 失敗時はフォールバック
-
-        Args:
-            market: 現在の市場状態
-            rag_context: 知識グラフからの参考情報テキスト（省略可）
         """
         try:
             prompt = self._build_decision_prompt(market, rag_context=rag_context)
@@ -172,7 +168,7 @@ class BaseAgent(ABC):
         )]
 
     async def apply_actions(
-        self, actions: list[AgentAction], market: MarketState
+        self, actions: list[AgentAction], market: ServiceMarketState
     ) -> None:
         """Apply decided actions to update agent state."""
         for action in actions:
@@ -180,7 +176,7 @@ class BaseAgent(ABC):
             self._action_history.append(action)
 
     @abstractmethod
-    def _execute_action(self, action: AgentAction, market: MarketState) -> None:
+    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
         """Execute a single action and update internal state."""
         ...
 
@@ -189,13 +185,13 @@ class BaseAgent(ABC):
         self.state.reputation = max(0.0, min(1.0, self.state.reputation))
         self.state.satisfaction = max(0.0, min(1.0, self.state.satisfaction))
 
-    def _improve_skill(self, raw_skill: str | None, delta: float) -> bool:
-        """スキル習熟度を delta 分だけ変更する。成功時 True を返す。"""
-        sc = _parse_skill(raw_skill)
-        if sc is None:
+    def _improve_capability(self, raw_dimension: str | None, delta: float) -> bool:
+        """ディメンション影響力を delta 分だけ変更する。成功時 True を返す。"""
+        dim = _parse_dimension(raw_dimension)
+        if dim is None:
             return False
-        current = self.state.skills.get(sc, 0.0)
-        self.state.skills[sc] = max(0.0, min(1.0, current + delta))
+        current = self.state.capabilities.get(dim, 0.0)
+        self.state.capabilities[dim] = max(0.0, min(1.0, current + delta))
         return True
 
     def _build_system_prompt(self) -> str:
@@ -205,17 +201,17 @@ class BaseAgent(ABC):
             scenario_section = f"\n【シミュレーションシナリオ】\n{self._scenario_summary}\n"
 
         return (
-            f"あなたは日本のIT業界における{self.profile.agent_type}のシミュレーションエージェントです。\n"
+            f"あなたはサービスビジネスインパクトシミュレーションにおける{self.profile.agent_type}のエージェントです。\n"
             f"名前: {self.profile.name}\n"
-            f"業界: {self.profile.industry.value}\n"
+            f"ステークホルダー種別: {self.profile.stakeholder_type.value}\n"
             f"説明: {self.profile.description}\n"
             f"{scenario_section}\n"
             f"【あなたの性格・判断傾向】\n{personality_text}\n\n"
             f"取りうるアクション: {', '.join(self.available_actions())}\n\n"
             "上記の性格とシナリオに基づいて市場状況を判断し、アクションをJSON形式で回答してください。\n"
             "あなたは完全に合理的ではありません。上記の性格傾向に従って判断してください。\n"
-            "parametersには必ず skill（対象スキルカテゴリ名）を含めてください。\n"
-            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {"skill": "スキルカテゴリ名", ...}}]}'
+            "parametersには必ず dimension（対象マーケットディメンション名）を含めてください。\n"
+            '回答形式: {"actions": [{"action_type": "...", "description": "理由を含む説明", "parameters": {"dimension": "ディメンション名", ...}}]}'
         )
 
     def _build_personality_prompt(self) -> str:
@@ -229,9 +225,9 @@ class BaseAgent(ABC):
 
         # 保守性
         if p.conservatism >= 0.7:
-            lines.append("あなたは保守的で、新しい技術や変化を恐れます。実績のある方法を強く好みます。")
+            lines.append("あなたは保守的で、新しいサービスや変化を恐れます。実績のある方法を強く好みます。")
         elif p.conservatism <= 0.3:
-            lines.append("あなたは革新的で、新しい技術やアプローチに積極的に挑戦します。")
+            lines.append("あなたは革新的で、新しいサービスやアプローチに積極的に挑戦します。")
 
         # 同調性
         if p.bandwagon >= 0.7:
@@ -247,7 +243,7 @@ class BaseAgent(ABC):
 
         # サンクコスト
         if p.sunk_cost_bias >= 0.7:
-            lines.append("過去に投資した技術や事業への愛着が非常に強く、たとえ市場が変わっても切り替えが難しいです。")
+            lines.append("過去に投資した事業への愛着が非常に強く、たとえ市場が変わっても切り替えが難しいです。")
         elif p.sunk_cost_bias <= 0.3:
             lines.append("過去の投資にこだわらず、状況に応じて柔軟に方向転換できます。")
 
@@ -260,25 +256,26 @@ class BaseAgent(ABC):
         return "\n".join(lines) if lines else "バランスの取れた判断をします。"
 
     def _build_decision_prompt(
-        self, market: MarketState, rag_context: str = ""
+        self, market: ServiceMarketState, rag_context: str = ""
     ) -> str:
-        top_demand = sorted(
-            market.skill_demand.items(), key=lambda x: x[1], reverse=True
+        top_dims = sorted(
+            market.dimensions.items(), key=lambda x: x[1], reverse=True
         )[:3]
-        demand_str = ", ".join(f"{s.value}: {v:.2f}" for s, v in top_demand)
+        dim_str = ", ".join(f"{d.value}: {v:.2f}" for d, v in top_dims)
 
         prompt = (
             f"【ラウンド {market.round_number}】\n"
+            f"対象サービス: {market.service_name}\n"
             f"自社状況: 売上{self.state.revenue}万円, コスト{self.state.cost}万円, "
             f"人員{self.state.headcount}名, 契約{self.state.active_contracts}件\n"
             f"満足度: {self.state.satisfaction:.2f}, 評判: {self.state.reputation:.2f}\n"
-            f"保有スキル: {dict(self.state.skills)}\n\n"
+            f"影響力: {dict(self.state.capabilities)}\n\n"
             f"市場状況:\n"
-            f"  需要上位: {demand_str}\n"
-            f"  失業率: {market.unemployment_rate:.1%}\n"
-            f"  AI自動化率: {market.ai_automation_rate:.1%}\n"
-            f"  リモートワーク率: {market.remote_work_rate:.1%}\n"
-            f"  オフショア率: {market.overseas_outsource_rate:.1%}\n"
+            f"  注目ディメンション: {dim_str}\n"
+            f"  経済センチメント: {market.economic_sentiment:.2f}\n"
+            f"  技術ハイプ: {market.tech_hype_level:.2f}\n"
+            f"  規制圧力: {market.regulatory_pressure:.2f}\n"
+            f"  AI破壊度: {market.ai_disruption_level:.2f}\n"
         )
 
         if rag_context:
@@ -313,7 +310,7 @@ class BaseAgent(ABC):
             "id": self.id,
             "name": self.name,
             "type": self.profile.agent_type,
-            "industry": self.profile.industry.value,
+            "stakeholder_type": self.profile.stakeholder_type.value,
             "description": self.profile.description,
             "headcount": self.state.headcount,
             "revenue": self.state.revenue,

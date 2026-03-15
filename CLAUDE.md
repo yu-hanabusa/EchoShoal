@@ -1,8 +1,9 @@
 # EchoShoal
 
-AI-powered IT labor market prediction simulator for Japan.
-Agent-based simulation engine that predicts how the Japanese IT industry
-(SIer, SES, freelance) will evolve based on scenario inputs.
+AI-powered Service Business Impact Simulator.
+Agent-based simulation engine that predicts whether a specific service
+will succeed and what impact it will have on the market, using
+stakeholder-driven "what-if" scenario analysis.
 
 ## Tech Stack
 
@@ -24,12 +25,32 @@ EchoShoal/
 │   │   ├── api/      # API routes
 │   │   ├── core/     # LLM, NLP, Graph clients
 │   │   ├── simulation/  # Simulation engine
+│   │   │   └── agents/  # 7 stakeholder agent types
 │   │   ├── prediction/  # Quantitative prediction
-│   │   └── reports/     # Report generation
+│   │   ├── reports/     # Report generation
+│   │   └── evaluation/  # Benchmark evaluation
 │   └── tests/        # Test suite (unit/integration/e2e)
 ├── frontend/         # React SPA
 └── docker-compose.yml
 ```
+
+## Domain Model
+
+### Stakeholder Types (Agents)
+- **Enterprise** — large, medium, startup companies
+- **Freelancer** — service as extension of contract work
+- **IndieDevloper** — self-initiated products
+- **Government** — regulations, subsidies
+- **Investor/VC** — funding, market signals
+- **Platformer** — AWS/Google/etc (sudden competitors)
+- **Community** — industry groups, OSS communities
+
+### Market Dimensions (tracked per round)
+user_adoption, revenue_potential, tech_maturity, competitive_pressure,
+regulatory_risk, market_awareness, ecosystem_health, funding_climate
+
+### External Factors (environment, not agents)
+Economic changes, technology trends, regulatory changes, social shifts, disasters
 
 ## Development Commands
 

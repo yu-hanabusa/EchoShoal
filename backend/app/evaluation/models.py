@@ -21,9 +21,8 @@ class ExpectedTrend(BaseModel):
     """ベンチマークが主張する単一の期待トレンド.
 
     metric はドット区切りのパス:
-      - "skill_demand.ai_ml", "unit_prices.cloud_infra"
-      - "industry_growth.sier"
-      - "unemployment_rate", "ai_automation_rate", "remote_work_rate", "overseas_outsource_rate"
+      - "dimensions.user_adoption", "dimensions.competitive_pressure"
+      - "economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"
     """
 
     metric: str

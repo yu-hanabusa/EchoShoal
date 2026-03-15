@@ -12,7 +12,7 @@ from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
 from app.reports.extractor import build_report_data
 from app.reports.generator import ReportGenerator
-from app.simulation.models import MarketState, RoundResult
+from app.simulation.models import ServiceMarketState, RoundResult
 
 router = APIRouter(prefix="/api/simulations", tags=["reports"])
 
@@ -56,7 +56,7 @@ async def get_report(job_id: str, format: str = "json") -> Any:
     rounds = [
         RoundResult(
             round_number=r["round_number"],
-            market_state=MarketState(**r["market_state"]),
+            market_state=ServiceMarketState(**r["market_state"]),
             actions_taken=r.get("actions_taken", []),
             events=r.get("events", []),
         )

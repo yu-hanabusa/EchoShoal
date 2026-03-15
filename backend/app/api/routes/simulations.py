@@ -83,6 +83,8 @@ async def _get_graph_client() -> GraphClient | None:
 async def create_simulation(
     description: str = Form(...),
     num_rounds: int = Form(default=24),
+    service_name: str = Form(default=""),
+    service_url: str = Form(default=""),
     files: list[UploadFile] = File(default=[]),
 ) -> JSONResponse:
     """シミュレーションを作成し、即座に実行を開始する.
@@ -100,6 +102,8 @@ async def create_simulation(
     scenario = ScenarioInput(
         description=description,
         num_rounds=min(num_rounds, settings.max_rounds),
+        service_name=service_name,
+        service_url=service_url or None,
     )
 
     job_manager = _get_job_manager()
@@ -269,13 +273,33 @@ async def _run_simulation_task(
         analyzer = ScenarioAnalyzer(llm=llm)
         enriched = await analyzer.analyze_async(scenario)
         logger.info(
-            "シナリオ解析: スキル%d件, 業界%d件, AI加速度%.1f, 経済ショック%.1f",
-            len(enriched.detected_skills), len(enriched.detected_industries),
-            scenario.ai_acceleration, scenario.economic_shock,
+            "シナリオ解析: ディメンション%d件, ステークホルダー%d件, 経済環境%.1f, 技術破壊度%.1f",
+            len(enriched.detected_dimensions), len(enriched.detected_stakeholders),
+            scenario.economic_climate, scenario.tech_disruption,
         )
 
         # 知識グラフコンポーネント
         rag, agent_memory, graph_client = await _setup_graph_components(job_id)
+
+        # GitHub README自動取得
+        if scenario.service_url and graph_client:
+            from app.core.documents.fetcher import fetch_github_readme, is_github_url
+            if is_github_url(scenario.service_url):
+                try:
+                    readme_content = await fetch_github_readme(scenario.service_url)
+                    if readme_content:
+                        parser = DocumentParser()
+                        doc = parser.parse(
+                            readme_content.encode("utf-8"),
+                            f"README-{scenario.service_name or 'service'}.md",
+                            source=scenario.service_url,
+                        )
+                        from app.core.documents.processor import DocumentProcessor
+                        proc = DocumentProcessor(graph_client, simulation_id=job_id)
+                        await proc.process(doc)
+                        logger.info("GitHub README取得・処理完了: %s", scenario.service_url)
+                except Exception:
+                    logger.warning("GitHub README処理失敗: %s", scenario.service_url)
 
         # 文書エンティティ取得 → エージェント動的生成
         doc_entities: dict[str, list[str]] | None = None

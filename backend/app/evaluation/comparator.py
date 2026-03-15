@@ -15,19 +15,18 @@ from app.evaluation.models import (
     TrendResult,
 )
 from app.prediction.trend import compute_trend
-from app.simulation.models import Industry, RoundResult, SkillCategory
+from app.simulation.models import RoundResult, MarketDimension
 
 # 方向判定の閾値（変化率が±DIRECTION_THRESHOLD%以内ならSTABLE）
 DIRECTION_THRESHOLD = 3.0
 
-# getattr で安全にアクセス可能なMarketStateのスカラー属性
+# getattr で安全にアクセス可能なServiceMarketStateのスカラー属性
 _ALLOWED_SCALAR_METRICS = frozenset({
-    "unemployment_rate",
-    "ai_automation_rate",
-    "remote_work_rate",
-    "overseas_outsource_rate",
-    "average_age",
-    "total_engineers",
+    "economic_sentiment",
+    "tech_hype_level",
+    "regulatory_pressure",
+    "remote_work_adoption",
+    "ai_disruption_level",
 })
 
 
@@ -43,10 +42,8 @@ def extract_metric_values(
     """メトリクスパスから時系列値を抽出する.
 
     パス形式:
-      - "skill_demand.ai_ml" → MarketState.skill_demand[SkillCategory.AI_ML]
-      - "unit_prices.cloud_infra" → MarketState.unit_prices[SkillCategory.CLOUD_INFRA]
-      - "industry_growth.sier" → MarketState.industry_growth[Industry.SIER]
-      - "unemployment_rate" → MarketState.unemployment_rate
+      - "dimensions.user_adoption" → ServiceMarketState.dimensions[MarketDimension.USER_ADOPTION]
+      - "economic_sentiment" → ServiceMarketState.economic_sentiment
     """
     # ラウンド範囲の絞り込み
     filtered = rounds
@@ -65,18 +62,9 @@ def extract_metric_values(
     for r in filtered:
         ms = r.market_state
         try:
-            if category == "skill_demand" and len(parts) == 2:
-                skill = SkillCategory(parts[1])
-                values.append(ms.skill_demand.get(skill, 0.0))
-            elif category == "skill_supply" and len(parts) == 2:
-                skill = SkillCategory(parts[1])
-                values.append(ms.skill_supply.get(skill, 0.0))
-            elif category == "unit_prices" and len(parts) == 2:
-                skill = SkillCategory(parts[1])
-                values.append(ms.unit_prices.get(skill, 0.0))
-            elif category == "industry_growth" and len(parts) == 2:
-                industry = Industry(parts[1])
-                values.append(ms.industry_growth.get(industry, 0.0))
+            if category == "dimensions" and len(parts) == 2:
+                dim = MarketDimension(parts[1])
+                values.append(ms.dimensions.get(dim, 0.0))
             elif metric in _ALLOWED_SCALAR_METRICS:
                 values.append(float(getattr(ms, metric)))
             else:
@@ -143,10 +131,9 @@ def evaluate_trend(
             abs(expected.magnitude), 1.0,
         )
     else:
-        # STABLEの場合: 変化率の絶対値が小さいほど良い
         magnitude_error = min(abs(trend.change_rate) / 10.0, 1.0)
 
-    magnitude_error = min(magnitude_error, 2.0)  # 上限クランプ
+    magnitude_error = min(magnitude_error, 2.0)
 
     # スコア算出: 方向70% + 規模30%
     score = 0.7 * float(direction_correct) + 0.3 * max(0.0, 1.0 - magnitude_error)
@@ -167,10 +154,7 @@ def evaluate_trend(
 
 
 def pearson_r(xs: list[float], ys: list[float]) -> float | None:
-    """純粋Python実装のピアソン相関係数.
-
-    データが不十分または分散ゼロの場合はNoneを返す。
-    """
+    """純粋Python実装のピアソン相関係数."""
     n = len(xs)
     if n < 3 or n != len(ys):
         return None
@@ -201,7 +185,6 @@ def evaluate_benchmark(
         evaluate_trend(et, rounds) for et in benchmark.expected_trends
     ]
 
-    # 重み付き方向正解率
     total_weight = sum(
         et.weight for et in benchmark.expected_trends
     )
@@ -213,7 +196,6 @@ def evaluate_benchmark(
     else:
         direction_accuracy = 0.0
 
-    # 重み付き平均規模誤差
     if total_weight > 0:
         mean_magnitude_error = sum(
             tr.magnitude_error * et.weight
@@ -222,12 +204,10 @@ def evaluate_benchmark(
     else:
         mean_magnitude_error = 1.0
 
-    # ピアソン相関（期待magnitudeと実際のchange_rate）
     expected_mags = [et.magnitude for et in benchmark.expected_trends]
     actual_rates = [tr.actual_change_rate for tr in trend_results]
     correlation = pearson_r(expected_mags, actual_rates)
 
-    # 総合スコア: 方向60% + 規模30% + 相関10%
     clamped_mae = min(mean_magnitude_error, 1.0)
     corr_component = max(0.0, correlation) if correlation is not None else 0.0
     overall_score = (

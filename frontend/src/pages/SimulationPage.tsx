@@ -111,9 +111,9 @@ export default function SimulationPage() {
                 <div className="bg-surface-0 rounded-lg border border-border p-6">
                   <div className="flex flex-col md:flex-row md:items-end gap-6">
                     <div className="flex-1">
-                      <p className="text-sm text-text-tertiary mb-1">最終失業率</p>
+                      <p className="text-sm text-text-tertiary mb-1">ユーザー獲得率</p>
                       <p className="text-4xl font-bold text-text-primary tabular-nums tracking-tight">
-                        {(result.summary.final_market.unemployment_rate * 100).toFixed(1)}
+                        {((result.summary.final_market.dimensions?.user_adoption ?? 0) * 100).toFixed(1)}
                         <span className="text-lg font-normal text-text-secondary ml-0.5">%</span>
                       </p>
                     </div>
@@ -135,8 +135,8 @@ export default function SimulationPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <MarketChart rounds={result.rounds} dataKey="skill_demand" title="スキル需要の推移" skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]} />
-                  <MarketChart rounds={result.rounds} dataKey="unit_prices" title="単価の推移（万円/月）" skills={["ai_ml", "cloud_infra", "web_backend", "legacy"]} />
+                  <MarketChart rounds={result.rounds} title="市場ディメンション推移（成長系）" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />
+                  <MarketChart rounds={result.rounds} title="市場ディメンション推移（圧力系）" dimensions={["competitive_pressure", "regulatory_risk", "tech_maturity", "funding_climate"]} />
                 </div>
 
                 <AgentTable agents={result.summary.agents} />
@@ -225,11 +225,13 @@ function GraphTab({ jobId }: { jobId: string }) {
 
   const nodes: Array<{ id: string; label: string; type: string; x: number; y: number }> = [];
   const edges: Array<{ source: string; target: string }> = [];
+  const seenIds = new Set<string>();
 
   for (const el of data.elements) {
     if (el.data.source && el.data.target) {
       edges.push({ source: el.data.source, target: el.data.target });
-    } else if (el.data.id) {
+    } else if (el.data.id && !seenIds.has(el.data.id)) {
+      seenIds.add(el.data.id);
       nodes.push({ id: el.data.id, label: el.data.label || el.data.id, type: el.data.type || "Unknown", x: 0, y: 0 });
     }
   }

@@ -12,22 +12,20 @@ class EventType(str, Enum):
     POLICY_CHANGE = "policy_change"          # 政策・制度変更
     ECONOMIC_SHOCK = "economic_shock"        # 景気変動
     TECH_DISRUPTION = "tech_disruption"      # 技術的変革
-    LABOR_REGULATION = "labor_regulation"    # 労働規制変更
+    COMPETITIVE_MOVE = "competitive_move"    # 競合の動き
     INDUSTRY_SHIFT = "industry_shift"        # 業界構造変化
     NATURAL_DISASTER = "natural_disaster"    # 自然災害
 
 
 class EventImpact(BaseModel):
     """イベントが市場に与える影響."""
-    # スキル需要への影響（正: 需要増、負: 需要減）
-    skill_demand_delta: dict[str, float] = Field(default_factory=dict)
-    # 単価への影響（乗数: 1.0 = 変化なし）
-    price_multiplier: float = 1.0
+    # ディメンションへの影響（正: 増加、負: 減少）
+    dimension_delta: dict[str, float] = Field(default_factory=dict)
     # マクロ指標への影響
-    unemployment_delta: float = 0.0
-    ai_automation_delta: float = 0.0
-    remote_work_delta: float = 0.0
-    offshore_delta: float = 0.0
+    economic_sentiment_delta: float = 0.0
+    tech_hype_delta: float = 0.0
+    regulatory_pressure_delta: float = 0.0
+    ai_disruption_delta: float = 0.0
 
 
 class MarketEvent(BaseModel):

@@ -7,38 +7,37 @@ from typing import Any
 
 from app.core.llm.router import LLMRouter, TaskType
 from app.simulation.events.models import EventImpact, EventType, MarketEvent
-from app.simulation.models import ScenarioInput, SkillCategory
+from app.simulation.models import ScenarioInput, MarketDimension
 
 logger = logging.getLogger(__name__)
 
 # LLM にイベント生成を依頼する際のシステムプロンプト
-_SYSTEM_PROMPT = """あなたは日本のIT人材市場のアナリストです。
+_SYSTEM_PROMPT = """あなたはサービスビジネスの市場アナリストです。
 シナリオ説明に基づき、シミュレーション期間中に発生しうる市場イベントをJSON形式で生成してください。
 
 回答形式:
-{"events": [
-  {
+{{"events": [
+  {{
     "name": "イベント名",
-    "event_type": "policy_change|economic_shock|tech_disruption|labor_regulation|industry_shift|natural_disaster",
+    "event_type": "policy_change|economic_shock|tech_disruption|competitive_move|industry_shift|natural_disaster",
     "description": "イベントの説明",
     "trigger_round": 1-{max_rounds},
     "duration": 1-6,
-    "impact": {
-      "skill_demand_delta": {"スキル名": -0.1〜0.3},
-      "price_multiplier": 0.8〜1.3,
-      "unemployment_delta": -0.05〜0.05,
-      "ai_automation_delta": 0.0〜0.1,
-      "remote_work_delta": -0.1〜0.1,
-      "offshore_delta": -0.05〜0.05
-    }
-  }
-]}
+    "impact": {{
+      "dimension_delta": {{"ディメンション名": -0.1〜0.3}},
+      "economic_sentiment_delta": -0.1〜0.1,
+      "tech_hype_delta": -0.1〜0.1,
+      "regulatory_pressure_delta": -0.1〜0.1,
+      "ai_disruption_delta": 0.0〜0.1
+    }}
+  }}
+]}}
 
 制約:
 - イベントは3〜5個程度
 - trigger_round は期間内に分散させる
 - 影響値は現実的な範囲で設定
-- skill_demand_delta のキーは: legacy, web_frontend, web_backend, cloud_infra, ai_ml, security, mobile, erp"""
+- dimension_delta のキーは: user_adoption, revenue_potential, tech_maturity, competitive_pressure, regulatory_risk, market_awareness, ecosystem_health, funding_climate"""
 
 
 class EventScheduler:
@@ -60,13 +59,14 @@ class EventScheduler:
             return self._events
 
         prompt = (
+            f"対象サービス: {scenario.service_name or '未指定'}\n"
             f"シナリオ: {scenario.description}\n"
             f"シミュレーション期間: {scenario.num_rounds}ラウンド（1ラウンド = 1ヶ月）\n"
-            f"AI加速度: {scenario.ai_acceleration}\n"
-            f"経済ショック: {scenario.economic_shock}\n"
+            f"経済環境: {scenario.economic_climate}\n"
+            f"技術破壊度: {scenario.tech_disruption}\n"
         )
-        if scenario.policy_change:
-            prompt += f"政策変更: {scenario.policy_change}\n"
+        if scenario.regulatory_change:
+            prompt += f"規制変更: {scenario.regulatory_change}\n"
 
         system = _SYSTEM_PROMPT.replace("{max_rounds}", str(scenario.num_rounds))
 
@@ -115,21 +115,20 @@ class EventScheduler:
                     continue
 
                 impact_raw = raw.get("impact", {})
-                # skill_demand_delta のキーを SkillCategory 値に正規化
-                skill_deltas = {}
-                for k, v in impact_raw.get("skill_demand_delta", {}).items():
+                # dimension_delta のキーを MarketDimension 値に正規化
+                dim_deltas = {}
+                for k, v in impact_raw.get("dimension_delta", {}).items():
                     k_lower = k.lower()
-                    valid_values = {s.value for s in SkillCategory}
+                    valid_values = {d.value for d in MarketDimension}
                     if k_lower in valid_values:
-                        skill_deltas[k_lower] = float(v)
+                        dim_deltas[k_lower] = float(v)
 
                 impact = EventImpact(
-                    skill_demand_delta=skill_deltas,
-                    price_multiplier=float(impact_raw.get("price_multiplier", 1.0)),
-                    unemployment_delta=float(impact_raw.get("unemployment_delta", 0.0)),
-                    ai_automation_delta=float(impact_raw.get("ai_automation_delta", 0.0)),
-                    remote_work_delta=float(impact_raw.get("remote_work_delta", 0.0)),
-                    offshore_delta=float(impact_raw.get("offshore_delta", 0.0)),
+                    dimension_delta=dim_deltas,
+                    economic_sentiment_delta=float(impact_raw.get("economic_sentiment_delta", 0.0)),
+                    tech_hype_delta=float(impact_raw.get("tech_hype_delta", 0.0)),
+                    regulatory_pressure_delta=float(impact_raw.get("regulatory_pressure_delta", 0.0)),
+                    ai_disruption_delta=float(impact_raw.get("ai_disruption_delta", 0.0)),
                 )
 
                 events.append(MarketEvent(
@@ -151,56 +150,66 @@ class EventScheduler:
         events = []
         mid = scenario.num_rounds // 2
 
-        # AI加速シナリオ
-        if scenario.ai_acceleration > 0.3:
+        # 技術破壊シナリオ
+        if scenario.tech_disruption > 0.3:
             events.append(MarketEvent(
-                name="生成AI普及の加速",
+                name="競合技術の急速な進化",
                 event_type=EventType.TECH_DISRUPTION,
-                description="生成AIツールの企業導入が急速に進展",
+                description="AIや新技術の急速な進化により市場環境が激変",
                 trigger_round=max(1, mid - 2),
                 duration=4,
                 impact=EventImpact(
-                    skill_demand_delta={"ai_ml": 0.15, "legacy": -0.1},
-                    ai_automation_delta=0.05,
+                    dimension_delta={
+                        "tech_maturity": 0.15,
+                        "competitive_pressure": 0.1,
+                    },
+                    tech_hype_delta=0.05,
                 ),
             ))
 
         # 経済ショック
-        if scenario.economic_shock < -0.3:
+        if scenario.economic_climate < -0.3:
             events.append(MarketEvent(
                 name="景気後退",
                 event_type=EventType.ECONOMIC_SHOCK,
-                description="IT投資の抑制と案件減少",
+                description="景気後退によりIT投資が縮小",
                 trigger_round=max(1, mid - 3),
                 duration=6,
                 impact=EventImpact(
-                    price_multiplier=0.95,
-                    unemployment_delta=0.02,
+                    dimension_delta={
+                        "funding_climate": -0.1,
+                        "revenue_potential": -0.08,
+                    },
+                    economic_sentiment_delta=-0.05,
                 ),
             ))
-        elif scenario.economic_shock > 0.3:
+        elif scenario.economic_climate > 0.3:
             events.append(MarketEvent(
                 name="IT投資拡大",
                 event_type=EventType.ECONOMIC_SHOCK,
-                description="DX推進による企業のIT投資増加",
+                description="好景気によりデジタル投資が拡大",
                 trigger_round=max(1, mid - 2),
                 duration=4,
                 impact=EventImpact(
-                    price_multiplier=1.05,
-                    skill_demand_delta={"cloud_infra": 0.1, "web_backend": 0.08},
+                    dimension_delta={
+                        "funding_climate": 0.1,
+                        "user_adoption": 0.08,
+                    },
+                    economic_sentiment_delta=0.05,
                 ),
             ))
 
-        # 政策変更
-        if scenario.policy_change:
+        # 規制変更
+        if scenario.regulatory_change:
             events.append(MarketEvent(
-                name="政策変更",
+                name="規制変更",
                 event_type=EventType.POLICY_CHANGE,
-                description=scenario.policy_change,
+                description=scenario.regulatory_change,
                 trigger_round=max(1, mid),
                 duration=3,
                 impact=EventImpact(
-                    skill_demand_delta={"security": 0.05},
+                    dimension_delta={"regulatory_risk": 0.1},
+                    regulatory_pressure_delta=0.05,
                 ),
             ))
 

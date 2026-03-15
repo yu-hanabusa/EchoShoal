@@ -13,23 +13,34 @@ from app.core.graph.agent_memory import (
 
 class TestGetVisibility:
     def test_public_actions(self):
-        assert get_visibility("bid_project") == "public"
-        assert get_visibility("hire_engineers") == "public"
-        assert get_visibility("recruit") == "public"
+        assert get_visibility("adopt_service") == "public"
+        assert get_visibility("build_competitor") == "public"
+        assert get_visibility("acquire_startup") == "public"
+        assert get_visibility("adopt_tool") == "public"
+        assert get_visibility("launch_competing_product") == "public"
+        assert get_visibility("regulate") == "public"
+        assert get_visibility("invest_seed") == "public"
+        assert get_visibility("launch_competing_feature") == "public"
+        assert get_visibility("endorse") == "public"
         assert get_visibility("raise_rate") == "public"
-        assert get_visibility("start_dx") == "public"
 
     def test_private_actions(self):
-        assert get_visibility("offshore") == "private"
-        assert get_visibility("adjust_margin") == "private"
-        assert get_visibility("release_bench") == "private"
-        assert get_visibility("learn_skill") == "private"
-        assert get_visibility("maintain_legacy") == "private"
+        assert get_visibility("reject_service") == "private"
+        assert get_visibility("wait_and_observe") == "private"
+        assert get_visibility("upskill") == "private"
+        assert get_visibility("rest") == "private"
+        assert get_visibility("abandon_project") == "private"
+        assert get_visibility("wait_and_see") == "private"
+        assert get_visibility("ignore") == "private"
+        assert get_visibility("observe") == "private"
 
     def test_partial_actions(self):
-        assert get_visibility("outsource") == "partial"
-        assert get_visibility("take_contract") == "partial"
-        assert get_visibility("outsource_project") == "partial"
+        assert get_visibility("invest_rd") == "partial"
+        assert get_visibility("lobby_regulation") == "partial"
+        assert get_visibility("seek_funding") == "partial"
+        assert get_visibility("divest") == "partial"
+        assert get_visibility("fund_competitor") == "partial"
+        assert get_visibility("mentor") == "partial"
 
     def test_unknown_defaults_to_public(self):
         assert get_visibility("unknown_action") == "public"
@@ -37,18 +48,31 @@ class TestGetVisibility:
     def test_all_agent_actions_have_visibility(self):
         """全エージェントの行動タイプがACTION_VISIBILITYに定義されている."""
         expected_actions = {
-            # SIer
-            "bid_project", "hire_engineers", "outsource", "invest_rd",
-            "offshore", "internal_training",
-            # SES
-            "recruit", "upskill", "adjust_margin", "expand_sales",
-            "release_bench", "shift_domain",
-            # Freelance
-            "take_contract", "learn_skill", "raise_rate", "lower_rate",
-            "network", "rest",
             # Enterprise
-            "hire_internal", "outsource_project", "start_dx",
-            "maintain_legacy", "adopt_saas", "insource",
+            "adopt_service", "reject_service", "build_competitor",
+            "acquire_startup", "invest_rd", "lobby_regulation",
+            "partner", "wait_and_observe",
+            # Freelancer
+            "adopt_tool", "offer_service", "upskill",
+            "build_portfolio", "raise_rate", "switch_platform",
+            "network", "rest",
+            # IndieDevAgent
+            "launch_competing_product", "pivot_product", "open_source",
+            "monetize", "abandon_project", "seek_funding", "build_community",
+            # Government
+            "regulate", "subsidize", "certify", "investigate",
+            "deregulate", "partner_public", "issue_guideline",
+            # Investor
+            "invest_seed", "invest_series", "divest",
+            "fund_competitor", "market_signal", "wait_and_see", "mentor",
+            # Platformer
+            "launch_competing_feature", "acquire_service",
+            "partner_integrate", "restrict_api", "price_undercut",
+            "ignore", "open_platform",
+            # Community
+            "endorse", "set_standard", "reject_standard",
+            "create_alternative", "educate_market", "observe",
+            "publish_report",
         }
         assert expected_actions == set(ACTION_VISIBILITY.keys())
 
@@ -63,7 +87,7 @@ class TestAgentMemoryStore:
     @pytest.mark.asyncio
     async def test_ensure_agent_node(self):
         store, graph = self._make_store()
-        await store.ensure_agent_node("id1", "テスト", "SES企業", "ses")
+        await store.ensure_agent_node("id1", "テスト", "大手企業", "enterprise")
         graph.execute_write.assert_called_once()
         call_args = graph.execute_write.call_args
         assert "MERGE" in call_args[0][0]
@@ -76,8 +100,8 @@ class TestAgentMemoryStore:
             agent_id="id1",
             agent_name="テスト",
             round_number=3,
-            action_type="recruit",
-            description="エンジニア採用",
+            action_type="adopt_service",
+            description="サービス採用",
         )
         graph.execute_write.assert_called_once()
         call_args = graph.execute_write.call_args
@@ -90,8 +114,8 @@ class TestAgentMemoryStore:
             agent_id="id1",
             agent_name="テスト",
             round_number=3,
-            action_type="offshore",
-            description="コスト削減",
+            action_type="wait_and_observe",
+            description="様子見",
         )
         call_args = graph.execute_write.call_args
         assert call_args[0][1]["visibility"] == "private"
@@ -113,7 +137,7 @@ class TestAgentMemoryStore:
     @pytest.mark.asyncio
     async def test_get_visible_actions_includes_public(self):
         store, graph = self._make_store(execute_read_return=[
-            {"agent_name": "A社", "action_type": "recruit", "description": "採用",
+            {"agent_name": "A社", "action_type": "adopt_service", "description": "採用",
              "round": 1, "visibility": "public", "agent_id": "id2"},
         ])
         actions = await store.get_visible_actions("id1", from_round=1)
@@ -132,7 +156,7 @@ class TestAgentMemoryStore:
     @pytest.mark.asyncio
     async def test_get_market_activity_summary_excludes_self(self):
         store, _ = self._make_store(execute_read_return=[
-            {"agent_name": "自社", "action_type": "recruit", "description": "採用",
+            {"agent_name": "自社", "action_type": "adopt_service", "description": "採用",
              "round": 1, "visibility": "public", "agent_id": "id1"},
         ])
         summary = await store.get_market_activity_summary("id1", current_round=2)
@@ -142,9 +166,9 @@ class TestAgentMemoryStore:
     @pytest.mark.asyncio
     async def test_get_market_activity_summary_includes_others(self):
         store, _ = self._make_store(execute_read_return=[
-            {"agent_name": "他社", "action_type": "recruit", "description": "採用",
+            {"agent_name": "他社", "action_type": "adopt_service", "description": "採用",
              "round": 1, "visibility": "public", "agent_id": "id2"},
         ])
         summary = await store.get_market_activity_summary("id1", current_round=2)
         assert "他社" in summary
-        assert "recruit" in summary
+        assert "adopt_service" in summary

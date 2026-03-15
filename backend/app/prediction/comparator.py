@@ -14,31 +14,25 @@ def compare_predictions(
     alt_label: str = "代替シナリオ",
 ) -> dict[str, Any]:
     """2つの予測結果を比較して差分を返す."""
-    skill_diffs = []
+    dim_diffs = []
 
-    base_skills = {sp.skill: sp for sp in base.skill_predictions}
-    alt_skills = {sp.skill: sp for sp in alternative.skill_predictions}
+    base_dims = {dp.dimension: dp for dp in base.dimension_predictions}
+    alt_dims = {dp.dimension: dp for dp in alternative.dimension_predictions}
 
-    for skill_key in base_skills:
-        b = base_skills[skill_key]
-        a = alt_skills.get(skill_key)
+    for dim_key in base_dims:
+        b = base_dims[dim_key]
+        a = alt_dims.get(dim_key)
         if a is None:
             continue
 
-        skill_diffs.append({
-            "skill": skill_key,
-            "demand_diff": round(a.predicted_demand - b.predicted_demand, 4),
-            "price_diff": round(a.predicted_price - b.predicted_price, 1),
-            "shortage_diff": a.shortage_estimate - b.shortage_estimate,
+        dim_diffs.append({
+            "dimension": dim_key,
+            "value_diff": round(a.predicted_value - b.predicted_value, 4),
             base_label: {
-                "demand": b.predicted_demand,
-                "price": b.predicted_price,
-                "shortage": b.shortage_estimate,
+                "value": b.predicted_value,
             },
             alt_label: {
-                "demand": a.predicted_demand,
-                "price": a.predicted_price,
-                "shortage": a.shortage_estimate,
+                "value": a.predicted_value,
             },
         })
 
@@ -56,16 +50,16 @@ def compare_predictions(
             alt_label: {"end_value": a_trend.end_value, "change_rate": a_trend.change_rate},
         }
 
-    # 最も差が大きいスキルを特定
+    # 最も差が大きいディメンションを特定
     most_impacted = sorted(
-        skill_diffs, key=lambda x: abs(x["demand_diff"]), reverse=True
+        dim_diffs, key=lambda x: abs(x["value_diff"]), reverse=True
     )
 
     return {
         "base_label": base_label,
         "alternative_label": alt_label,
         "simulation_months": base.simulation_months,
-        "skill_comparison": skill_diffs,
+        "dimension_comparison": dim_diffs,
         "macro_comparison": macro_diffs,
-        "most_impacted_skills": [s["skill"] for s in most_impacted[:3]],
+        "most_impacted_dimensions": [d["dimension"] for d in most_impacted[:3]],
     }
