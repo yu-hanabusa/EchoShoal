@@ -108,44 +108,44 @@ class AgentGenerator:
         org_names: list[str],
         scenario: ScenarioInput,
     ) -> list[BaseAgent]:
-        """組織名リストからエージェントを一括生成する.
-
-        LLMに各組織の役割・性格を推定させる。
-        """
+        """組織名リストからエージェントを一括生成する."""
         if not org_names:
             return []
 
-        # LLMに一括で各組織の情報を推定させる
-        names_text = "\n".join(f"- {name}" for name in org_names[:30])
+        names_text = ", ".join(org_names[:30])
         prompt = (
-            f"Service being evaluated: {scenario.service_name or 'unknown'}\n"
-            f"Scenario: {scenario.description[:400]}\n\n"
-            f"The following organizations/entities were found in reference documents:\n{names_text}\n\n"
-            "For EACH entity, determine its role in relation to the service and create an agent profile.\n"
-            "Return EXACTLY this JSON format:\n"
-            '{"agents": [{"name": "Entity Name", '
-            '"stakeholder_type": "enterprise|freelancer|indie_developer|government|investor|platformer|community|end_user", '
-            '"description": "Role in this market", '
-            '"headcount": 100, "revenue": 500, "cost": 400, '
-            '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
-            '"sunk_cost_bias": 0.5, "info_sensitivity": 0.5, "noise": 0.1, '
-            '"description": "Personality traits"}}]}'
+            f"Service: {scenario.service_name or 'unknown'}\n"
+            f"Context: {scenario.description[:300]}\n"
+            f"Organizations: {names_text}\n\n"
+            "For each organization, return JSON:\n"
+            '{"agents":[{"name":"Org Name","stakeholder_type":"enterprise","description":"role"}]}\n'
+            "stakeholder_type: enterprise/end_user/government/investor/platformer/community/freelancer/indie_developer"
         )
 
         try:
             response = await self.llm.generate_json(
                 task_type=TaskType.PERSONA_GENERATION,
                 prompt=prompt,
-                system_prompt=(
-                    "You are a market analyst. For each organization found in documents, "
-                    "determine its stakeholder type and personality in relation to the service being evaluated. "
-                    "Respond with JSON only."
-                ),
+                system_prompt="Return JSON only. Classify each organization.",
             )
             return self._parse_agents(response)
         except Exception:
-            logger.warning("エンティティ→エージェント変換失敗")
-            return []
+            logger.warning("エンティティ→エージェント変換失敗、直接生成にフォールバック")
+            # LLM失敗時: 組織名から直接エージェントを作る
+            return self._entities_to_agents_fallback(org_names)
+
+    def _entities_to_agents_fallback(self, org_names: list[str]) -> list[BaseAgent]:
+        """LLM不要のフォールバック: 組織名から直接エージェントを生成."""
+        agents: list[BaseAgent] = []
+        for name in org_names[:30]:
+            agent = self._create_agent({
+                "name": name,
+                "stakeholder_type": "enterprise",
+                "description": f"Market participant: {name}",
+            })
+            if agent:
+                agents.append(agent)
+        return agents
 
     async def _generate_complement_agents(
         self,
@@ -153,52 +153,32 @@ class AgentGenerator:
         enriched: EnrichedScenario,
         existing_names: set[str],
     ) -> list[BaseAgent]:
-        """既存エージェントに不足しているステークホルダーを補完する.
-
-        - 必ずユーザー層（end_user）を含める
-        - 必要な競合が不足していれば追加
-        - 行政・投資家等が不足していれば追加
-        """
+        """既存エージェントに不足しているステークホルダーを補完する."""
         existing_list = ", ".join(existing_names) if existing_names else "none"
 
         prompt = (
             f"Service: {scenario.service_name or 'unknown'}\n"
-            f"Scenario: {scenario.description[:400]}\n\n"
-            f"Already generated agents: {existing_list}\n\n"
-            "Generate ADDITIONAL agents that are MISSING from the above list.\n"
-            "You MUST include:\n"
-            "1. End user agents representing different user segments (e.g. 'Existing Slack users', "
-            "'Potential users in manufacturing sector', 'Security-conscious finance users')\n"
-            "2. Any major competitors NOT already in the list (use real names like Slack, Microsoft Teams, etc.)\n"
-            "3. Relevant government agencies, investors, communities if missing\n\n"
-            "Do NOT duplicate agents that already exist.\n"
-            "Each agent is an individual entity. Generate as many as needed to represent the market realistically.\n\n"
-            "Return EXACTLY this JSON format:\n"
-            '{"agents": [{"name": "Agent Name", '
-            '"stakeholder_type": "enterprise|end_user|government|investor|platformer|community", '
-            '"description": "Role description", '
-            '"headcount": 100, "revenue": 500, "cost": 400, '
-            '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
-            '"sunk_cost_bias": 0.5, "info_sensitivity": 0.5, "noise": 0.1, '
-            '"description": "Personality"}}]}'
+            f"Context: {scenario.description[:300]}\n"
+            f"Existing agents: {existing_list}\n\n"
+            "Add MISSING agents. Include:\n"
+            "- End users (e.g. 'Existing Slack users', 'Potential SMB users')\n"
+            "- Named competitors (Slack, Microsoft Teams, etc.)\n"
+            "- Government, investors, communities if missing\n\n"
+            '{"agents":[{"name":"Name","stakeholder_type":"enterprise","description":"role"}]}\n'
+            "stakeholder_type: enterprise/end_user/government/investor/platformer/community"
         )
 
         try:
             response = await self.llm.generate_json(
                 task_type=TaskType.PERSONA_GENERATION,
                 prompt=prompt,
-                system_prompt=(
-                    "You are a market simulation expert. Generate MISSING stakeholder agents "
-                    "to complete the market structure. Include end_user agents representing "
-                    "different user segments. Use real names for competitors. Respond with JSON only."
-                ),
+                system_prompt="Return JSON only. Generate missing market participants.",
             )
             agents = self._parse_agents(response)
-            # 重複排除
             return [a for a in agents if a.name not in existing_names]
         except Exception:
-            logger.warning("補完エージェント生成失敗")
-            return []
+            logger.warning("補完エージェント生成失敗、シナリオベースフォールバック")
+            return self._complement_fallback(scenario, existing_names)
 
     def _parse_agents(self, response: dict[str, Any]) -> list[BaseAgent]:
         """LLMのJSON応答からエージェントインスタンスを生成する."""
@@ -265,6 +245,82 @@ class AgentGenerator:
             llm=self.llm,
             personality=personality,
         )
+
+
+    def _complement_fallback(
+        self,
+        scenario: ScenarioInput,
+        existing_names: set[str],
+    ) -> list[BaseAgent]:
+        """LLM不要のフォールバック: シナリオテキストから競合名等を抽出してエージェント化."""
+        import re
+
+        desc = scenario.description
+        agents: list[BaseAgent] = []
+
+        # シナリオ内の既知の企業名/サービス名を検出
+        known_competitors = [
+            ("Slack", "platformer", "Leading business chat with 2600+ integrations"),
+            ("Microsoft Teams", "platformer", "Dominant enterprise communication platform"),
+            ("LINE WORKS", "enterprise", "Japanese business chat, strong in SMB sector"),
+            ("Chatwork", "enterprise", "Popular Japanese business chat for SMBs"),
+            ("Google Chat", "platformer", "Part of Google Workspace ecosystem"),
+            ("Discord", "community", "Communication platform expanding into business use"),
+        ]
+
+        for name, stype, description in known_competitors:
+            if name.lower() in desc.lower() and name not in existing_names:
+                agent = self._create_agent({
+                    "name": name,
+                    "stakeholder_type": stype,
+                    "description": description,
+                })
+                if agent:
+                    agents.append(agent)
+
+        # ユーザー層を必ず追加
+        user_segments = [
+            ("既存チャットツールユーザー", "Current users of competing chat services, evaluating alternatives"),
+            ("セキュリティ重視企業ユーザー", "Enterprise users prioritizing security and compliance"),
+            ("中小企業の潜在ユーザー", "SMB users not yet using business chat tools"),
+        ]
+        for name, description in user_segments:
+            if name not in existing_names:
+                agent = self._create_agent({
+                    "name": name,
+                    "stakeholder_type": "end_user",
+                    "description": description,
+                })
+                if agent:
+                    agents.append(agent)
+
+        # 行政・投資家が不足していれば追加
+        type_names = {a.profile.stakeholder_type for a in agents}
+        all_existing_types = type_names | {
+            _STAKEHOLDER_MAP.get(n, StakeholderType.ENTERPRISE)
+            for n in existing_names
+        }
+
+        if StakeholderType.GOVERNMENT not in all_existing_types:
+            agent = self._create_agent({
+                "name": "デジタル庁",
+                "stakeholder_type": "government",
+                "description": "Digital Agency promoting IT adoption in government",
+            })
+            if agent:
+                agents.append(agent)
+
+        if StakeholderType.INVESTOR not in all_existing_types:
+            agent = self._create_agent({
+                "name": "国内SaaS投資ファンド",
+                "stakeholder_type": "investor",
+                "description": "VC fund focused on Japanese SaaS market",
+            })
+            if agent:
+                agents.append(agent)
+
+        logger.info("シナリオベースフォールバック: %d体生成", len(agents))
+        return agents
 
 
 def _clamp(value: Any, low: float = 0.0, high: float = 1.0) -> float:

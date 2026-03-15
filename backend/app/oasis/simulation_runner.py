@@ -182,7 +182,7 @@ class OASISSimulationEngine:
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
         parts = [
-            f"You are {profile['user_name']}, a {profile['stakeholder_type']} stakeholder.",
+            f"あなたは{profile['user_name']}です。{profile['stakeholder_type']}のステークホルダーとして日本語で発言してください。",
             f"Bio: {profile['bio']}",
             f"Stance: {profile['stance']}",
             f"Personality: {profile['personality_description']}",
