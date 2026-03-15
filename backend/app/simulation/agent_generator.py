@@ -91,22 +91,14 @@ class AgentGenerator:
 
     def _system_prompt(self) -> str:
         return (
-            "あなたはサービスビジネスの専門家です。\n"
-            "シナリオと参考資料の情報に基づいて、対象サービスのビジネスインパクトシミュレーションに登場する\n"
-            "ステークホルダー（エージェント）を生成してください。\n"
-            "各エージェントは現実の市場を反映したリアリティのある設定にしてください。\n"
-            "エージェントの種類は必ず以下のいずれかにしてください:\n"
-            "- 企業（大手企業/中堅企業/スタートアップ）: 対象サービスの採用者・競合\n"
-            "- フリーランス: サービスの利用者・活用者\n"
-            "- 個人開発者: 競合プロダクトの開発者\n"
-            "- 行政: 規制・補助金の決定者\n"
-            "- 投資家/VC: 資金提供・市場シグナルの発信者\n"
-            "- プラットフォーマー: 大手テック企業（競合機能リリースの可能性）\n"
-            "- 業界団体/コミュニティ: 標準化・教育活動\n\n"
-            "stakeholder_typeは enterprise, freelancer, indie_developer, government, investor, platformer, community のいずれかにしてください。\n"
-            "capabilitiesのキーは user_adoption, revenue_potential, tech_maturity, competitive_pressure, "
-            "regulatory_risk, market_awareness, ecosystem_health, funding_climate のいずれかにしてください。\n"
-            "回答はJSON形式のみ。説明文は不要です。"
+            "You are a service business expert. Generate stakeholder agents for a simulation.\n\n"
+            "Each agent must have mode: 'individual' or 'archetype'.\n"
+            "- individual: A specific named entity that directly impacts the service (e.g. 'Slack', 'Microsoft', 'Digital Agency')\n"
+            "- archetype: A representative of a group that behaves similarly (e.g. 'Security-conscious mid-size enterprises')\n"
+            "  For archetypes, set represents_count to the number of entities this agent represents.\n\n"
+            "Generate as many agents as the market structure requires. Do NOT limit to a fixed number.\n"
+            "stakeholder_type must be: enterprise, freelancer, indie_developer, government, investor, platformer, community\n"
+            "Respond with JSON only."
         )
 
     def _build_prompt(
@@ -116,10 +108,13 @@ class AgentGenerator:
         document_entities: dict[str, list[str]] | None,
     ) -> str:
         lines = [
-            "以下の情報に基づいて、シミュレーションに登場する5〜15体のエージェントをJSON形式で生成してください。",
+            f"Service: {scenario.service_name or 'unknown'}",
+            f"Scenario: {scenario.description[:600]}",
             "",
-            f"【対象サービス】\n{scenario.service_name or '未指定'}",
-            f"\n【シナリオ】\n{scenario.description}",
+            "Generate agents that reflect the REAL market structure for this service.",
+            "Use 'individual' mode for specific named players (competitors, key regulators, major platforms).",
+            "Use 'archetype' mode for groups that behave similarly (e.g. 'early-adopter SMBs', 'conservative enterprises').",
+            "There is no fixed limit on agent count. Generate what the market requires.",
         ]
 
         if scenario.target_market:
@@ -146,27 +141,20 @@ class AgentGenerator:
 
         lines.append("")
         lines.append(
-            '回答形式:\n{"agents": [\n'
-            '  {\n'
-            '    "name": "エージェント名",\n'
-            '    "agent_type": "企業|フリーランス|個人開発者|行政|投資家/VC|プラットフォーマー|業界団体",\n'
-            '    "stakeholder_type": "enterprise|freelancer|indie_developer|government|investor|platformer|community",\n'
-            '    "description": "背景説明（1-2文）",\n'
-            '    "headcount": 数値,\n'
-            '    "revenue": 数値（万円/月）,\n'
-            '    "cost": 数値（万円/月）,\n'
-            '    "capabilities": {"ディメンション": 0.0-1.0, ...},\n'
-            '    "personality": {\n'
-            '      "conservatism": 0.0-1.0,\n'
-            '      "bandwagon": 0.0-1.0,\n'
-            '      "overconfidence": 0.0-1.0,\n'
-            '      "sunk_cost_bias": 0.0-1.0,\n'
-            '      "info_sensitivity": 0.0-1.0,\n'
-            '      "noise": 0.0-0.3,\n'
-            '      "description": "性格の説明"\n'
-            '    }\n'
-            '  }\n'
-            ']}'
+            'Return EXACTLY this JSON format:\n'
+            '{"agents": [{"name": "Slack", "agent_type": "enterprise", '
+            '"stakeholder_type": "enterprise", "mode": "individual", "represents_count": 1, '
+            '"description": "Leading competitor", "headcount": 2000, "revenue": 5000, "cost": 4000, '
+            '"capabilities": {"competitive_pressure": 0.8}, '
+            '"personality": {"conservatism": 0.3, "bandwagon": 0.2, "overconfidence": 0.5, '
+            '"sunk_cost_bias": 0.3, "info_sensitivity": 0.8, "noise": 0.05, "description": "Market leader"}}, '
+            '{"name": "Conservative mid-size enterprises", "agent_type": "enterprise", '
+            '"stakeholder_type": "enterprise", "mode": "archetype", "represents_count": 20, '
+            '"description": "Traditional companies slow to adopt new tools", "headcount": 200, '
+            '"revenue": 500, "cost": 400, '
+            '"capabilities": {"user_adoption": 0.3}, '
+            '"personality": {"conservatism": 0.8, "bandwagon": 0.4, "overconfidence": 0.2, '
+            '"sunk_cost_bias": 0.7, "info_sensitivity": 0.3, "noise": 0.1, "description": "Risk averse"}}]}'
         )
 
         return "\n".join(lines)
@@ -221,11 +209,18 @@ class AgentGenerator:
             description=raw_persona.get("description", ""),
         )
 
+        mode = raw.get("mode", "individual")
+        if mode not in ("individual", "archetype"):
+            mode = "individual"
+        represents_count = max(1, int(raw.get("represents_count", 1)))
+
         profile = AgentProfile(
             name=raw.get("name", "Unknown"),
             agent_type=agent_type,
             stakeholder_type=stakeholder_type,
             description=raw.get("description", ""),
+            mode=mode,
+            represents_count=represents_count,
         )
 
         state = AgentState(

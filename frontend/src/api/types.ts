@@ -45,6 +45,8 @@ export interface ActionTaken {
   description: string;
   visibility: ActionVisibility;
   reacting_to?: string;
+  mode?: string;
+  represents_count?: number;
 }
 
 export interface RoundResult {
@@ -70,6 +72,8 @@ export interface AgentSummary {
   type: string;
   stakeholder_type: string;
   description?: string;
+  mode?: string;
+  represents_count?: number;
   headcount: number;
   revenue: number;
   satisfaction: number;
