@@ -17,6 +17,7 @@ from app.simulation.agents.base import (
     BaseAgent,
 )
 from app.simulation.agents.community_agent import CommunityAgent
+from app.simulation.agents.end_user_agent import EndUserAgent
 from app.simulation.agents.enterprise_agent import EnterpriseAgent
 from app.simulation.agents.freelancer_agent import FreelancerAgent
 from app.simulation.agents.government_agent import GovernmentAgent
@@ -43,6 +44,10 @@ _AGENT_CLASS_MAP: dict[str, type[BaseAgent]] = {
     "プラットフォーマー": PlatformerAgent,
     "業界団体": CommunityAgent,
     "コミュニティ": CommunityAgent,
+    "エンドユーザー": EndUserAgent,
+    "ユーザー": EndUserAgent,
+    "end_user": EndUserAgent,
+    "user": EndUserAgent,
 }
 
 # stakeholder_type文字列 → StakeholderTypeの正規化
@@ -54,6 +59,7 @@ _STAKEHOLDER_MAP: dict[str, StakeholderType] = {
     "investor": StakeholderType.INVESTOR,
     "platformer": StakeholderType.PLATFORMER,
     "community": StakeholderType.COMMUNITY,
+    "end_user": StakeholderType.END_USER,
 }
 
 
@@ -93,11 +99,17 @@ class AgentGenerator:
         return (
             "You are a service business expert. Generate stakeholder agents for a simulation.\n\n"
             "Each agent must have mode: 'individual' or 'archetype'.\n"
-            "- individual: A specific named entity that directly impacts the service (e.g. 'Slack', 'Microsoft', 'Digital Agency')\n"
-            "- archetype: A representative of a group that behaves similarly (e.g. 'Security-conscious mid-size enterprises')\n"
-            "  For archetypes, set represents_count to the number of entities this agent represents.\n\n"
-            "Generate as many agents as the market structure requires. Do NOT limit to a fixed number.\n"
-            "stakeholder_type must be: enterprise, freelancer, indie_developer, government, investor, platformer, community\n"
+            "- individual: A specific named entity (e.g. 'Slack', 'Microsoft Teams', 'Digital Agency of Japan')\n"
+            "- archetype: A representative of a group (e.g. 'Slack loyal users', 'Unaware potential users')\n"
+            "  For archetypes, set represents_count to the number of entities represented.\n\n"
+            "IMPORTANT RULES:\n"
+            "1. You MUST include specific named competitors as individual agents.\n"
+            "2. You MUST include end_user agents representing different user segments:\n"
+            "   - Existing users of each major competitor (e.g. 'Slack users', 'Teams users') as archetypes\n"
+            "   - Potential users who are unaware of the service as archetypes\n"
+            "   - Users considering switching as archetypes\n"
+            "3. Generate as many agents as the market structure requires. No fixed limit.\n\n"
+            "stakeholder_type must be: enterprise, freelancer, indie_developer, government, investor, platformer, community, end_user\n"
             "Respond with JSON only."
         )
 

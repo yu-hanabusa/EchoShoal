@@ -377,6 +377,10 @@ class SimulationEngine:
         "investigate": "regulator",
         "acquire_service": "acquirer",
         "acquire_startup": "acquirer",
+        "adopt_new_service": "user",
+        "churn": "former_user",
+        "recommend": "advocate",
+        "complain": "critic",
     }
 
     async def _record_relationship_from_action(

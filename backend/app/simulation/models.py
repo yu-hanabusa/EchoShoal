@@ -15,6 +15,7 @@ class StakeholderType(str, Enum):
     INVESTOR = "investor"               # 投資家/VC
     PLATFORMER = "platformer"           # プラットフォーマー
     COMMUNITY = "community"             # 業界団体/コミュニティ
+    END_USER = "end_user"               # エンドユーザー（既存ユーザー・潜在ユーザー・乗り換え検討者）
 
 
 class MarketDimension(str, Enum):

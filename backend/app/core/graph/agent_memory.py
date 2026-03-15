@@ -74,6 +74,14 @@ ACTION_VISIBILITY: dict[str, str] = {
     "educate_market": "public",
     "observe": "private",
     "publish_report": "public",
+    # エンドユーザー
+    "adopt_new_service": "public",
+    "stay_with_current": "private",
+    "trial": "public",
+    "churn": "public",
+    "recommend": "public",
+    "complain": "public",
+    "compare_alternatives": "partial",
 }
 
 

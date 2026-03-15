@@ -73,6 +73,9 @@ class TestGetVisibility:
             "endorse", "set_standard", "reject_standard",
             "create_alternative", "educate_market", "observe",
             "publish_report",
+            # EndUser
+            "adopt_new_service", "stay_with_current", "trial",
+            "churn", "recommend", "complain", "compare_alternatives",
         }
         assert expected_actions == set(ACTION_VISIBILITY.keys())
 

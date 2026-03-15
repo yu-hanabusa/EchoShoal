@@ -93,7 +93,7 @@ class TestScenarioInput:
 
 class TestStakeholderType:
     def test_all_types(self):
-        assert len(StakeholderType) == 7
+        assert len(StakeholderType) == 8
 
     def test_values(self):
         assert StakeholderType.ENTERPRISE.value == "enterprise"
@@ -103,6 +103,7 @@ class TestStakeholderType:
         assert StakeholderType.INVESTOR.value == "investor"
         assert StakeholderType.PLATFORMER.value == "platformer"
         assert StakeholderType.COMMUNITY.value == "community"
+        assert StakeholderType.END_USER.value == "end_user"
 
 
 class TestMarketDimension:
