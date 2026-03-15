@@ -90,6 +90,7 @@ export default function NewSimulationPage() {
       navigate(`/simulation/${data.job_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create simulation");
+    } finally {
       setSubmitting(false);
     }
   };

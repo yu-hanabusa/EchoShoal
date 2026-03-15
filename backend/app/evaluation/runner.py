@@ -42,6 +42,7 @@ async def _setup_graph_components(
         rag = GraphRAGRetriever(graph_client, agent_memory, simulation_id=simulation_id)
         return rag, agent_memory, graph_client
     except Exception:
+        logger.warning("グラフコンポーネント初期化失敗: simulation_id=%s", simulation_id)
         return None, None, None
 
 
@@ -89,7 +90,7 @@ async def run_simulation_for_benchmark(
             try:
                 await graph_client.close()
             except Exception:
-                pass
+                logger.debug("GraphClient close失敗（ベンチマーク終了処理中）")
 
 
 async def run_benchmark(

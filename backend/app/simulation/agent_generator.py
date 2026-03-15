@@ -1,7 +1,8 @@
-"""エージェント動的生成: シード文書とシナリオからエージェントを自動生成する.
+"""エージェント動的生成: 文書エンティティ → エージェント変換.
 
-文書から抽出したエンティティとシナリオテキストをLLMに渡し、
-シミュレーションに登場するエージェントの構成を動的に決定する。
+MiroFish方式: 文書から抽出したエンティティ（企業名、組織名等）を
+個別のエージェントに変換する。文書を投入するほどエージェントが増え、
+グラフが自然に広がる。
 """
 
 from __future__ import annotations
@@ -31,26 +32,16 @@ logger = logging.getLogger(__name__)
 
 # agent_type → エージェントクラスのマッピング
 _AGENT_CLASS_MAP: dict[str, type[BaseAgent]] = {
-    "大手企業": EnterpriseAgent,
-    "中堅企業": EnterpriseAgent,
-    "スタートアップ": EnterpriseAgent,
-    "企業": EnterpriseAgent,
-    "フリーランス": FreelancerAgent,
-    "個人開発者": IndieDevAgent,
-    "行政": GovernmentAgent,
-    "投資家/VC": InvestorAgent,
-    "投資家": InvestorAgent,
-    "VC": InvestorAgent,
-    "プラットフォーマー": PlatformerAgent,
-    "業界団体": CommunityAgent,
-    "コミュニティ": CommunityAgent,
-    "エンドユーザー": EndUserAgent,
-    "ユーザー": EndUserAgent,
+    "enterprise": EnterpriseAgent,
+    "freelancer": FreelancerAgent,
+    "indie_developer": IndieDevAgent,
+    "government": GovernmentAgent,
+    "investor": InvestorAgent,
+    "platformer": PlatformerAgent,
+    "community": CommunityAgent,
     "end_user": EndUserAgent,
-    "user": EndUserAgent,
 }
 
-# stakeholder_type文字列 → StakeholderTypeの正規化
 _STAKEHOLDER_MAP: dict[str, StakeholderType] = {
     "enterprise": StakeholderType.ENTERPRISE,
     "freelancer": StakeholderType.FREELANCER,
@@ -64,7 +55,10 @@ _STAKEHOLDER_MAP: dict[str, StakeholderType] = {
 
 
 class AgentGenerator:
-    """シード文書とシナリオからエージェントを動的に生成する."""
+    """文書エンティティとシナリオからエージェントを動的に生成する.
+
+    MiroFish方式: エンティティごとにエージェント化。
+    """
 
     def __init__(self, llm: LLMRouter):
         self.llm = llm
@@ -75,101 +69,139 @@ class AgentGenerator:
         enriched: EnrichedScenario,
         document_entities: dict[str, list[str]] | None = None,
     ) -> list[BaseAgent]:
-        """LLMにエンティティ情報を渡してエージェントを生成する."""
+        """エンティティからエージェントを生成する.
+
+        1. 文書エンティティの企業・組織をそれぞれエージェント化
+        2. シナリオからユーザー層のアーキタイプを生成
+        3. 不足しているステークホルダーをLLMが補完
+        """
+        agents: list[BaseAgent] = []
+        entities = document_entities or {}
+        orgs = entities.get("organizations", [])
+
+        # Step 1: 文書から抽出された組織をエージェント化
+        if orgs:
+            logger.info("文書エンティティから%d組織をエージェント化", len(orgs))
+            entity_agents = await self._entities_to_agents(orgs, scenario)
+            agents.extend(entity_agents)
+
+        # Step 2: シナリオからユーザー層・補完エージェントを生成
+        existing_names = {a.name for a in agents}
+        complement_agents = await self._generate_complement_agents(
+            scenario, enriched, existing_names,
+        )
+        agents.extend(complement_agents)
+
+        if agents:
+            logger.info("エージェント生成完了: %d体（エンティティ%d + 補完%d）",
+                        len(agents), len([a for a in agents if a in entity_agents]) if orgs else 0,
+                        len(complement_agents))
+            return agents
+
+        # フォールバック
+        from app.simulation.factory import create_default_agents
+        logger.info("エージェント生成失敗、デフォルトを使用")
+        return create_default_agents(self.llm)
+
+    async def _entities_to_agents(
+        self,
+        org_names: list[str],
+        scenario: ScenarioInput,
+    ) -> list[BaseAgent]:
+        """組織名リストからエージェントを一括生成する.
+
+        LLMに各組織の役割・性格を推定させる。
+        """
+        if not org_names:
+            return []
+
+        # LLMに一括で各組織の情報を推定させる
+        names_text = "\n".join(f"- {name}" for name in org_names[:30])
+        prompt = (
+            f"Service being evaluated: {scenario.service_name or 'unknown'}\n"
+            f"Scenario: {scenario.description[:400]}\n\n"
+            f"The following organizations/entities were found in reference documents:\n{names_text}\n\n"
+            "For EACH entity, determine its role in relation to the service and create an agent profile.\n"
+            "Return EXACTLY this JSON format:\n"
+            '{"agents": [{"name": "Entity Name", '
+            '"stakeholder_type": "enterprise|freelancer|indie_developer|government|investor|platformer|community|end_user", '
+            '"mode": "individual", "represents_count": 1, '
+            '"description": "Role in this market", '
+            '"headcount": 100, "revenue": 500, "cost": 400, '
+            '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
+            '"sunk_cost_bias": 0.5, "info_sensitivity": 0.5, "noise": 0.1, '
+            '"description": "Personality traits"}}]}'
+        )
+
         try:
-            prompt = self._build_prompt(scenario, enriched, document_entities)
             response = await self.llm.generate_json(
                 task_type=TaskType.PERSONA_GENERATION,
                 prompt=prompt,
-                system_prompt=self._system_prompt(),
+                system_prompt=(
+                    "You are a market analyst. For each organization found in documents, "
+                    "determine its stakeholder type and personality in relation to the service being evaluated. "
+                    "All entities should be mode: individual. Respond with JSON only."
+                ),
             )
-            agents = self._parse_agents(response)
-            if agents:
-                logger.info("エージェント動的生成成功: %d体", len(agents))
-                return agents
+            return self._parse_agents(response)
         except Exception:
-            logger.warning("エージェント動的生成失敗、フォールバック使用")
+            logger.warning("エンティティ→エージェント変換失敗")
+            return []
 
-        # フォールバック: factory.pyのデフォルトエージェント
-        from app.simulation.factory import create_default_agents
-        logger.info("デフォルトエージェント（8体）を使用")
-        return create_default_agents(self.llm)
-
-    def _system_prompt(self) -> str:
-        return (
-            "You are a service business expert. Generate stakeholder agents for a simulation.\n\n"
-            "Each agent must have mode: 'individual' or 'archetype'.\n"
-            "- individual: A specific named entity (e.g. 'Slack', 'Microsoft Teams', 'Digital Agency of Japan')\n"
-            "- archetype: A representative of a group (e.g. 'Slack loyal users', 'Unaware potential users')\n"
-            "  For archetypes, set represents_count to the number of entities represented.\n\n"
-            "IMPORTANT RULES:\n"
-            "1. You MUST include specific named competitors as individual agents.\n"
-            "2. You MUST include end_user agents representing different user segments:\n"
-            "   - Existing users of each major competitor (e.g. 'Slack users', 'Teams users') as archetypes\n"
-            "   - Potential users who are unaware of the service as archetypes\n"
-            "   - Users considering switching as archetypes\n"
-            "3. Generate as many agents as the market structure requires. No fixed limit.\n\n"
-            "stakeholder_type must be: enterprise, freelancer, indie_developer, government, investor, platformer, community, end_user\n"
-            "Respond with JSON only."
-        )
-
-    def _build_prompt(
+    async def _generate_complement_agents(
         self,
         scenario: ScenarioInput,
         enriched: EnrichedScenario,
-        document_entities: dict[str, list[str]] | None,
-    ) -> str:
-        lines = [
-            f"Service: {scenario.service_name or 'unknown'}",
-            f"Scenario: {scenario.description[:600]}",
-            "",
-            "Generate agents that reflect the REAL market structure for this service.",
-            "Use 'individual' mode for specific named players (competitors, key regulators, major platforms).",
-            "Use 'archetype' mode for groups that behave similarly (e.g. 'early-adopter SMBs', 'conservative enterprises').",
-            "There is no fixed limit on agent count. Generate what the market requires.",
-        ]
+        existing_names: set[str],
+    ) -> list[BaseAgent]:
+        """既存エージェントに不足しているステークホルダーを補完する.
 
-        if scenario.target_market:
-            lines.append(f"\n【ターゲット市場】\n{scenario.target_market}")
+        - 必ずユーザー層（end_user archetype）を含める
+        - 必要な競合が不足していれば追加
+        - 行政・投資家等が不足していれば追加
+        """
+        existing_list = ", ".join(existing_names) if existing_names else "none"
 
-        if enriched.detected_dimensions:
-            dims = ", ".join(d.value for d in enriched.detected_dimensions)
-            lines.append(f"\n【検出されたマーケットディメンション】\n{dims}")
-
-        if enriched.detected_stakeholders:
-            stakeholders = ", ".join(s.value for s in enriched.detected_stakeholders)
-            lines.append(f"\n【検出されたステークホルダー】\n{stakeholders}")
-
-        if enriched.detected_policies:
-            lines.append(f"\n【検出された政策】\n{', '.join(enriched.detected_policies)}")
-
-        entities = document_entities or {}
-        if entities.get("organizations"):
-            lines.append(f"\n【参考資料に登場する企業・組織】\n{', '.join(entities['organizations'])}")
-            lines.append("↑これらの企業名をエージェント名として使ってください。")
-
-        if entities.get("technologies"):
-            lines.append(f"\n【参考資料に登場する技術】\n{', '.join(entities['technologies'])}")
-
-        lines.append("")
-        lines.append(
-            'Return EXACTLY this JSON format:\n'
-            '{"agents": [{"name": "Slack", "agent_type": "enterprise", '
-            '"stakeholder_type": "enterprise", "mode": "individual", "represents_count": 1, '
-            '"description": "Leading competitor", "headcount": 2000, "revenue": 5000, "cost": 4000, '
-            '"capabilities": {"competitive_pressure": 0.8}, '
-            '"personality": {"conservatism": 0.3, "bandwagon": 0.2, "overconfidence": 0.5, '
-            '"sunk_cost_bias": 0.3, "info_sensitivity": 0.8, "noise": 0.05, "description": "Market leader"}}, '
-            '{"name": "Conservative mid-size enterprises", "agent_type": "enterprise", '
-            '"stakeholder_type": "enterprise", "mode": "archetype", "represents_count": 20, '
-            '"description": "Traditional companies slow to adopt new tools", "headcount": 200, '
-            '"revenue": 500, "cost": 400, '
-            '"capabilities": {"user_adoption": 0.3}, '
-            '"personality": {"conservatism": 0.8, "bandwagon": 0.4, "overconfidence": 0.2, '
-            '"sunk_cost_bias": 0.7, "info_sensitivity": 0.3, "noise": 0.1, "description": "Risk averse"}}]}'
+        prompt = (
+            f"Service: {scenario.service_name or 'unknown'}\n"
+            f"Scenario: {scenario.description[:400]}\n\n"
+            f"Already generated agents: {existing_list}\n\n"
+            "Generate ADDITIONAL agents that are MISSING from the above list.\n"
+            "You MUST include:\n"
+            "1. End user segments as archetypes (e.g. 'Existing Slack users (×5000)', "
+            "'Potential users unaware of service (×10000)', 'Users considering switching (×2000)')\n"
+            "2. Any major competitors NOT already in the list\n"
+            "3. Relevant government agencies, investors, communities if missing\n\n"
+            "Do NOT duplicate agents that already exist.\n"
+            "Use mode: 'archetype' with represents_count for user groups.\n"
+            "Use mode: 'individual' for specific named entities.\n\n"
+            "Return EXACTLY this JSON format:\n"
+            '{"agents": [{"name": "Agent Name", '
+            '"stakeholder_type": "enterprise|end_user|government|investor|platformer|community", '
+            '"mode": "individual|archetype", "represents_count": 1, '
+            '"description": "Role description", '
+            '"headcount": 100, "revenue": 500, "cost": 400, '
+            '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
+            '"sunk_cost_bias": 0.5, "info_sensitivity": 0.5, "noise": 0.1, '
+            '"description": "Personality"}}]}'
         )
 
-        return "\n".join(lines)
+        try:
+            response = await self.llm.generate_json(
+                task_type=TaskType.PERSONA_GENERATION,
+                prompt=prompt,
+                system_prompt=(
+                    "You are a market simulation expert. Generate MISSING stakeholder agents "
+                    "to complete the market structure. Focus on end_user segments (archetypes) "
+                    "that represent different user groups. Respond with JSON only."
+                ),
+            )
+            agents = self._parse_agents(response)
+            # 重複排除
+            return [a for a in agents if a.name not in existing_names]
+        except Exception:
+            logger.warning("補完エージェント生成失敗")
+            return []
 
     def _parse_agents(self, response: dict[str, Any]) -> list[BaseAgent]:
         """LLMのJSON応答からエージェントインスタンスを生成する."""
@@ -190,14 +222,14 @@ class AgentGenerator:
 
     def _create_agent(self, raw: dict[str, Any]) -> BaseAgent | None:
         """1体のエージェントを生成する."""
-        agent_type = raw.get("agent_type", "企業")
-        agent_class = _AGENT_CLASS_MAP.get(agent_type)
-        if not agent_class:
-            logger.warning("未知のagent_type: %s、企業として扱う", agent_type)
-            agent_class = EnterpriseAgent
-
         stakeholder_str = raw.get("stakeholder_type", "enterprise")
         stakeholder_type = _STAKEHOLDER_MAP.get(stakeholder_str, StakeholderType.ENTERPRISE)
+        agent_class = _AGENT_CLASS_MAP.get(stakeholder_str, EnterpriseAgent)
+
+        mode = raw.get("mode", "individual")
+        if mode not in ("individual", "archetype"):
+            mode = "individual"
+        represents_count = max(1, int(raw.get("represents_count", 1)))
 
         # capabilities
         raw_caps = raw.get("capabilities", {})
@@ -221,14 +253,9 @@ class AgentGenerator:
             description=raw_persona.get("description", ""),
         )
 
-        mode = raw.get("mode", "individual")
-        if mode not in ("individual", "archetype"):
-            mode = "individual"
-        represents_count = max(1, int(raw.get("represents_count", 1)))
-
         profile = AgentProfile(
             name=raw.get("name", "Unknown"),
-            agent_type=agent_type,
+            agent_type=stakeholder_str,
             stakeholder_type=stakeholder_type,
             description=raw.get("description", ""),
             mode=mode,

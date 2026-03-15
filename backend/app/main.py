@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
 
 from app.api.routes.data_sources import router as data_sources_router
 from app.api.routes.evaluation import router as evaluation_router
@@ -44,14 +48,14 @@ async def health_check():
         redis_ok = await redis.is_available()
         await redis.close()
     except Exception:
-        pass
+        logger.warning("ヘルスチェック: Redis接続確認に失敗")
 
     try:
         graph = GraphClient()
         neo4j_ok = await graph.is_available()
         await graph.close()
     except Exception:
-        pass
+        logger.warning("ヘルスチェック: Neo4j接続確認に失敗")
 
     return {
         "status": "ok",

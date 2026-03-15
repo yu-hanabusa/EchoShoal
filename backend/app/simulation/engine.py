@@ -264,7 +264,7 @@ class SimulationEngine:
                         supply_delta=0.0,
                     )
                 except Exception:
-                    pass
+                    logger.warning("市場効果記録失敗: agent=%s, round=%d", effect["agent_id"], round_number)
 
         # Apply events
         if self._event_scheduler:
@@ -408,7 +408,7 @@ class SimulationEngine:
                 description=f"{agent.name} → {action.action_type} → {target.name}",
             )
         except Exception:
-            pass
+            logger.debug("関係記録失敗: %s → %s", agent.name, action.reacting_to)
 
     def _select_active_agents(self) -> list[BaseAgent]:
         """Randomly activate a subset of agents each round."""

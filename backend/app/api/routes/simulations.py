@@ -73,7 +73,7 @@ async def _get_graph_client() -> GraphClient | None:
         if await client.is_available():
             return client
     except Exception:
-        pass
+        logger.warning("GraphClient初期化失敗")
     return None
 
 
@@ -123,7 +123,7 @@ async def create_simulation(
                 doc = parser.parse(content, file.filename or "unknown")
                 await processor.process(doc)
                 logger.info("文書アップロード完了: %s → job=%s", file.filename, job_id)
-            except (DocumentParseError, Exception) as exc:
+            except Exception as exc:
                 logger.warning("文書処理スキップ: %s - %s", file.filename, exc)
         await graph_client.close()
 
@@ -257,6 +257,7 @@ async def _setup_graph_components(
         rag = GraphRAGRetriever(graph_client, agent_memory, simulation_id=simulation_id)
         return rag, agent_memory, graph_client
     except Exception:
+        logger.warning("グラフコンポーネント初期化失敗: simulation_id=%s", simulation_id)
         return None, None, None
 
 
@@ -381,7 +382,7 @@ async def _run_simulation_task(
             try:
                 await graph_client.close()
             except Exception:
-                pass
+                logger.debug("GraphClient close失敗（シミュレーション終了処理中）")
 
 
 # ─── 結果取得 ───
