@@ -195,8 +195,6 @@ class SimulationEngine:
                         "count": action.parameters.get("count", 1),
                         "reputation": agent.state.reputation,
                         "reacting_to": action.reacting_to,
-                        "mode": agent.profile.mode,
-                        "represents_count": agent.profile.represents_count,
                     }
                     all_actions.append(action_record)
                     round_actions_so_far.append(action_record)
@@ -474,14 +472,12 @@ class SimulationEngine:
 
         market_effects: list[dict[str, Any]] = []
 
-        # アクションサマリーを構築（archetype情報を含む）
+        # アクションサマリーを構築
         actions_summary = []
         for a in actions[:15]:
             rep = a.get("reputation", 0.0)
-            rc = a.get("represents_count", 1)
-            weight_info = f" [represents {rc} entities]" if rc > 1 else ""
             actions_summary.append(
-                f"- {a.get('agent', '?')}（reputation {rep:.1f}）{weight_info}: {a['type']}「{a.get('description', '')[:60]}」"
+                f"- {a.get('agent', '?')}（reputation {rep:.1f}）: {a['type']}「{a.get('description', '')[:60]}」"
             )
         actions_text = "\n".join(actions_summary)
 

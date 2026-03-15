@@ -20,8 +20,6 @@ def _make_agent(
     name: str,
     agent_type: str = "enterprise",
     stakeholder_type: StakeholderType = StakeholderType.ENTERPRISE,
-    mode: str = "individual",
-    represents_count: int = 1,
     conservatism: float = 0.5,
 ) -> EnterpriseAgent:
     profile = AgentProfile(
@@ -29,8 +27,6 @@ def _make_agent(
         agent_type=agent_type,
         stakeholder_type=stakeholder_type,
         description=f"Test agent: {name}",
-        mode=mode,
-        represents_count=represents_count,
     )
     state = AgentState(
         revenue=100.0,
@@ -48,14 +44,12 @@ def _make_agent(
     return EnterpriseAgent(profile=profile, state=state, llm=None, personality=personality)
 
 
-def _make_end_user(name: str, represents: int = 1000) -> EndUserAgent:
+def _make_end_user(name: str) -> EndUserAgent:
     profile = AgentProfile(
         name=name,
         agent_type="end_user",
         stakeholder_type=StakeholderType.END_USER,
         description=f"User group: {name}",
-        mode="archetype",
-        represents_count=represents,
     )
     state = AgentState(satisfaction=0.5)
     return EndUserAgent(profile=profile, state=state, llm=None)
@@ -209,15 +203,14 @@ class TestProfileGenerator:
         assert profile["stance"] == "Market defender"
         assert "conservative" in profile["personality_description"].lower()
 
-    def test_archetype_profile(self):
+    def test_end_user_profile(self):
         from app.oasis.profile_generator import agent_to_oasis_profile
 
-        agent = _make_end_user("Slack Users", represents=5000)
+        agent = _make_end_user("Slack Users")
         profile = agent_to_oasis_profile(agent)
 
-        assert profile["mode"] == "archetype"
-        assert profile["represents_count"] == 5000
-        assert "5000" in profile["bio"]
+        assert profile["stakeholder_type"] == "end_user"
+        assert "END_USER" in profile["bio"]
 
     def test_agents_to_oasis_profiles_batch(self):
         from app.oasis.profile_generator import agents_to_oasis_profiles

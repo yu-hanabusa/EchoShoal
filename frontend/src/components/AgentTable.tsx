@@ -64,9 +64,6 @@ export default function AgentTable({ agents }: Props) {
                 >
                   {agent.name || "\u2014"}
                 </button>
-                {agent.mode === "archetype" && agent.represents_count && agent.represents_count > 1 && (
-                  <span className="ml-1.5 text-xs text-text-tertiary">(×{agent.represents_count})</span>
-                )}
                 {agent.description && (
                   <p className="text-xs text-text-tertiary mt-0.5 truncate max-w-[300px]">{agent.description}</p>
                 )}

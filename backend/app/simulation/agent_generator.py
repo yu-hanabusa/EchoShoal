@@ -125,7 +125,6 @@ class AgentGenerator:
             "Return EXACTLY this JSON format:\n"
             '{"agents": [{"name": "Entity Name", '
             '"stakeholder_type": "enterprise|freelancer|indie_developer|government|investor|platformer|community|end_user", '
-            '"mode": "individual", "represents_count": 1, '
             '"description": "Role in this market", '
             '"headcount": 100, "revenue": 500, "cost": 400, '
             '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
@@ -140,7 +139,7 @@ class AgentGenerator:
                 system_prompt=(
                     "You are a market analyst. For each organization found in documents, "
                     "determine its stakeholder type and personality in relation to the service being evaluated. "
-                    "All entities should be mode: individual. Respond with JSON only."
+                    "Respond with JSON only."
                 ),
             )
             return self._parse_agents(response)
@@ -156,7 +155,7 @@ class AgentGenerator:
     ) -> list[BaseAgent]:
         """既存エージェントに不足しているステークホルダーを補完する.
 
-        - 必ずユーザー層（end_user archetype）を含める
+        - 必ずユーザー層（end_user）を含める
         - 必要な競合が不足していれば追加
         - 行政・投資家等が不足していれば追加
         """
@@ -168,17 +167,15 @@ class AgentGenerator:
             f"Already generated agents: {existing_list}\n\n"
             "Generate ADDITIONAL agents that are MISSING from the above list.\n"
             "You MUST include:\n"
-            "1. End user segments as archetypes (e.g. 'Existing Slack users (×5000)', "
-            "'Potential users unaware of service (×10000)', 'Users considering switching (×2000)')\n"
-            "2. Any major competitors NOT already in the list\n"
+            "1. End user agents representing different user segments (e.g. 'Existing Slack users', "
+            "'Potential users in manufacturing sector', 'Security-conscious finance users')\n"
+            "2. Any major competitors NOT already in the list (use real names like Slack, Microsoft Teams, etc.)\n"
             "3. Relevant government agencies, investors, communities if missing\n\n"
             "Do NOT duplicate agents that already exist.\n"
-            "Use mode: 'archetype' with represents_count for user groups.\n"
-            "Use mode: 'individual' for specific named entities.\n\n"
+            "Each agent is an individual entity. Generate as many as needed to represent the market realistically.\n\n"
             "Return EXACTLY this JSON format:\n"
             '{"agents": [{"name": "Agent Name", '
             '"stakeholder_type": "enterprise|end_user|government|investor|platformer|community", '
-            '"mode": "individual|archetype", "represents_count": 1, '
             '"description": "Role description", '
             '"headcount": 100, "revenue": 500, "cost": 400, '
             '"personality": {"conservatism": 0.5, "bandwagon": 0.5, "overconfidence": 0.5, '
@@ -192,8 +189,8 @@ class AgentGenerator:
                 prompt=prompt,
                 system_prompt=(
                     "You are a market simulation expert. Generate MISSING stakeholder agents "
-                    "to complete the market structure. Focus on end_user segments (archetypes) "
-                    "that represent different user groups. Respond with JSON only."
+                    "to complete the market structure. Include end_user agents representing "
+                    "different user segments. Use real names for competitors. Respond with JSON only."
                 ),
             )
             agents = self._parse_agents(response)
@@ -226,11 +223,6 @@ class AgentGenerator:
         stakeholder_type = _STAKEHOLDER_MAP.get(stakeholder_str, StakeholderType.ENTERPRISE)
         agent_class = _AGENT_CLASS_MAP.get(stakeholder_str, EnterpriseAgent)
 
-        mode = raw.get("mode", "individual")
-        if mode not in ("individual", "archetype"):
-            mode = "individual"
-        represents_count = max(1, int(raw.get("represents_count", 1)))
-
         # capabilities
         raw_caps = raw.get("capabilities", {})
         capabilities: dict[MarketDimension, float] = {}
@@ -258,8 +250,6 @@ class AgentGenerator:
             agent_type=stakeholder_str,
             stakeholder_type=stakeholder_type,
             description=raw.get("description", ""),
-            mode=mode,
-            represents_count=represents_count,
         )
 
         state = AgentState(

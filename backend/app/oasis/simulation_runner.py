@@ -383,7 +383,6 @@ class OASISSimulationEngine:
                     "oasis_action": oasis_action,
                     "visibility": "public",
                     "round_number": round_number,
-                    "represents_count": 1,
                     "reputation": 0.5,
                 }
 

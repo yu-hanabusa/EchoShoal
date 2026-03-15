@@ -13,19 +13,12 @@ interface Props {
 export default function ActionTimeline({ rounds }: Props) {
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
 
-  // エージェント一覧を収集（archetype情報も保持）
+  // エージェント一覧を収集
   const agentSet = new Set<string>();
-  const agentMeta: Record<string, { mode: string; represents_count: number }> = {};
   for (const r of rounds) {
     for (const a of r.actions_taken) {
       if (a.agent) {
         agentSet.add(a.agent);
-        if (!agentMeta[a.agent]) {
-          agentMeta[a.agent] = {
-            mode: a.mode || "individual",
-            represents_count: a.represents_count || 1,
-          };
-        }
       }
     }
   }
@@ -56,17 +49,13 @@ export default function ActionTimeline({ rounds }: Props) {
       {/* Agent Legend */}
       <div className="flex flex-wrap gap-3 mb-4">
         {agents.map((agent) => {
-          const meta = agentMeta[agent];
           return (
             <div key={agent} className="flex items-center gap-1.5 text-xs text-text-secondary">
               <span
-                className={`inline-block rounded-full shrink-0 ${meta?.mode === "archetype" ? "w-4 h-4 ring-1 ring-border" : "w-3 h-3"}`}
+                className="inline-block rounded-full shrink-0 w-3 h-3"
                 style={{ backgroundColor: agentColorMap[agent] }}
               />
               {agent}
-              {meta?.represents_count > 1 && (
-                <span className="text-text-tertiary">(×{meta.represents_count})</span>
-              )}
             </div>
           );
         })}

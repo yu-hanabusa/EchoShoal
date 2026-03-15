@@ -224,10 +224,7 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
           {appearedAgents.map((name) => {
             const pos = nodePositions[name];
             if (!pos) return null;
-            const agent = agents.find((a) => a.name === name);
-            const isArchetype = agent?.mode === "archetype";
-            const rc = agent?.represents_count || 1;
-            const nodeRadius = isArchetype ? 22 + Math.min(rc / 10, 8) : 20;
+            const nodeRadius = 20;
             const color = agentColorMap[name] || "#94a3b8";
             const hasAction = roundActions.some((a) => a.agent === name);
             const isSelected = selectedAgent === name;
@@ -246,20 +243,10 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
                   stroke={isSelected ? "#1e293b" : hasAction ? "#475569" : "none"}
                   strokeWidth={isSelected ? 3 : hasAction ? 1.5 : 0}
                 />
-                {isArchetype && (
-                  <circle cx={pos.x} cy={pos.y} r={nodeRadius}
-                    fill="none" stroke={color} strokeWidth={2} strokeDasharray="3 2" opacity={0.6} />
-                )}
                 <text x={pos.x} y={pos.y + nodeRadius + 14}
                   textAnchor="middle" fontSize={10} fill="#475569" fontWeight={500}>
                   {name.length > 14 ? name.slice(0, 14) + ".." : name}
                 </text>
-                {rc > 1 && (
-                  <text x={pos.x} y={pos.y + 4}
-                    textAnchor="middle" fontSize={9} fill="white" fontWeight={700}>
-                    ×{rc}
-                  </text>
-                )}
               </g>
             );
           })}
@@ -300,9 +287,6 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
               <span className="inline-block w-3 h-3 rounded-full"
                 style={{ backgroundColor: agentColorMap[selectedAgent] || "#94a3b8" }} />
               <h4 className="text-sm font-semibold text-text-primary">{selectedAgent}</h4>
-              {selectedAgentInfo?.mode === "archetype" && (selectedAgentInfo.represents_count ?? 0) > 1 && (
-                <span className="text-xs text-text-tertiary">(×{selectedAgentInfo.represents_count})</span>
-              )}
             </div>
             <button onClick={() => setSelectedAgent(null)}
               className="text-xs text-text-tertiary hover:text-text-secondary">閉じる</button>

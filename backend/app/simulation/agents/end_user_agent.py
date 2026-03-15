@@ -10,7 +10,6 @@ class EndUserAgent(BaseAgent):
 
     競合サービスの既存ユーザー、潜在ユーザー、乗り換え検討者など。
     サービスを「使う側」の視点で行動し、市場浸透に直接影響する。
-    archetypeモードで「Slackユーザー層(×1000)」のように代表させることを想定。
     """
 
     def available_actions(self) -> list[str]:

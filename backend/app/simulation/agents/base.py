@@ -52,8 +52,6 @@ class AgentProfile(BaseModel):
     agent_type: str
     stakeholder_type: StakeholderType
     description: str = ""
-    mode: str = "individual"  # "individual" or "archetype"
-    represents_count: int = 1  # archetypeの場合、何体分を代表するか
 
 
 class AgentState(BaseModel):
@@ -336,8 +334,6 @@ class BaseAgent(ABC):
             "type": self.profile.agent_type,
             "stakeholder_type": self.profile.stakeholder_type.value,
             "description": self.profile.description,
-            "mode": self.profile.mode,
-            "represents_count": self.profile.represents_count,
             "headcount": self.state.headcount,
             "revenue": self.state.revenue,
             "satisfaction": self.state.satisfaction,

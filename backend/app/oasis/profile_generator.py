@@ -26,8 +26,6 @@ def agent_to_oasis_profile(agent: BaseAgent) -> dict[str, Any]:
         - personality_description: 性格の詳細記述（LLMプロンプト注入用）
         - stakeholder_type: 元のステークホルダー種別
         - available_actions: このエージェントが取りうるアクション
-        - represents_count: アーキタイプの場合、何体分を代表するか
-        - mode: individual / archetype
     """
     p = agent.personality
     personality_lines = []
@@ -63,8 +61,6 @@ def agent_to_oasis_profile(agent: BaseAgent) -> dict[str, Any]:
     bio_parts = [f"[{stakeholder.upper()}]"]
     if agent.profile.description:
         bio_parts.append(agent.profile.description)
-    if agent.profile.mode == "archetype":
-        bio_parts.append(f"Represents {agent.profile.represents_count} entities")
     bio = " | ".join(bio_parts)
 
     return {
@@ -75,8 +71,6 @@ def agent_to_oasis_profile(agent: BaseAgent) -> dict[str, Any]:
         "stance": stance,
         "stakeholder_type": stakeholder,
         "available_actions": agent.available_actions(),
-        "represents_count": agent.profile.represents_count,
-        "mode": agent.profile.mode,
         # エージェント初期状態（OASIS背景メモリとして注入）
         "initial_state": {
             "revenue": agent.state.revenue,
