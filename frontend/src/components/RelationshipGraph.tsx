@@ -101,7 +101,6 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
-  const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const agentColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -221,8 +220,28 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
   const roundNarrative = rounds.find((r) => r.round_number === selectedRound)?.summary || "";
 
-  // D3 force simulation
-  const renderGraph = useCallback(() => {
+  // 全エージェント名（simulation全体で登場する）
+  const allAgentNames = useMemo(() => {
+    const names = new Set<string>();
+    const sn = (serviceName || "").toLowerCase();
+    if (sn) {
+      const target = agents.find((a) => a.name.toLowerCase().includes(sn));
+      if (target) names.add(target.name);
+    }
+    if (initialRelationships) {
+      for (const r of initialRelationships) { names.add(r.from); names.add(r.to); }
+    }
+    for (const r of rounds) {
+      for (const a of r.actions_taken) {
+        names.add(a.agent);
+        if (a.reacting_to) names.add(a.reacting_to);
+      }
+    }
+    return Array.from(names);
+  }, [rounds, serviceName, agents, initialRelationships]);
+
+  // D3 force simulation — 初回のみ生成、全ノード/全エッジを含む
+  const initGraph = useCallback(() => {
     if (!svgRef.current) return;
 
     const svg = select(svgRef.current);
@@ -230,48 +249,35 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
     const sn = (serviceName || "").toLowerCase();
 
-    // ノードデータ（前回の位置を引き継ぐ）
-    const savedPos = nodePositionsRef.current;
-    const nodes: SimNode[] = appearedAgents.map((name) => {
-      const prev = savedPos.get(name);
-      return {
-        id: name,
-        x: prev?.x ?? WIDTH / 2 + (Math.random() - 0.5) * 200,
-        y: prev?.y ?? HEIGHT / 2 + (Math.random() - 0.5) * 200,
-        color: agentColorMap[name] || "#94a3b8",
-        isTarget: sn ? name.toLowerCase().includes(sn) : false,
-        hasAction: roundActions.some((a) => a.agent === name),
-      };
-    });
+    // 全ノード
+    const nodes: SimNode[] = allAgentNames.map((name) => ({
+      id: name,
+      x: WIDTH / 2 + (Math.random() - 0.5) * 300,
+      y: HEIGHT / 2 + (Math.random() - 0.5) * 300,
+      color: agentColorMap[name] || "#94a3b8",
+      isTarget: sn ? name.toLowerCase().includes(sn) : false,
+      hasAction: false,
+    }));
 
-    // リンクデータ
+    // 全エッジ
     const nodeIds = new Set(nodes.map((n) => n.id));
-    const links: SimLink[] = visibleEdges
+    const links: SimLink[] = allEdges
       .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
-      .map((e) => ({
-        source: e.from,
-        target: e.to,
-        type: e.type,
-        weight: e.weight,
-      }));
+      .map((e) => ({ source: e.from, target: e.to, type: e.type, weight: e.weight }));
 
     if (nodes.length === 0) {
       svg.append("text")
         .attr("x", WIDTH / 2).attr("y", HEIGHT / 2)
         .attr("text-anchor", "middle").attr("font-size", 13).attr("fill", "#94a3b8")
-        .text("スライダーを進めるとステークホルダーが登場します");
+        .text("データがありません");
       return;
     }
 
-    // Force simulation (MiroFish方式)
+    // Force simulation
     const simulation = forceSimulation<SimNode>(nodes)
       .force("link", forceLink<SimNode, SimLink>(links)
         .id((d) => d.id)
-        .distance((d) => {
-          const baseDistance = 120;
-          const edgeCount = (d as SimLink).weight || 1;
-          return baseDistance + (edgeCount - 1) * 30;
-        })
+        .distance((d) => 120 + ((d as SimLink).weight - 1) * 30)
       )
       .force("charge", forceManyBody<SimNode>().strength(-350))
       .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
@@ -281,149 +287,122 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
     simulationRef.current = simulation;
 
-    // 対象サービスを中心に固定
     const targetNode = nodes.find((n) => n.isTarget);
-    if (targetNode) {
-      targetNode.fx = WIDTH / 2;
-      targetNode.fy = HEIGHT / 2;
-    }
+    if (targetNode) { targetNode.fx = WIDTH / 2; targetNode.fy = HEIGHT / 2; }
 
-    // Container with zoom/pan
-    const g = svg.append("g");
-
-    const zoomBehavior = d3Zoom<SVGSVGElement, unknown>()
+    const g = svg.append("g").attr("class", "graph-root");
+    svg.call(d3Zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 3])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
-      });
-    svg.call(zoomBehavior);
+      .on("zoom", (event) => { g.attr("transform", event.transform); }));
 
-    // エッジ描画
-    const linkGroup = g.append("g").attr("class", "links");
-    const linkElements = linkGroup.selectAll("line")
-      .data(links)
-      .join("line")
+    // エッジ
+    g.append("g").attr("class", "links").selectAll("line")
+      .data(links).join("line")
       .attr("stroke", (d) => RELATION_COLORS[d.type] || "#d1d5db")
       .attr("stroke-width", (d) => Math.min(d.weight + 1, 5))
-      .attr("stroke-opacity", 0.6);
+      .attr("stroke-opacity", 0);
 
-    // エッジラベル
-    const linkLabels = g.append("g").attr("class", "link-labels");
-    const labelElements = linkLabels.selectAll("text")
-      .data(links)
-      .join("text")
-      .attr("text-anchor", "middle")
-      .attr("font-size", 9)
+    g.append("g").attr("class", "link-labels").selectAll("text")
+      .data(links).join("text")
+      .attr("text-anchor", "middle").attr("font-size", 9)
       .attr("fill", (d) => RELATION_COLORS[d.type] || "#999")
-      .attr("font-weight", 600)
+      .attr("font-weight", 600).attr("opacity", 0)
       .text((d) => RELATION_LABELS[d.type] || "");
 
-    // ノード描画
-    const nodeGroup = g.append("g").attr("class", "nodes");
-    const nodeElements = nodeGroup.selectAll<SVGCircleElement, SimNode>("circle")
-      .data(nodes)
-      .join("circle")
+    // ノード
+    const nodeEls = g.append("g").attr("class", "nodes")
+      .selectAll<SVGCircleElement, SimNode>("circle")
+      .data(nodes).join("circle")
       .attr("r", (d) => d.isTarget ? 28 : 18)
       .attr("fill", (d) => d.color)
       .attr("stroke", (d) => d.isTarget ? "#1e293b" : "#fff")
       .attr("stroke-width", (d) => d.isTarget ? 3 : 2)
-      .attr("opacity", (d) => d.hasAction ? 0.9 : 0.5)
+      .attr("opacity", 0)
       .style("cursor", "pointer")
-      .on("click", (_event, d) => {
-        setSelectedAgent((prev) => prev === d.id ? null : d.id);
-      })
-      .on("mouseenter", function (_event, d) {
-        select(this).attr("stroke", "#E91E63").attr("stroke-width", 4);
-        linkElements
-          .attr("stroke-opacity", (l) => {
-            const s = typeof l.source === "object" ? l.source.id : l.source;
-            const t = typeof l.target === "object" ? l.target.id : l.target;
-            return s === d.id || t === d.id ? 1 : 0.1;
-          })
-          .attr("stroke-width", (l) => {
-            const s = typeof l.source === "object" ? l.source.id : l.source;
-            const t = typeof l.target === "object" ? l.target.id : l.target;
-            return s === d.id || t === d.id ? Math.min(l.weight + 2, 6) : 1;
-          });
-      })
-      .on("mouseleave", function (_event, d) {
-        select(this)
-          .attr("stroke", d.isTarget ? "#1e293b" : "#fff")
-          .attr("stroke-width", d.isTarget ? 3 : 2);
-        linkElements
-          .attr("stroke-opacity", 0.6)
-          .attr("stroke-width", (l) => Math.min(l.weight + 1, 5));
-      });
+      .on("click", (_event, d) => { setSelectedAgent((prev) => prev === d.id ? null : d.id); });
 
     // ドラッグ
-    const dragBehavior = d3Drag<SVGCircleElement, SimNode>()
+    nodeEls.call(d3Drag<SVGCircleElement, SimNode>()
       .on("start", (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
+        d.fx = d.x; d.fy = d.y;
       })
-      .on("drag", (event, d) => {
-        d.fx = event.x;
-        d.fy = event.y;
-      })
+      .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
       .on("end", (event, d) => {
         if (!event.active) simulation.alphaTarget(0);
-        if (!d.isTarget) {
-          d.fx = null;
-          d.fy = null;
-        }
-      });
-    nodeElements.call(dragBehavior);
+        if (!d.isTarget) { d.fx = null; d.fy = null; }
+      }));
 
-    // ノードラベル
-    const nodeLabels = g.append("g").attr("class", "node-labels");
-    const nodeLabelElements = nodeLabels.selectAll("text")
-      .data(nodes)
-      .join("text")
+    // ラベル
+    g.append("g").attr("class", "node-labels").selectAll("text")
+      .data(nodes).join("text")
       .attr("text-anchor", "middle")
       .attr("font-size", (d) => d.isTarget ? 11 : 10)
       .attr("font-weight", (d) => d.isTarget ? 700 : 500)
-      .attr("fill", "#334155")
+      .attr("fill", "#334155").attr("opacity", 0)
       .text((d) => d.id.length > 12 ? d.id.slice(0, 12) + ".." : d.id);
 
-    // 既存ノードが多い場合はalphaを低くして安定させる
-    if (savedPos.size > 0) {
-      simulation.alpha(0.3);
-    }
-
-    // Tick更新
+    // Tick
     simulation.on("tick", () => {
-      // 位置を保存
-      for (const n of nodes) {
-        nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
-      }
+      const linkEls = g.select(".links").selectAll<SVGLineElement, SimLink>("line");
+      linkEls
+        .attr("x1", (d) => (d.source as SimNode).x).attr("y1", (d) => (d.source as SimNode).y)
+        .attr("x2", (d) => (d.target as SimNode).x).attr("y2", (d) => (d.target as SimNode).y);
 
-      linkElements
-        .attr("x1", (d) => (d.source as SimNode).x)
-        .attr("y1", (d) => (d.source as SimNode).y)
-        .attr("x2", (d) => (d.target as SimNode).x)
-        .attr("y2", (d) => (d.target as SimNode).y);
-
-      labelElements
+      const lblEls = g.select(".link-labels").selectAll<SVGTextElement, SimLink>("text");
+      lblEls
         .attr("x", (d) => ((d.source as SimNode).x + (d.target as SimNode).x) / 2)
         .attr("y", (d) => ((d.source as SimNode).y + (d.target as SimNode).y) / 2 - 6);
 
-      nodeElements
-        .attr("cx", (d) => d.x)
-        .attr("cy", (d) => d.y);
+      g.select(".nodes").selectAll<SVGCircleElement, SimNode>("circle")
+        .attr("cx", (d) => d.x).attr("cy", (d) => d.y);
 
-      nodeLabelElements
-        .attr("x", (d) => d.x)
-        .attr("y", (d) => d.y + (d.isTarget ? 38 : 28));
+      g.select(".node-labels").selectAll<SVGTextElement, SimNode>("text")
+        .attr("x", (d) => d.x).attr("y", (d) => d.y + (d.isTarget ? 38 : 28));
     });
-  }, [appearedAgents, visibleEdges, roundActions, agentColorMap, serviceName]);
+  }, [allAgentNames, allEdges, agentColorMap, serviceName]);
 
+  // 初回のみsimulation生成
   useEffect(() => {
-    renderGraph();
-    return () => {
-      simulationRef.current?.stop();
-    };
-  }, [renderGraph]);
+    initGraph();
+    return () => { simulationRef.current?.stop(); };
+  }, [initGraph]);
+
+  // ラウンド変更時: ノード/エッジの表示/非表示だけ切り替え（simulationは維持）
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = select(svgRef.current);
+    const g = svg.select(".graph-root");
+    if (g.empty()) return;
+
+    const appearedSet = new Set(appearedAgents);
+    const visibleEdgeKeys = new Set(visibleEdges.map((e) => `${e.from}→${e.to}→${e.type}`));
+    const activeAgents = new Set(roundActions.map((a) => a.agent));
+
+    // ノード表示切り替え
+    g.select(".nodes").selectAll<SVGCircleElement, SimNode>("circle")
+      .attr("opacity", (d) => appearedSet.has(d.id) ? (activeAgents.has(d.id) ? 0.9 : 0.5) : 0);
+
+    g.select(".node-labels").selectAll<SVGTextElement, SimNode>("text")
+      .attr("opacity", (d) => appearedSet.has(d.id) ? 1 : 0);
+
+    // エッジ表示切り替え
+    g.select(".links").selectAll<SVGLineElement, SimLink>("line")
+      .attr("stroke-opacity", (d) => {
+        const s = typeof d.source === "object" ? d.source.id : d.source;
+        const t = typeof d.target === "object" ? d.target.id : d.target;
+        const key = `${s}→${t}→${d.type}`;
+        return visibleEdgeKeys.has(key) ? 0.6 : 0;
+      });
+
+    g.select(".link-labels").selectAll<SVGTextElement, SimLink>("text")
+      .attr("opacity", (d) => {
+        const s = typeof d.source === "object" ? d.source.id : d.source;
+        const t = typeof d.target === "object" ? d.target.id : d.target;
+        const key = `${s}→${t}→${d.type}`;
+        return visibleEdgeKeys.has(key) ? 1 : 0;
+      });
+  }, [appearedAgents, visibleEdges, roundActions]);
 
   // 選択エージェントの情報
   const selectedAgentInfo = agents.find((a) => a.name === selectedAgent);
