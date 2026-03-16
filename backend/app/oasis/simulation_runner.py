@@ -64,6 +64,7 @@ class OASISSimulationEngine:
         self._enriched_scenario = enriched_scenario
         self._simulation_id = simulation_id
         self._llm_call_count = 0
+        self._initial_relationships: list[dict[str, Any]] = []
 
         # OASIS環境（run()で初期化）
         self._env = None
@@ -81,6 +82,9 @@ class OASISSimulationEngine:
         # 市場初期状態をLLMで推定
         if self._enriched_scenario:
             await self._initialize_from_scenario(self._enriched_scenario)
+
+        # 構造的関係を生成
+        self._generate_structural_relationships()
 
         # OASIS環境セットアップ
         await self._setup_oasis_environment()
@@ -610,6 +614,37 @@ class OASISSimulationEngine:
         except Exception:
             return ""
 
+    def _generate_structural_relationships(self) -> None:
+        """ステークホルダー種別に基づく構造的な関係を生成する."""
+        service = self.scenario.service_name if self.scenario else ""
+        sn_lower = service.lower()
+
+        target_agent = None
+        for a in self.agents:
+            if sn_lower and sn_lower in a.name.lower():
+                target_agent = a.name
+                break
+
+        if not target_agent:
+            return
+
+        _type_map = {
+            "platformer": "competitor", "enterprise": "competitor",
+            "end_user": "user", "investor": "investor",
+            "government": "regulator", "community": "interest",
+            "freelancer": "interest", "indie_developer": "interest",
+        }
+
+        for a in self.agents:
+            if a.name == target_agent:
+                continue
+            rel_type = _type_map.get(a.profile.stakeholder_type.value, "interest")
+            self._initial_relationships.append({
+                "from": a.name, "to": target_agent,
+                "type": rel_type, "round": 0, "weight": 1,
+            })
+        logger.info("構造的関係%d件を生成", len(self._initial_relationships))
+
     async def _cleanup_oasis(self) -> None:
         """OASIS環境をクリーンアップする."""
         if self._env:
@@ -633,6 +668,7 @@ class OASISSimulationEngine:
             "llm_calls": self._llm_call_count,
             "oasis_stats": stats,
             "engine": "oasis",
+            "initial_relationships": self._initial_relationships,
         }
 
     def get_social_feed(self, limit: int = 50) -> list[dict[str, Any]]:
