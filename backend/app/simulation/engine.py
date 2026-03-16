@@ -72,6 +72,7 @@ class SimulationEngine:
         self._memory = agent_memory
         self._enriched_scenario = enriched_scenario
         self._scenario_summary = enriched_scenario.context_summary if enriched_scenario else ""
+        self._initial_relationships: list[dict[str, str]] = []
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -92,6 +93,9 @@ class SimulationEngine:
         # エージェントノードを知識グラフに登録
         if self._memory:
             await self._register_agents()
+
+        # 初期関係構造をLLMで推定
+        await self._generate_initial_relationships()
 
         for round_num in range(1, rounds + 1):
             if self._llm_call_count >= settings.max_llm_calls:
@@ -576,4 +580,90 @@ class SimulationEngine:
             "final_market": self.market.model_dump(),
             "agents": [a.to_summary() for a in self.agents],
             "llm_calls": self._llm_call_count,
+            "initial_relationships": self._initial_relationships,
         }
+
+    async def _generate_initial_relationships(self) -> None:
+        """LLMでエージェント間の初期関係構造を推定する."""
+        agent_names = [a.name for a in self.agents]
+        if len(agent_names) < 2:
+            return
+
+        names_text = ", ".join(agent_names[:30])
+        service = self.scenario.service_name if self.scenario else ""
+
+        prompt = (
+            f"サービス: {service}\n"
+            f"エージェント一覧: {names_text}\n\n"
+            "これらのエージェント間の初期的な関係を推定してください。\n"
+            "関係タイプ: competitor(競合), user(利用), investor(投資), "
+            "regulator(規制), partner(提携), interest(関心)\n\n"
+            '{"relationships":[{"from":"A","to":"B","type":"competitor"}]}'
+        )
+
+        try:
+            response = await self.llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=prompt,
+                system_prompt="JSON形式で返答。市場構造に基づいて関係を推定。",
+            )
+            rels = response.get("relationships", [])
+            if isinstance(rels, list):
+                valid_names = set(agent_names)
+                for r in rels:
+                    if (isinstance(r, dict)
+                            and r.get("from") in valid_names
+                            and r.get("to") in valid_names
+                            and r.get("from") != r.get("to")):
+                        self._initial_relationships.append({
+                            "from": r["from"],
+                            "to": r["to"],
+                            "type": str(r.get("type", "interest")),
+                            "round": 0,
+                            "weight": 1,
+                        })
+                logger.info("初期関係%d件を生成", len(self._initial_relationships))
+        except Exception:
+            logger.warning("初期関係生成失敗、シナリオベースフォールバック")
+            self._generate_initial_relationships_fallback()
+
+    def _generate_initial_relationships_fallback(self) -> None:
+        """LLM不要のフォールバック: ステークホルダー種別から初期関係を推定."""
+        service = self.scenario.service_name if self.scenario else ""
+        sn_lower = service.lower()
+
+        # 対象サービスのエージェントを特定
+        target_agent = None
+        for a in self.agents:
+            if sn_lower and sn_lower in a.name.lower():
+                target_agent = a.name
+                break
+
+        if not target_agent:
+            return
+
+        for a in self.agents:
+            if a.name == target_agent:
+                continue
+
+            st = a.profile.stakeholder_type.value
+            if st in ("platformer", "enterprise"):
+                rel_type = "competitor"
+            elif st == "end_user":
+                rel_type = "user"
+            elif st == "investor":
+                rel_type = "investor"
+            elif st == "government":
+                rel_type = "regulator"
+            elif st == "community":
+                rel_type = "interest"
+            else:
+                rel_type = "interest"
+
+            self._initial_relationships.append({
+                "from": a.name,
+                "to": target_agent,
+                "type": rel_type,
+                "round": 0,
+                "weight": 1,
+            })

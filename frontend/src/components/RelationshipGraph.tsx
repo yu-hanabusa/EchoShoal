@@ -3,7 +3,7 @@ import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, f
 import { select } from "d3-selection";
 import { drag as d3Drag } from "d3-drag";
 import { zoom as d3Zoom } from "d3-zoom";
-import type { RoundResult, AgentSummary } from "../api/types";
+import type { RoundResult, AgentSummary, Relationship } from "../api/types";
 
 /** アクションタイプを日本語に変換 */
 const ACTION_LABELS: Record<string, string> = {
@@ -61,6 +61,7 @@ interface Props {
   rounds: RoundResult[];
   agents: AgentSummary[];
   serviceName?: string;
+  initialRelationships?: Relationship[];
 }
 
 interface Edge {
@@ -94,7 +95,7 @@ interface SimLink {
 const WIDTH = 700;
 const HEIGHT = 500;
 
-export default function RelationshipGraph({ rounds, agents, serviceName }: Props) {
+export default function RelationshipGraph({ rounds, agents, serviceName, initialRelationships }: Props) {
   const totalRounds = rounds.length;
   const [selectedRound, setSelectedRound] = useState(totalRounds);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -122,9 +123,19 @@ export default function RelationshipGraph({ rounds, agents, serviceName }: Props
     market_research: "interest",
   }), []);
 
-  // 全エッジ
+  // 全エッジ（3種統合: 初期関係 + アクションエッジ + 間接エッジ）
   const allEdges = useMemo(() => {
     const edgeMap = new Map<string, Edge>();
+
+    // 1. 初期関係（round 0）
+    if (initialRelationships) {
+      for (const r of initialRelationships) {
+        const key = `${r.from}→${r.to}→${r.type}`;
+        edgeMap.set(key, { from: r.from, to: r.to, type: r.type, round: 0, weight: r.weight || 1 });
+      }
+    }
+
+    // 2. アクションベースのエッジ（reacting_to）
     for (const r of rounds) {
       for (const a of r.actions_taken) {
         if (a.reacting_to) {
@@ -140,8 +151,32 @@ export default function RelationshipGraph({ rounds, agents, serviceName }: Props
         }
       }
     }
+
+    // 3. 間接エッジ（同一ラウンドで複数エージェントが同じ対象に反応）
+    for (const r of rounds) {
+      const targetGroups = new Map<string, string[]>();
+      for (const a of r.actions_taken) {
+        if (a.reacting_to) {
+          const group = targetGroups.get(a.reacting_to) || [];
+          group.push(a.agent);
+          targetGroups.set(a.reacting_to, group);
+        }
+      }
+      for (const [, reactors] of targetGroups) {
+        if (reactors.length < 2) continue;
+        for (let i = 0; i < reactors.length; i++) {
+          for (let j = i + 1; j < reactors.length; j++) {
+            const key = `${reactors[i]}→${reactors[j]}→discussion`;
+            if (!edgeMap.has(key) && !edgeMap.has(`${reactors[j]}→${reactors[i]}→discussion`)) {
+              edgeMap.set(key, { from: reactors[i], to: reactors[j], type: "discussion", round: r.round_number, weight: 1 });
+            }
+          }
+        }
+      }
+    }
+
     return Array.from(edgeMap.values());
-  }, [rounds, TYPE_MAP]);
+  }, [rounds, TYPE_MAP, initialRelationships]);
 
   // 選択ラウンドまでの登場エージェント
   const appearedAgents = useMemo(() => {

@@ -82,6 +82,14 @@ export interface AgentSummary {
   personality?: AgentPersonality;
 }
 
+export interface Relationship {
+  from: string;
+  to: string;
+  type: string;
+  round: number;
+  weight: number;
+}
+
 export interface SimulationResult {
   scenario: ScenarioInput;
   summary: {
@@ -91,6 +99,7 @@ export interface SimulationResult {
     llm_calls: number;
     engine?: string;
     oasis_stats?: OasisStats;
+    initial_relationships?: Relationship[];
   };
   rounds: RoundResult[];
   social_feed?: SocialPost[];
