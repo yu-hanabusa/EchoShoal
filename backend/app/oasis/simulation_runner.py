@@ -151,6 +151,8 @@ class OASISSimulationEngine:
                 model=oasis_model,
                 available_actions=available_actions,
             )
+            # 出力言語を日本語に設定（CAMEL-AIのシステムプロンプトに反映される）
+            social_agent.output_language = "Japanese"
             self._agent_graph.add_agent(social_agent)
             self._oasis_agents[profile["user_id"]] = social_agent
 
