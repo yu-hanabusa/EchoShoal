@@ -216,12 +216,12 @@ class OASISSimulationEngine:
         seed_agents = oasis_agents[:min(3, len(oasis_agents))]
 
         seed_topics = [
-            f"New service alert: '{self.scenario.service_name}' has entered the market. "
-            f"Here's what we know: {self.scenario.description[:300]}",
-            f"Market analysis thread: What does '{self.scenario.service_name}' mean for our industry? "
-            "Let's discuss the potential impact.",
-            f"I've been looking into '{self.scenario.service_name}'. "
-            "Curious what other stakeholders think about adoption prospects.",
+            f"【新サービス情報】「{self.scenario.service_name}」が市場に参入します。"
+            f"概要: {self.scenario.description[:300]}",
+            f"【市場分析】「{self.scenario.service_name}」が業界にどのような影響を与えるか議論しましょう。"
+            "各ステークホルダーの視点からご意見をお願いします。",
+            f"「{self.scenario.service_name}」について調べています。"
+            "導入の見込みや競合との比較について、皆さんの意見を聞かせてください。",
         ]
 
         try:
@@ -327,10 +327,7 @@ class OASISSimulationEngine:
             # ランダムなエージェントがイベントニュースを投稿
             if oasis_agents:
                 poster = random.choice(oasis_agents)
-                content = (
-                    f"[MARKET EVENT] {evt.name}: {evt.description} "
-                    f"(Impact: {evt.event_type.value})"
-                )
+                content = f"【市場ニュース】{evt.name}: {evt.description}"
                 try:
                     await self._env.step({
                         poster: [ManualAction(
@@ -403,6 +400,9 @@ class OASISSimulationEngine:
                     if content:
                         action_record["description"] = content[:200]
 
+                # 空のdescriptionを除外（refresh, sign_up等の内部アクション）
+                if not action_record["description"].strip():
+                    continue
                 actions.append(action_record)
 
             conn.close()
