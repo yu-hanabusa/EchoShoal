@@ -13,11 +13,20 @@ const AGENT_COLORS = [
 /** 投稿内容をクリーンアップ */
 function cleanContent(raw: string): string {
   let s = raw;
+  // タグ類
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
-  s = s.replace(/\[MARKET EVENT\]/gi, "");
-  s = s.replace(/\{[^}]*\}/g, "");
+  s = s.replace(/\[MARKET EVENT\][^\n]*/gi, "");
+  s = s.replace(/\[COMMENT\]/gi, "");
+  s = s.replace(/\[SEED\]/gi, "");
+  // 英語テンプレート
+  s = s.replace(/New service alert:[^\n]*/gi, "");
+  // JSON全体
+  s = s.replace(/\{[^{}]*\}/g, "");
+  // Unicodeエスケープ
   s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  // rawアクション名
   s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");
+  // 空行
   s = s.replace(/\n{2,}/g, "\n").trim();
   return s;
 }

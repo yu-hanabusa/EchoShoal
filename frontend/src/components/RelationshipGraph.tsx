@@ -34,14 +34,18 @@ const HIDDEN_ACTIONS = new Set([
 /** 投稿内容をクリーンアップ */
 function cleanDescription(raw: string): string {
   let s = raw;
-  // (Impact: ...) タグ
+  // タグ類
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
-  s = s.replace(/\[MARKET EVENT\]/gi, "");
-  // JSON文字列全体 {"key": ...}
-  s = s.replace(/\{[^}]*\}/g, "");
+  s = s.replace(/\[MARKET EVENT\][^\n]*/gi, "");
+  s = s.replace(/\[COMMENT\]/gi, "");
+  s = s.replace(/\[SEED\]/gi, "");
+  // 英語テンプレート
+  s = s.replace(/New service alert:[^\n]*/gi, "");
+  // JSON文字列全体 {"key": ...} (ネストなし)
+  s = s.replace(/\{[^{}]*\}/g, "");
   // Unicodeエスケープ
   s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  // 英語のrawアクション名の行
+  // rawアクション名の行
   s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");
   // 残った空行
   s = s.replace(/\n{2,}/g, "\n").trim();
