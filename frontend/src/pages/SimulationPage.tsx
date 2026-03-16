@@ -139,7 +139,7 @@ export default function SimulationPage() {
               </div>
             </div>
 
-            <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} serviceName={data.service_name} initialRelationships={result.summary.initial_relationships} />
+            <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} serviceName={result.scenario?.service_name} initialRelationships={result.summary.initial_relationships} />
 
             {/* OASIS Social Feed */}
             {result.social_feed && result.social_feed.length > 0 && (
@@ -166,7 +166,7 @@ export default function SimulationPage() {
               </div>
             )}
 
-            <AgentTable agents={result.summary.agents} serviceName={data.service_name} />
+            <AgentTable agents={result.summary.agents} serviceName={result.scenario?.service_name} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <MarketChart rounds={result.rounds} title="サービスの成長指標の変化" dimensions={["user_adoption", "revenue_potential", "market_awareness", "ecosystem_health"]} />

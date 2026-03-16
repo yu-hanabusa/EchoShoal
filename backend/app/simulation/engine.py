@@ -624,16 +624,26 @@ class SimulationEngine:
                         })
                 logger.info("初期関係%d件を生成", len(self._initial_relationships))
         except Exception:
-            logger.warning("初期関係生成失敗（フォールバックなし）")
+            logger.warning("初期関係生成失敗、ステークホルダー種別ベースフォールバック")
 
-    # NOTE: フォールバック削除済み — LLM成功時のみ初期関係を使用
-    # 恣意的な関係推定は根拠がないため
+        # LLM成功・失敗に関わらず、最低限の関係が必要
+        if not self._initial_relationships:
+            self._generate_structural_relationships()
 
-    def _REMOVED_generate_initial_relationships_fallback(self) -> None:  # noqa: N802
-        """削除済み — 参考のためコードは残す."""
+    def _generate_structural_relationships(self) -> None:
+        """ステークホルダー種別に基づく構造的な関係を生成する.
+
+        これは恣意的ではなく、種別の定義から導かれる関係:
+        - platformer/enterprise → 対象サービスの競合
+        - end_user → 対象サービスの潜在ユーザー
+        - investor → 対象サービスへの出資者
+        - government → 市場の規制者
+        - community → 市場への関心者
+        """
         service = self.scenario.service_name if self.scenario else ""
         sn_lower = service.lower()
 
+        # 対象サービスのエージェントを特定
         target_agent = None
         for a in self.agents:
             if sn_lower and sn_lower in a.name.lower():
@@ -643,23 +653,22 @@ class SimulationEngine:
         if not target_agent:
             return
 
+        _type_map = {
+            "platformer": "competitor",
+            "enterprise": "competitor",
+            "end_user": "user",
+            "investor": "investor",
+            "government": "regulator",
+            "community": "interest",
+            "freelancer": "interest",
+            "indie_developer": "interest",
+        }
+
         for a in self.agents:
             if a.name == target_agent:
                 continue
 
-            st = a.profile.stakeholder_type.value
-            if st in ("platformer", "enterprise"):
-                rel_type = "competitor"
-            elif st == "end_user":
-                rel_type = "user"
-            elif st == "investor":
-                rel_type = "investor"
-            elif st == "government":
-                rel_type = "regulator"
-            elif st == "community":
-                rel_type = "interest"
-            else:
-                rel_type = "interest"
+            rel_type = _type_map.get(a.profile.stakeholder_type.value, "interest")
 
             self._initial_relationships.append({
                 "from": a.name,
@@ -668,3 +677,5 @@ class SimulationEngine:
                 "round": 0,
                 "weight": 1,
             })
+
+        logger.info("構造的関係%d件を生成", len(self._initial_relationships))
