@@ -179,9 +179,23 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     return Array.from(edgeMap.values());
   }, [rounds, TYPE_MAP, initialRelationships]);
 
-  // 選択ラウンドまでの登場エージェント
+  // 選択ラウンドまでの登場エージェント（対象サービスは常に最初から表示）
   const appearedAgents = useMemo(() => {
     const appeared = new Set<string>();
+    // 対象サービスは常に表示
+    const sn = (serviceName || "").toLowerCase();
+    if (sn) {
+      const target = agents.find((a) => a.name.toLowerCase().includes(sn));
+      if (target) appeared.add(target.name);
+    }
+    // 初期関係のエージェントも表示
+    if (initialRelationships) {
+      for (const r of initialRelationships) {
+        appeared.add(r.from);
+        appeared.add(r.to);
+      }
+    }
+    // アクションベースの登場
     for (const r of rounds) {
       if (r.round_number > selectedRound) break;
       for (const a of r.actions_taken) {
@@ -190,7 +204,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       }
     }
     return Array.from(appeared);
-  }, [rounds, selectedRound]);
+  }, [rounds, selectedRound, serviceName, agents, initialRelationships]);
 
   // 選択ラウンドまでのエッジ
   const visibleEdges = useMemo(() => {
