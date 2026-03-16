@@ -624,15 +624,16 @@ class SimulationEngine:
                         })
                 logger.info("初期関係%d件を生成", len(self._initial_relationships))
         except Exception:
-            logger.warning("初期関係生成失敗、シナリオベースフォールバック")
-            self._generate_initial_relationships_fallback()
+            logger.warning("初期関係生成失敗（フォールバックなし）")
 
-    def _generate_initial_relationships_fallback(self) -> None:
-        """LLM不要のフォールバック: ステークホルダー種別から初期関係を推定."""
+    # NOTE: フォールバック削除済み — LLM成功時のみ初期関係を使用
+    # 恣意的な関係推定は根拠がないため
+
+    def _REMOVED_generate_initial_relationships_fallback(self) -> None:  # noqa: N802
+        """削除済み — 参考のためコードは残す."""
         service = self.scenario.service_name if self.scenario else ""
         sn_lower = service.lower()
 
-        # 対象サービスのエージェントを特定
         target_agent = None
         for a in self.agents:
             if sn_lower and sn_lower in a.name.lower():

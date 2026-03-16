@@ -101,6 +101,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
+  const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const agentColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -215,15 +216,19 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
     const sn = (serviceName || "").toLowerCase();
 
-    // ノードデータ
-    const nodes: SimNode[] = appearedAgents.map((name) => ({
-      id: name,
-      x: WIDTH / 2 + (Math.random() - 0.5) * 200,
-      y: HEIGHT / 2 + (Math.random() - 0.5) * 200,
-      color: agentColorMap[name] || "#94a3b8",
-      isTarget: sn ? name.toLowerCase().includes(sn) : false,
-      hasAction: roundActions.some((a) => a.agent === name),
-    }));
+    // ノードデータ（前回の位置を引き継ぐ）
+    const savedPos = nodePositionsRef.current;
+    const nodes: SimNode[] = appearedAgents.map((name) => {
+      const prev = savedPos.get(name);
+      return {
+        id: name,
+        x: prev?.x ?? WIDTH / 2 + (Math.random() - 0.5) * 200,
+        y: prev?.y ?? HEIGHT / 2 + (Math.random() - 0.5) * 200,
+        color: agentColorMap[name] || "#94a3b8",
+        isTarget: sn ? name.toLowerCase().includes(sn) : false,
+        hasAction: roundActions.some((a) => a.agent === name),
+      };
+    });
 
     // リンクデータ
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -367,8 +372,18 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       .attr("fill", "#334155")
       .text((d) => d.id.length > 12 ? d.id.slice(0, 12) + ".." : d.id);
 
+    // 既存ノードが多い場合はalphaを低くして安定させる
+    if (savedPos.size > 0) {
+      simulation.alpha(0.3);
+    }
+
     // Tick更新
     simulation.on("tick", () => {
+      // 位置を保存
+      for (const n of nodes) {
+        nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
+      }
+
       linkElements
         .attr("x1", (d) => (d.source as SimNode).x)
         .attr("y1", (d) => (d.source as SimNode).y)
