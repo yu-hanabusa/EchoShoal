@@ -19,7 +19,10 @@ const ACTION_LABELS: Record<string, string> = {
   launch_competing_feature: "競合機能発表", acquire_startup: "スタートアップ買収",
   form_standards_group: "標準化団体設立", host_event: "イベント開催",
   publish_research: "調査公開", fund_startup: "スタートアップ出資",
-  exit_investment: "投資撤退",
+  exit_investment: "投資撤退", post_opinion: "意見投稿",
+  market_research: "市場調査", endorse: "支持表明", critique: "批評",
+  amplify: "拡散", quote_opinion: "引用", follow_stakeholder: "フォロー",
+  dislike: "低評価",
 };
 
 /** 投稿内容をクリーンアップ */
