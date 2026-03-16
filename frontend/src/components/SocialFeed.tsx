@@ -1,8 +1,15 @@
 import { useState } from "react";
-import type { SocialPost } from "../api/types";
+import type { SocialPost, AgentSummary } from "../api/types";
+
+const STAKEHOLDER_LABELS: Record<string, string> = {
+  enterprise: "企業", platformer: "プラットフォーマー", end_user: "ユーザー",
+  investor: "投資家", government: "行政", community: "コミュニティ",
+  freelancer: "フリーランス", indie_developer: "個人開発者",
+};
 
 interface Props {
   feed: SocialPost[];
+  agents?: AgentSummary[];
 }
 
 const AGENT_COLORS = [
@@ -39,7 +46,11 @@ function getAgentColor(name: string): string {
   return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
 }
 
-export default function SocialFeed({ feed }: Props) {
+export default function SocialFeed({ feed, agents }: Props) {
+  const agentTypeMap = new Map<string, string>();
+  if (agents) {
+    for (const a of agents) agentTypeMap.set(a.name, a.stakeholder_type);
+  }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
 
@@ -107,6 +118,11 @@ export default function SocialFeed({ feed }: Props) {
                 <span className="text-sm font-medium text-text-primary">
                   {post.author}
                 </span>
+                {agentTypeMap.has(post.author) && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-tertiary">
+                    {STAKEHOLDER_LABELS[agentTypeMap.get(post.author)!] || agentTypeMap.get(post.author)}
+                  </span>
+                )}
               </div>
 
               {/* Post content */}

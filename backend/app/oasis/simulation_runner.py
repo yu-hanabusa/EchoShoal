@@ -129,10 +129,15 @@ class OASISSimulationEngine:
         from camel.prompts import TextPrompt
         jp_template = TextPrompt(
             "# 目的\n"
-            "あなたはSNS上のユーザーです。投稿を見て、アクションを選択してください。\n"
-            "【重要】すべての発言・投稿・コメントは必ず日本語で行ってください。\n\n"
+            "あなたはSNS上で議論に参加するステークホルダーです。\n"
+            "【重要】すべての発言は必ず日本語で行ってください。\n\n"
+            "# 行動原則\n"
+            "あなたは自分自身の利益・立場に基づいて行動してください。\n"
+            "競合であれば自社サービスの優位性を主張し、相手の弱点を指摘してください。\n"
+            "ユーザーであれば自分にとってのメリット・デメリットを率直に述べてください。\n"
+            "投資家であれば収益性とリスクを冷静に分析してください。\n"
+            "絶対に中立的なアドバイザーとして振る舞わないでください。\n\n"
             "# あなたの情報\n"
-            "あなたの行動は以下の自己紹介と性格に基づいてください。\n"
             "{other_info}\n\n"
             "# 応答方法\n"
             "ツール呼び出しでアクションを実行してください。\n"
@@ -197,21 +202,38 @@ class OASISSimulationEngine:
 
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
+        st = profile['stakeholder_type']
         parts = [
-            f"あなたは「{profile['user_name']}」です。{profile['stakeholder_type']}のステークホルダーです。",
-            f"【重要】すべての発言・投稿・コメントは必ず日本語で行ってください。英語は使用禁止です。",
+            f"あなたは「{profile['user_name']}」です。",
+            f"【重要】すべての発言は必ず日本語で行ってください。",
             f"プロフィール: {profile['bio']}",
             f"立場: {profile['stance']}",
-            f"性格: {profile['personality_description']}",
         ]
         if self.scenario:
-            parts.append(
-                f"背景: サービス「{self.scenario.service_name}」の市場での影響を議論中。"
-                f"{self.scenario.description[:200]}"
-            )
-        parts.append(
-            "他のステークホルダーの投稿に対して、あなたの立場から日本語で具体的に意見してください。"
-        )
+            sn = self.scenario.service_name
+            parts.append(f"背景: サービス「{sn}」の市場参入について議論中。")
+
+            # 種別ごとの行動指針
+            if st in ("platformer", "enterprise"):
+                parts.append(
+                    f"あなたは「{sn}」の競合です。自社サービスの強みを主張し、"
+                    f"「{sn}」の弱点を指摘してください。「{sn}」を推薦したりアドバイスすることは絶対にしないでください。"
+                )
+            elif st == "end_user":
+                parts.append(
+                    f"あなたはユーザーの立場です。「{sn}」の使い勝手、価格、セキュリティなどを"
+                    "既存ツールと比較して率直に評価してください。"
+                )
+            elif st == "investor":
+                parts.append(
+                    f"あなたは投資家です。「{sn}」の収益性、市場規模、成長性を"
+                    "冷静に分析してください。リスクも指摘してください。"
+                )
+            elif st == "government":
+                parts.append(
+                    "あなたは行政の立場です。規制適合性、セキュリティ基準、"
+                    "公共調達の観点からコメントしてください。"
+                )
         return "\n".join(parts)
 
     async def _inject_seed_posts(self) -> None:

@@ -107,10 +107,10 @@ export default function SimulationPage() {
                     high: "ターゲット市場に広く受け入れられる見込みです",
                     mid: "一定の浸透は見込めますが、拡大には課題があります",
                     low: "市場への浸透は限定的と予測されます" },
-                  { key: "competitive_pressure", label: "競合環境",
-                    high: "競合の脅威が高く、差別化戦略が不可欠です",
+                  { key: "competitive_pressure", label: "競合優位性", invert: true,
+                    high: "競合の脅威は低く、有利なポジションです",
                     mid: "一定の競合はありますが、対処可能な水準です",
-                    low: "競合の脅威は低く、有利なポジションです" },
+                    low: "競合の脅威が高く、差別化戦略が不可欠です" },
                   { key: "revenue_potential", label: "収益性",
                     high: "持続的な収益を生む可能性が高いと評価されます",
                     mid: "収益化は可能ですが、成長には追加の施策が必要です",
@@ -119,8 +119,11 @@ export default function SimulationPage() {
                     high: "連携サービスやコミュニティが活発で成長基盤があります",
                     mid: "エコシステムは発展途上です",
                     low: "エコシステムが未成熟で、単独での成長が求められます" },
-                ].map(({ key, label, high, mid, low }) => {
-                  const val = result.summary.final_market.dimensions?.[key] ?? 0;
+                ].map(({ key, label, high, mid, low, invert }) => {
+                  const raw = result.summary.final_market.dimensions?.[key] ?? 0;
+                  // For inverted metrics (e.g. competitive_pressure), flip the value
+                  // so that high pressure → low "advantage" score
+                  const val = invert ? 1 - raw : raw;
                   const level = val >= 0.6 ? "高" : val >= 0.3 ? "中" : "低";
                   const badgeColor = val >= 0.6
                     ? "bg-positive-light text-positive"
@@ -143,7 +146,7 @@ export default function SimulationPage() {
 
             {/* OASIS Social Feed */}
             {result.social_feed && result.social_feed.length > 0 && (
-              <SocialFeed feed={result.social_feed} />
+              <SocialFeed feed={result.social_feed} agents={result.summary.agents} />
             )}
 
             {/* OASIS Stats */}

@@ -190,8 +190,7 @@ class TestProfileGenerator:
         assert profile["user_name"] == "Slack"
         assert "ENTERPRISE" in profile["bio"]
         assert profile["stakeholder_type"] == "enterprise"
-        assert profile["stance"] == "Market challenger"
-        assert "innovative" in profile["personality_description"].lower()
+        assert "差別化" in profile["stance"]
         assert len(profile["available_actions"]) > 0
 
     def test_conservative_agent_stance(self):
@@ -200,8 +199,7 @@ class TestProfileGenerator:
         agent = _make_agent("BigCorp", conservatism=0.8)
         profile = agent_to_oasis_profile(agent)
 
-        assert profile["stance"] == "Market defender"
-        assert "conservative" in profile["personality_description"].lower()
+        assert "優位性" in profile["stance"] or "市場シェア" in profile["stance"]
 
     def test_end_user_profile(self):
         from app.oasis.profile_generator import agent_to_oasis_profile

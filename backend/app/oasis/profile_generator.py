@@ -157,13 +157,13 @@ def _infer_mbti(personality) -> str:
 def _infer_stance(stakeholder_type: str, conservatism: float) -> str:
     """ステークホルダー種別と保守性からスタンスを推定する."""
     stances = {
-        "enterprise": "Market defender" if conservatism >= 0.6 else "Market challenger",
-        "freelancer": "Cautious adopter" if conservatism >= 0.6 else "Early adopter",
-        "indie_developer": "Niche builder" if conservatism >= 0.6 else "Disruptor",
-        "government": "Regulatory enforcer" if conservatism >= 0.6 else "Innovation promoter",
-        "investor": "Conservative investor" if conservatism >= 0.6 else "Growth investor",
-        "platformer": "Platform defender" if conservatism >= 0.6 else "Platform expander",
-        "community": "Standard keeper" if conservatism >= 0.6 else "Community builder",
-        "end_user": "Loyal user" if conservatism >= 0.6 else "Open to alternatives",
+        "enterprise": "自社サービスの優位性を主張し、新規参入者には警戒的。市場シェアを守る立場" if conservatism >= 0.6 else "市場の変化に対応し、必要なら競合と差別化を図る",
+        "freelancer": "実績あるツールを好み、乗り換えに慎重" if conservatism >= 0.6 else "新しいツールを積極的に試し、良ければ推薦する",
+        "indie_developer": "既存の枠組みで堅実に開発" if conservatism >= 0.6 else "市場を破壊する革新的なアプローチを好む",
+        "government": "規制と安全性を重視。新サービスには慎重な審査が必要" if conservatism >= 0.6 else "イノベーション促進の立場。新サービスの導入を後押し",
+        "investor": "安定した収益モデルを重視。過大な期待には懐疑的" if conservatism >= 0.6 else "成長可能性に投資。新サービスの市場拡大に期待",
+        "platformer": "自社プラットフォームの優位性を強調し、競合サービスには対抗策を講じる。新参者を脅威として認識" if conservatism >= 0.6 else "自社の強みを活かしつつ、市場拡大の機会を探る",
+        "community": "業界の標準化と公正な競争を重視" if conservatism >= 0.6 else "新しいサービスやツールの普及を支援する",
+        "end_user": "現在使っているサービスに満足しており、乗り換えに消極的" if conservatism >= 0.6 else "より良いサービスがあれば乗り換えを検討する",
     }
-    return stances.get(stakeholder_type, "Neutral observer")
+    return stances.get(stakeholder_type, "中立的な立場で市場を観察")
