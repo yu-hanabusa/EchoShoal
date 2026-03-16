@@ -10,20 +10,15 @@ const AGENT_COLORS = [
   "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
 ];
 
-/** 投稿内容をクリーンアップ（raw JSON, Impact タグ, エスケープ文字を除去） */
+/** 投稿内容をクリーンアップ */
 function cleanContent(raw: string): string {
   let s = raw;
-  // (Impact: ...) タグを除去
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
-  // JSON風の文字列を除去 ({"posts":..., "user_id":..., etc.)
-  s = s.replace(/\{["\u0027](?:posts|user_id|post_id|name|user_name|bio|content)["\u0027]\s*:/g, "");
-  // sign_up/refresh等のrawアクション名行を除去
-  s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow)\s*$/gm, "");
-  // Unicodeエスケープを復元
-  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-  // 残った先頭/末尾の不完全JSON
-  s = s.replace(/^\s*\{[^}]*$|^[^{]*\}\s*$/gm, "");
-  return s.trim();
+  s = s.replace(/\{[^}]*\}/g, "");
+  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");
+  s = s.replace(/\n{2,}/g, "\n").trim();
+  return s;
 }
 
 function getAgentColor(name: string): string {

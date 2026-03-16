@@ -23,14 +23,25 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 /** 投稿内容をクリーンアップ */
+/** 内部アクション（ユーザーに見せる必要がないもの） */
+const HIDDEN_ACTIONS = new Set([
+  "refresh", "sign_up", "login", "logout", "update_profile",
+]);
+
+/** 投稿内容をクリーンアップ */
 function cleanDescription(raw: string): string {
   let s = raw;
+  // (Impact: ...) タグ
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
-  s = s.replace(/\{["\u0027](?:posts|user_id|post_id|name|user_name|bio|content)["\u0027]\s*:[\s\S]{0,200}/g, "");
-  s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow)\s*$/gm, "");
+  // JSON文字列全体 {"key": ...}
+  s = s.replace(/\{[^}]*\}/g, "");
+  // Unicodeエスケープ
   s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  s = s.replace(/^\s*\{[^}]*$|^[^{]*\}\s*$/gm, "");
-  return s.trim();
+  // 英語のrawアクション名の行
+  s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");
+  // 残った空行
+  s = s.replace(/\n{2,}/g, "\n").trim();
+  return s;
 }
 
 const AGENT_COLORS = [
@@ -475,22 +486,26 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
             <p className="text-xs text-text-secondary mb-3">{selectedAgentInfo.description}</p>
           )}
 
-          {selectedAgentActions.length > 0 ? (
+          {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).length > 0 ? (
             <div>
               <p className="text-xs font-medium text-text-tertiary mb-1">{selectedRound}ヶ月目の行動:</p>
-              {selectedAgentActions.map((a, i) => (
+              {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).map((a, i) => {
+                const desc = cleanDescription(a.description);
+                if (!desc) return null;
+                return (
                 <div key={i} className="flex items-start gap-2 text-sm py-1">
                   <span className="text-xs px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary shrink-0">
                     {ACTION_LABELS[a.type] || a.type}
                   </span>
-                  <span className="text-text-secondary">{cleanDescription(a.description)}</span>
+                  <span className="text-text-secondary">{desc}</span>
                   {a.reacting_to && (
                     <span className="text-xs text-interactive ml-1 shrink-0">
                       ← {a.reacting_to}への反応
                     </span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs text-text-tertiary">{selectedRound}ヶ月目は行動なし</p>

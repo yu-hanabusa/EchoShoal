@@ -182,19 +182,19 @@ class OASISSimulationEngine:
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
         parts = [
-            f"あなたは{profile['user_name']}です。{profile['stakeholder_type']}のステークホルダーとして日本語で発言してください。",
-            f"Bio: {profile['bio']}",
-            f"Stance: {profile['stance']}",
-            f"Personality: {profile['personality_description']}",
+            f"あなたは「{profile['user_name']}」です。{profile['stakeholder_type']}のステークホルダーです。",
+            f"【重要】すべての発言・投稿・コメントは必ず日本語で行ってください。英語は使用禁止です。",
+            f"プロフィール: {profile['bio']}",
+            f"立場: {profile['stance']}",
+            f"性格: {profile['personality_description']}",
         ]
         if self.scenario:
             parts.append(
-                f"Context: Evaluating the impact of '{self.scenario.service_name}' "
-                f"on the market. {self.scenario.description[:200]}"
+                f"背景: サービス「{self.scenario.service_name}」の市場での影響を議論中。"
+                f"{self.scenario.description[:200]}"
             )
         parts.append(
-            "Discuss, debate, and share your perspective on this service's market impact. "
-            "React to other stakeholders' posts. Be specific and concrete."
+            "他のステークホルダーの投稿に対して、あなたの立場から日本語で具体的に意見してください。"
         )
         return "\n".join(parts)
 
