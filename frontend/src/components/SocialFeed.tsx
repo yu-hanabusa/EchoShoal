@@ -14,6 +14,7 @@ const AGENT_COLORS = [
 function cleanContent(raw: string): string {
   let s = raw;
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
+  s = s.replace(/\[MARKET EVENT\]/gi, "");
   s = s.replace(/\{[^}]*\}/g, "");
   s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
   s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");

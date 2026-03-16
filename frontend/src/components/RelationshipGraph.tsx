@@ -36,6 +36,7 @@ function cleanDescription(raw: string): string {
   let s = raw;
   // (Impact: ...) タグ
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
+  s = s.replace(/\[MARKET EVENT\]/gi, "");
   // JSON文字列全体 {"key": ...}
   s = s.replace(/\{[^}]*\}/g, "");
   // Unicodeエスケープ
