@@ -125,6 +125,19 @@ class OASISSimulationEngine:
         from oasis.social_platform.typing import ActionType
         available_actions = ActionType.get_default_reddit_actions()
 
+        # 日本語システムプロンプトテンプレート（OASISデフォルトの英語テンプレートを上書き）
+        from camel.prompts import TextPrompt
+        jp_template = TextPrompt(
+            "# 目的\n"
+            "あなたはSNS上のユーザーです。投稿を見て、アクションを選択してください。\n"
+            "【重要】すべての発言・投稿・コメントは必ず日本語で行ってください。\n\n"
+            "# あなたの情報\n"
+            "あなたの行動は以下の自己紹介と性格に基づいてください。\n"
+            "{other_info}\n\n"
+            "# 応答方法\n"
+            "ツール呼び出しでアクションを実行してください。\n"
+        )
+
         # SocialAgent生成
         for i, profile in enumerate(profiles):
             user_info = UserInfo(
@@ -132,27 +145,24 @@ class OASISSimulationEngine:
                 name=profile["user_name"],
                 description=self._build_agent_description(profile),
                 profile={
-                    "other_info": {
-                        "user_profile": profile["personality_description"],
-                        "stakeholder_type": profile["stakeholder_type"],
-                        "stance": profile["stance"],
-                        "gender": profile.get("gender", "Non-binary"),
-                        "age": profile.get("age", 35),
-                        "mbti": profile.get("mbti", "INTJ"),
-                        "country": profile.get("country", "Japan"),
-                    }
+                    "other_info": (
+                        f"名前: {profile['user_name']}\n"
+                        f"プロフィール: {profile['personality_description']}\n"
+                        f"ステークホルダー種別: {profile['stakeholder_type']}\n"
+                        f"立場: {profile['stance']}\n"
+                        f"国: Japan"
+                    ),
                 },
                 recsys_type="reddit",
             )
             social_agent = SocialAgent(
                 agent_id=i,
                 user_info=user_info,
+                user_info_template=jp_template,
                 agent_graph=self._agent_graph,
                 model=oasis_model,
                 available_actions=available_actions,
             )
-            # 出力言語を日本語に設定（CAMEL-AIのシステムプロンプトに反映される）
-            social_agent.output_language = "Japanese"
             self._agent_graph.add_agent(social_agent)
             self._oasis_agents[profile["user_id"]] = social_agent
 
