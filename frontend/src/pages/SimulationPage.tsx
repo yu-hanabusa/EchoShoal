@@ -139,7 +139,7 @@ export default function SimulationPage() {
               </div>
             </div>
 
-            <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} />
+            <RelationshipGraph rounds={result.rounds} agents={result.summary.agents} serviceName={data.service_name} />
 
             {/* OASIS Social Feed */}
             {result.social_feed && result.social_feed.length > 0 && (

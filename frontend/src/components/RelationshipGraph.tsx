@@ -1,4 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, forceX, forceY } from "d3-force";
+import { select } from "d3-selection";
+import { drag as d3Drag } from "d3-drag";
+import { zoom as d3Zoom } from "d3-zoom";
 import type { RoundResult, AgentSummary } from "../api/types";
 
 /** アクションタイプを日本語に変換 */
@@ -24,7 +28,7 @@ function cleanDescription(raw: string): string {
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
   s = s.replace(/\{["\u0027](?:posts|user_id|post_id|name|user_name|bio|content)["\u0027]\s*:[\s\S]{0,200}/g, "");
   s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow)\s*$/gm, "");
-  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
   s = s.replace(/^\s*\{[^}]*$|^[^{]*\}\s*$/gm, "");
   return s.trim();
 }
@@ -40,7 +44,6 @@ const RELATION_COLORS: Record<string, string> = {
   regulator: "#6366f1", acquirer: "#ec4899", user: "#3b82f6",
   advocate: "#34d399", critic: "#f97316", former_user: "#9ca3af",
   interaction: "#d1d5db",
-  // OASIS interaction types
   interest: "#60a5fa", discussion: "#a78bfa", amplification: "#fbbf24",
   support: "#34d399", opposition: "#ef4444", reference: "#06b6d4",
 };
@@ -50,7 +53,6 @@ const RELATION_LABELS: Record<string, string> = {
   regulator: "規制", acquirer: "買収", user: "利用",
   advocate: "推薦", critic: "批判", former_user: "離脱",
   interaction: "影響",
-  // OASIS interaction types
   interest: "関心", discussion: "議論", amplification: "拡散",
   support: "支持", opposition: "反対", reference: "引用",
 };
@@ -58,6 +60,7 @@ const RELATION_LABELS: Record<string, string> = {
 interface Props {
   rounds: RoundResult[];
   agents: AgentSummary[];
+  serviceName?: string;
 }
 
 interface Edge {
@@ -68,10 +71,35 @@ interface Edge {
   weight: number;
 }
 
-export default function RelationshipGraph({ rounds, agents }: Props) {
+interface SimNode {
+  id: string;
+  x: number;
+  y: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+  color: string;
+  isTarget: boolean;
+  hasAction: boolean;
+}
+
+interface SimLink {
+  source: string | SimNode;
+  target: string | SimNode;
+  type: string;
+  weight: number;
+}
+
+const WIDTH = 700;
+const HEIGHT = 500;
+
+export default function RelationshipGraph({ rounds, agents, serviceName }: Props) {
   const totalRounds = rounds.length;
   const [selectedRound, setSelectedRound] = useState(totalRounds);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const simulationRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
 
   const agentColorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -79,48 +107,43 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
     return map;
   }, [agents]);
 
-  // 全エッジを収集（weight = 同一方向の累積インタラクション数）
+  const TYPE_MAP: Record<string, string> = useMemo(() => ({
+    build_competitor: "competitor", launch_competing_product: "competitor",
+    launch_competing_feature: "competitor", price_undercut: "competitor",
+    partner: "partner", partner_integrate: "partner",
+    invest_seed: "investor", invest_series: "investor", fund_competitor: "investor",
+    regulate: "regulator", investigate: "regulator",
+    acquire_service: "acquirer", acquire_startup: "acquirer",
+    adopt_new_service: "user", adopt_service: "user", adopt_tool: "user",
+    recommend: "advocate", complain: "critic", churn: "former_user",
+    post_opinion: "discussion", comment: "discussion",
+    endorse: "support", critique: "opposition", amplify: "amplification",
+    quote_opinion: "reference", follow_stakeholder: "interest",
+    market_research: "interest",
+  }), []);
+
+  // 全エッジ
   const allEdges = useMemo(() => {
     const edgeMap = new Map<string, Edge>();
-    const typeMap: Record<string, string> = {
-      build_competitor: "competitor", launch_competing_product: "competitor",
-      launch_competing_feature: "competitor", price_undercut: "competitor",
-      partner: "partner", partner_integrate: "partner",
-      invest_seed: "investor", invest_series: "investor", fund_competitor: "investor",
-      regulate: "regulator", investigate: "regulator",
-      acquire_service: "acquirer", acquire_startup: "acquirer",
-      adopt_new_service: "user", adopt_service: "user", adopt_tool: "user",
-      recommend: "advocate", complain: "critic", churn: "former_user",
-      // OASIS action mappings
-      post_opinion: "discussion", comment: "discussion",
-      endorse: "support", critique: "opposition", amplify: "amplification",
-      quote_opinion: "reference", follow_stakeholder: "interest",
-      market_research: "interest",
-    };
     for (const r of rounds) {
       for (const a of r.actions_taken) {
         if (a.reacting_to) {
-          const relType = typeMap[a.type] || "interaction";
+          const relType = TYPE_MAP[a.type] || "interaction";
           const key = `${a.agent}→${a.reacting_to}→${relType}`;
           const existing = edgeMap.get(key);
           if (existing) {
             existing.weight += 1;
             existing.round = Math.max(existing.round, r.round_number);
           } else {
-            edgeMap.set(key, {
-              from: a.agent, to: a.reacting_to,
-              type: relType,
-              round: r.round_number,
-              weight: 1,
-            });
+            edgeMap.set(key, { from: a.agent, to: a.reacting_to, type: relType, round: r.round_number, weight: 1 });
           }
         }
       }
     }
     return Array.from(edgeMap.values());
-  }, [rounds]);
+  }, [rounds, TYPE_MAP]);
 
-  // 選択ラウンドまでに「登場した」エージェント（行動したことがある）
+  // 選択ラウンドまでの登場エージェント
   const appearedAgents = useMemo(() => {
     const appeared = new Set<string>();
     for (const r of rounds) {
@@ -133,42 +156,210 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
     return Array.from(appeared);
   }, [rounds, selectedRound]);
 
-  // 選択ラウンドまでのエッジ（最新のみ）
+  // 選択ラウンドまでのエッジ
   const visibleEdges = useMemo(() => {
     const filtered = allEdges.filter((e) => e.round <= selectedRound);
     const latest = new Map<string, Edge>();
-    for (const e of filtered) {
-      latest.set(`${e.from}→${e.to}`, e);
-    }
+    for (const e of filtered) latest.set(`${e.from}→${e.to}`, e);
     return Array.from(latest.values());
   }, [allEdges, selectedRound]);
 
   // 選択ラウンドの行動
   const roundActions = useMemo(() => {
-    const r = rounds.find((r) => r.round_number === selectedRound);
-    return r?.actions_taken || [];
+    return rounds.find((r) => r.round_number === selectedRound)?.actions_taken || [];
   }, [rounds, selectedRound]);
 
   const roundNarrative = rounds.find((r) => r.round_number === selectedRound)?.summary || "";
 
-  // レイアウト
-  const width = 700;
-  const height = 500;
-  const cx = width / 2;
-  const cy = height / 2;
-  const radius = Math.min(cx, cy) - 70;
+  // D3 force simulation
+  const renderGraph = useCallback(() => {
+    if (!svgRef.current) return;
 
-  const nodePositions = useMemo(() => {
-    const pos: Record<string, { x: number; y: number }> = {};
-    appearedAgents.forEach((name, i) => {
-      const angle = (2 * Math.PI * i) / Math.max(appearedAgents.length, 1) - Math.PI / 2;
-      pos[name] = {
-        x: cx + radius * Math.cos(angle),
-        y: cy + radius * Math.sin(angle),
-      };
+    const svg = select(svgRef.current);
+    svg.selectAll("*").remove();
+
+    const sn = (serviceName || "").toLowerCase();
+
+    // ノードデータ
+    const nodes: SimNode[] = appearedAgents.map((name) => ({
+      id: name,
+      x: WIDTH / 2 + (Math.random() - 0.5) * 200,
+      y: HEIGHT / 2 + (Math.random() - 0.5) * 200,
+      color: agentColorMap[name] || "#94a3b8",
+      isTarget: sn ? name.toLowerCase().includes(sn) : false,
+      hasAction: roundActions.some((a) => a.agent === name),
+    }));
+
+    // リンクデータ
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const links: SimLink[] = visibleEdges
+      .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
+      .map((e) => ({
+        source: e.from,
+        target: e.to,
+        type: e.type,
+        weight: e.weight,
+      }));
+
+    if (nodes.length === 0) {
+      svg.append("text")
+        .attr("x", WIDTH / 2).attr("y", HEIGHT / 2)
+        .attr("text-anchor", "middle").attr("font-size", 13).attr("fill", "#94a3b8")
+        .text("スライダーを進めるとステークホルダーが登場します");
+      return;
+    }
+
+    // Force simulation (MiroFish方式)
+    const simulation = forceSimulation<SimNode>(nodes)
+      .force("link", forceLink<SimNode, SimLink>(links)
+        .id((d) => d.id)
+        .distance((d) => {
+          const baseDistance = 120;
+          const edgeCount = (d as SimLink).weight || 1;
+          return baseDistance + (edgeCount - 1) * 30;
+        })
+      )
+      .force("charge", forceManyBody<SimNode>().strength(-350))
+      .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
+      .force("collide", forceCollide<SimNode>(40))
+      .force("x", forceX<SimNode>(WIDTH / 2).strength(0.04))
+      .force("y", forceY<SimNode>(HEIGHT / 2).strength(0.04));
+
+    simulationRef.current = simulation;
+
+    // 対象サービスを中心に固定
+    const targetNode = nodes.find((n) => n.isTarget);
+    if (targetNode) {
+      targetNode.fx = WIDTH / 2;
+      targetNode.fy = HEIGHT / 2;
+    }
+
+    // Container with zoom/pan
+    const g = svg.append("g");
+
+    const zoomBehavior = d3Zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 3])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+    svg.call(zoomBehavior);
+
+    // エッジ描画
+    const linkGroup = g.append("g").attr("class", "links");
+    const linkElements = linkGroup.selectAll("line")
+      .data(links)
+      .join("line")
+      .attr("stroke", (d) => RELATION_COLORS[d.type] || "#d1d5db")
+      .attr("stroke-width", (d) => Math.min(d.weight + 1, 5))
+      .attr("stroke-opacity", 0.6);
+
+    // エッジラベル
+    const linkLabels = g.append("g").attr("class", "link-labels");
+    const labelElements = linkLabels.selectAll("text")
+      .data(links)
+      .join("text")
+      .attr("text-anchor", "middle")
+      .attr("font-size", 9)
+      .attr("fill", (d) => RELATION_COLORS[d.type] || "#999")
+      .attr("font-weight", 600)
+      .text((d) => RELATION_LABELS[d.type] || "");
+
+    // ノード描画
+    const nodeGroup = g.append("g").attr("class", "nodes");
+    const nodeElements = nodeGroup.selectAll<SVGCircleElement, SimNode>("circle")
+      .data(nodes)
+      .join("circle")
+      .attr("r", (d) => d.isTarget ? 28 : 18)
+      .attr("fill", (d) => d.color)
+      .attr("stroke", (d) => d.isTarget ? "#1e293b" : "#fff")
+      .attr("stroke-width", (d) => d.isTarget ? 3 : 2)
+      .attr("opacity", (d) => d.hasAction ? 0.9 : 0.5)
+      .style("cursor", "pointer")
+      .on("click", (_event, d) => {
+        setSelectedAgent((prev) => prev === d.id ? null : d.id);
+      })
+      .on("mouseenter", function (_event, d) {
+        select(this).attr("stroke", "#E91E63").attr("stroke-width", 4);
+        linkElements
+          .attr("stroke-opacity", (l) => {
+            const s = typeof l.source === "object" ? l.source.id : l.source;
+            const t = typeof l.target === "object" ? l.target.id : l.target;
+            return s === d.id || t === d.id ? 1 : 0.1;
+          })
+          .attr("stroke-width", (l) => {
+            const s = typeof l.source === "object" ? l.source.id : l.source;
+            const t = typeof l.target === "object" ? l.target.id : l.target;
+            return s === d.id || t === d.id ? Math.min(l.weight + 2, 6) : 1;
+          });
+      })
+      .on("mouseleave", function (_event, d) {
+        select(this)
+          .attr("stroke", d.isTarget ? "#1e293b" : "#fff")
+          .attr("stroke-width", d.isTarget ? 3 : 2);
+        linkElements
+          .attr("stroke-opacity", 0.6)
+          .attr("stroke-width", (l) => Math.min(l.weight + 1, 5));
+      });
+
+    // ドラッグ
+    const dragBehavior = d3Drag<SVGCircleElement, SimNode>()
+      .on("start", (event, d) => {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      })
+      .on("drag", (event, d) => {
+        d.fx = event.x;
+        d.fy = event.y;
+      })
+      .on("end", (event, d) => {
+        if (!event.active) simulation.alphaTarget(0);
+        if (!d.isTarget) {
+          d.fx = null;
+          d.fy = null;
+        }
+      });
+    nodeElements.call(dragBehavior);
+
+    // ノードラベル
+    const nodeLabels = g.append("g").attr("class", "node-labels");
+    const nodeLabelElements = nodeLabels.selectAll("text")
+      .data(nodes)
+      .join("text")
+      .attr("text-anchor", "middle")
+      .attr("font-size", (d) => d.isTarget ? 11 : 10)
+      .attr("font-weight", (d) => d.isTarget ? 700 : 500)
+      .attr("fill", "#334155")
+      .text((d) => d.id.length > 12 ? d.id.slice(0, 12) + ".." : d.id);
+
+    // Tick更新
+    simulation.on("tick", () => {
+      linkElements
+        .attr("x1", (d) => (d.source as SimNode).x)
+        .attr("y1", (d) => (d.source as SimNode).y)
+        .attr("x2", (d) => (d.target as SimNode).x)
+        .attr("y2", (d) => (d.target as SimNode).y);
+
+      labelElements
+        .attr("x", (d) => ((d.source as SimNode).x + (d.target as SimNode).x) / 2)
+        .attr("y", (d) => ((d.source as SimNode).y + (d.target as SimNode).y) / 2 - 6);
+
+      nodeElements
+        .attr("cx", (d) => d.x)
+        .attr("cy", (d) => d.y);
+
+      nodeLabelElements
+        .attr("x", (d) => d.x)
+        .attr("y", (d) => d.y + (d.isTarget ? 38 : 28));
     });
-    return pos;
-  }, [appearedAgents, cx, cy, radius]);
+  }, [appearedAgents, visibleEdges, roundActions, agentColorMap, serviceName]);
+
+  useEffect(() => {
+    renderGraph();
+    return () => {
+      simulationRef.current?.stop();
+    };
+  }, [renderGraph]);
 
   // 選択エージェントの情報
   const selectedAgentInfo = agents.find((a) => a.name === selectedAgent);
@@ -186,106 +377,23 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
       {/* タイムスライダー */}
       <div className="flex items-center gap-3 mb-4">
         <button
-          onClick={() => setSelectedRound(Math.max(1, selectedRound - 1))}
+          onClick={() => { setSelectedRound(Math.max(1, selectedRound - 1)); setSelectedAgent(null); }}
           className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border"
-        >
-          ◀
-        </button>
+        >◀</button>
         <input
-          type="range"
-          min={1}
-          max={totalRounds}
-          value={selectedRound}
+          type="range" min={1} max={totalRounds} value={selectedRound}
           onChange={(e) => { setSelectedRound(Number(e.target.value)); setSelectedAgent(null); }}
           className="flex-1"
         />
         <button
-          onClick={() => setSelectedRound(Math.min(totalRounds, selectedRound + 1))}
+          onClick={() => { setSelectedRound(Math.min(totalRounds, selectedRound + 1)); setSelectedAgent(null); }}
           className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border"
-        >
-          ▶
-        </button>
+        >▶</button>
       </div>
 
-      {/* グラフ */}
+      {/* D3 Force Directed Graph */}
       <div className="rounded-lg border border-border overflow-hidden bg-surface-1">
-        <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
-          {/* エッジ */}
-          {visibleEdges.map((e, i) => {
-            const from = nodePositions[e.from];
-            const to = nodePositions[e.to];
-            if (!from || !to) return null;
-            const color = RELATION_COLORS[e.type] || "#d1d5db";
-            const dx = to.x - from.x;
-            const dy = to.y - from.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist === 0) return null;
-            const nx = dx / dist;
-            const ny = dy / dist;
-            const r = 24;
-            const x1 = from.x + nx * r;
-            const y1 = from.y + ny * r;
-            const x2 = to.x - nx * r;
-            const y2 = to.y - ny * r;
-            const headLen = 8;
-            const angle = Math.atan2(y2 - y1, x2 - x1);
-            const ax1 = x2 - headLen * Math.cos(angle - 0.4);
-            const ay1 = y2 - headLen * Math.sin(angle - 0.4);
-            const ax2 = x2 - headLen * Math.cos(angle + 0.4);
-            const ay2 = y2 - headLen * Math.sin(angle + 0.4);
-            const isHighlighted = selectedAgent === e.from || selectedAgent === e.to;
-
-            return (
-              <g key={i} opacity={selectedAgent ? (isHighlighted ? 1 : 0.15) : 0.7}>
-                <line x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={color} strokeWidth={isHighlighted ? Math.min(e.weight + 2, 6) : Math.min(e.weight, 4) + 1} />
-                <polygon points={`${x2},${y2} ${ax1},${ay1} ${ax2},${ay2}`} fill={color} />
-                <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 6}
-                  textAnchor="middle" fontSize={9} fill={color} fontWeight={600}>
-                  {RELATION_LABELS[e.type] || e.type}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* ノード */}
-          {appearedAgents.map((name) => {
-            const pos = nodePositions[name];
-            if (!pos) return null;
-            const nodeRadius = 20;
-            const color = agentColorMap[name] || "#94a3b8";
-            const hasAction = roundActions.some((a) => a.agent === name);
-            const isSelected = selectedAgent === name;
-            const dimmed = selectedAgent && !isSelected
-              && !visibleEdges.some((e) => (e.from === selectedAgent && e.to === name) || (e.to === selectedAgent && e.from === name));
-
-            return (
-              <g key={name}
-                onClick={() => setSelectedAgent(isSelected ? null : name)}
-                className="cursor-pointer"
-                opacity={dimmed ? 0.2 : 1}
-              >
-                <circle
-                  cx={pos.x} cy={pos.y} r={nodeRadius}
-                  fill={color} opacity={hasAction ? 0.9 : 0.5}
-                  stroke={isSelected ? "#1e293b" : hasAction ? "#475569" : "none"}
-                  strokeWidth={isSelected ? 3 : hasAction ? 1.5 : 0}
-                />
-                <text x={pos.x} y={pos.y + nodeRadius + 14}
-                  textAnchor="middle" fontSize={10} fill="#475569" fontWeight={500}>
-                  {name.length > 14 ? name.slice(0, 14) + ".." : name}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* 登場ノード数が0のとき */}
-          {appearedAgents.length === 0 && (
-            <text x={cx} y={cy} textAnchor="middle" fontSize={13} fill="#94a3b8">
-              スライダーを進めるとステークホルダーが登場します
-            </text>
-          )}
-        </svg>
+        <svg ref={svgRef} width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} />
       </div>
 
       {/* 凡例 */}
@@ -324,7 +432,6 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
             <p className="text-xs text-text-secondary mb-3">{selectedAgentInfo.description}</p>
           )}
 
-          {/* このラウンドの行動 */}
           {selectedAgentActions.length > 0 ? (
             <div>
               <p className="text-xs font-medium text-text-tertiary mb-1">{selectedRound}ヶ月目の行動:</p>
@@ -346,7 +453,6 @@ export default function RelationshipGraph({ rounds, agents }: Props) {
             <p className="text-xs text-text-tertiary">{selectedRound}ヶ月目は行動なし</p>
           )}
 
-          {/* 関係 */}
           {(() => {
             const relations = visibleEdges.filter((e) => e.from === selectedAgent || e.to === selectedAgent);
             if (relations.length === 0) return null;

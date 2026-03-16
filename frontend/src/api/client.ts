@@ -92,6 +92,17 @@ export async function compareSimulations(
   return request(`/simulations/${baseJobId}/compare/${altJobId}`);
 }
 
+/** シナリオ名を更新 */
+export async function updateSimulation(
+  jobId: string,
+  body: { scenario_name: string },
+): Promise<void> {
+  await request(`/simulations/${jobId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 /** シミュレーションを削除 */
 export async function deleteSimulation(jobId: string): Promise<void> {
   await request(`/simulations/${jobId}`, { method: "DELETE" });

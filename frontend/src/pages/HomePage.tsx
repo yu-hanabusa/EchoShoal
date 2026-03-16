@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listSimulations, deleteSimulation } from "../api/client";
+import { listSimulations, deleteSimulation, updateSimulation } from "../api/client";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   created: { label: "作成済み", color: "text-text-tertiary" },
@@ -22,6 +23,28 @@ export default function HomePage() {
     mutationFn: (jobId: string) => deleteSimulation(jobId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["simulations"] }),
   });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ jobId, name }: { jobId: string; name: string }) =>
+      updateSimulation(jobId, { scenario_name: name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["simulations"] }),
+  });
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const startEditing = (jobId: string, currentName: string) => {
+    setEditingId(jobId);
+    setEditValue(currentName);
+  };
+
+  const commitRename = (jobId: string) => {
+    const trimmed = editValue.trim();
+    if (trimmed) {
+      renameMutation.mutate({ jobId, name: trimmed });
+    }
+    setEditingId(null);
+  };
 
   return (
     <div className="min-h-screen bg-surface-1">
@@ -56,33 +79,65 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="rounded-md border border-border bg-surface-0 overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="border-b border-border text-left text-text-tertiary">
                   <th className="py-3 px-4 font-medium">シナリオ</th>
                   <th className="py-3 px-4 font-medium w-24">状態</th>
                   <th className="py-3 px-4 font-medium w-36 text-right">作成日時</th>
+                  <th className="py-3 px-4 font-medium w-16"></th>
                 </tr>
               </thead>
               <tbody>
                 {simulations.map((sim) => {
                   const status = STATUS_LABELS[sim.status] || STATUS_LABELS.created;
+                  const displayName = sim.scenario_name || sim.service_name || sim.scenario_description || "(no description)";
+                  const isEditing = editingId === sim.job_id;
                   return (
                     <tr
                       key={sim.job_id}
                       className="border-b border-border last:border-b-0 hover:bg-surface-1 transition-colors"
                     >
-                      <td className="py-3 px-4">
-                        <Link
-                          to={
-                            sim.status === "created"
-                              ? `/new?resume=${sim.job_id}`
-                              : `/simulation/${sim.job_id}`
-                          }
-                          className="text-text-primary hover:text-interactive font-medium"
-                        >
-                          {sim.scenario_description || "(no description)"}
-                        </Link>
+                      <td className="py-3 px-4 min-w-0">
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            className="w-full px-2 py-1 text-sm border border-interactive rounded bg-surface-0 text-text-primary outline-none"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() => commitRename(sim.job_id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitRename(sim.job_id);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Link
+                              to={
+                                sim.status === "created"
+                                  ? `/new?resume=${sim.job_id}`
+                                  : `/simulation/${sim.job_id}`
+                              }
+                              className="text-text-primary hover:text-interactive font-medium truncate"
+                              title={sim.scenario_description || ""}
+                            >
+                              {displayName}
+                            </Link>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                startEditing(sim.job_id, displayName);
+                              }}
+                              className="shrink-0 text-text-tertiary hover:text-interactive transition-colors"
+                              title="シナリオ名を編集"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className={`py-3 px-4 font-medium ${status.color}`}>
                         {status.label}

@@ -7,6 +7,8 @@ export interface JobInfo {
   status: JobStatus;
   created_at: string;
   scenario_description?: string;
+  service_name?: string;
+  scenario_name?: string;
   progress: {
     current_round?: number;
     total_rounds?: number;
