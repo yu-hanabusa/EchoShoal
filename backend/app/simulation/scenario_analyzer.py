@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
-
 from app.core.llm.router import LLMRouter, TaskType
 from app.core.nlp.analyzer import AnalysisResult, JapaneseAnalyzer
 from app.simulation.models import StakeholderType, ScenarioInput, MarketDimension
@@ -88,29 +86,6 @@ class ScenarioAnalyzer:
     async def analyze_async(self, scenario: ScenarioInput) -> EnrichedScenario:
         """シナリオを非同期で解析する（LLMパラメータ推定あり）."""
         enriched = self.analyze(scenario)
-
-        # LLMでパラメータを推定
-        if self._llm and (scenario.economic_climate == 0 and scenario.tech_disruption == 0):
-            estimated = await self._estimate_params_with_llm(scenario)
-            if estimated:
-                enriched.original.economic_climate = estimated.get("economic_climate", 0.0)
-                enriched.original.tech_disruption = estimated.get("tech_disruption", 0.0)
-                if not scenario.regulatory_change and estimated.get("regulatory_change"):
-                    enriched.original.regulatory_change = estimated["regulatory_change"]
-                logger.info(
-                    "LLMパラメータ推定: 経済=%.1f, 技術破壊=%.1f, 規制=%s",
-                    enriched.original.economic_climate,
-                    enriched.original.tech_disruption,
-                    enriched.original.regulatory_change or "なし",
-                )
-
-            # context_summaryを再構築（推定値を反映）
-            enriched.context_summary = self._build_context_summary(
-                enriched.original,
-                enriched.detected_dimensions,
-                enriched.detected_stakeholders,
-                enriched.detected_policies,
-            )
 
         # LLMで不足情報を補間
         if self._llm:
@@ -232,45 +207,6 @@ class ScenarioAnalyzer:
             logger.warning("LLM情報補間失敗")
             return None
 
-    async def _estimate_params_with_llm(self, scenario: ScenarioInput) -> dict[str, Any] | None:
-        """LLMにシナリオテキストを渡してパラメータを推定させる."""
-        if not self._llm:
-            return None
-
-        prompt = (
-            "以下のシナリオテキストを分析し、サービスビジネスインパクトシミュレーションのパラメータを推定してください。\n\n"
-            f"対象サービス: {scenario.service_name or '未指定'}\n"
-            f"シナリオ:\n{scenario.description}\n\n"
-            "以下のJSON形式で回答してください:\n"
-            "{\n"
-            '  "economic_climate": <-1.0〜1.0の数値。正=好景気、負=不況>,\n'
-            '  "tech_disruption": <-1.0〜1.0の数値。正=技術破壊が加速、負=安定>,\n'
-            '  "regulatory_change": <関連する規制変更があれば文字列、なければnull>,\n'
-            '  "reasoning": <判断の根拠を1-2文で説明>\n'
-            "}"
-        )
-
-        try:
-            response = await self._llm.generate_json(
-                task_type=TaskType.AGENT_DECISION,
-                prompt=prompt,
-                system_prompt="あなたはサービスビジネスの専門アナリストです。シナリオからシミュレーションパラメータを客観的に推定してください。",
-            )
-            econ = max(-1.0, min(1.0, float(response.get("economic_climate", 0))))
-            tech = max(-1.0, min(1.0, float(response.get("tech_disruption", 0))))
-            reasoning = response.get("reasoning", "")
-            if reasoning:
-                logger.info("LLMパラメータ推定根拠: %s", reasoning)
-
-            return {
-                "economic_climate": econ,
-                "tech_disruption": tech,
-                "regulatory_change": response.get("regulatory_change"),
-            }
-        except Exception:
-            logger.warning("LLMパラメータ推定失敗、デフォルト値を使用")
-            return None
-
     def _build_context_summary(
         self,
         scenario: ScenarioInput,
@@ -296,14 +232,6 @@ class ScenarioAnalyzer:
             lines.append(f"関連ステークホルダー: {st_names}")
         if policies:
             lines.append(f"関連政策: {', '.join(policies)}")
-        if scenario.tech_disruption > 0.3:
-            lines.append(f"技術破壊度が高い（{scenario.tech_disruption:+.1f}）: 急速な技術変化が予想される")
-        elif scenario.tech_disruption < -0.3:
-            lines.append(f"技術安定（{scenario.tech_disruption:+.1f}）: 技術変化は緩やか")
-        if scenario.economic_climate < -0.3:
-            lines.append(f"経済後退（{scenario.economic_climate:+.1f}）: 投資縮小の見通し")
-        elif scenario.economic_climate > 0.3:
-            lines.append(f"経済好調（{scenario.economic_climate:+.1f}）: 投資拡大の見通し")
         if scenario.regulatory_change:
             lines.append(f"規制変更: {scenario.regulatory_change}")
 

@@ -25,8 +25,6 @@ export interface ScenarioInput {
   service_name?: string;
   service_url?: string | null;
   target_market?: string | null;
-  economic_climate?: number;
-  tech_disruption?: number;
   regulatory_change?: string | null;
 }
 
@@ -179,6 +177,14 @@ export interface OasisStats {
   follows: number;
 }
 
+/** ページネーション付きレスポンス */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
 /** 文書処理結果 */
 export interface ProcessResult {
   document_id: string;
@@ -206,8 +212,8 @@ export const DIMENSION_LABELS: Record<string, string> = {
   user_adoption: "ユーザーの広がり",
   revenue_potential: "収益性の見通し",
   tech_maturity: "技術の成熟度",
-  competitive_pressure: "競合の脅威",
-  regulatory_risk: "規制によるリスク",
+  competitive_pressure: "競合優位性",
+  regulatory_risk: "規制適合性",
   market_awareness: "市場での認知度",
   ecosystem_health: "連携・コミュニティの活発さ",
   funding_climate: "投資・資金の集まりやすさ",

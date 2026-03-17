@@ -1,0 +1,58 @@
+■ 市場規模
+2009年のグローバルなコラボレーションソフトウェア市場は約58億ドル規模であった（IDC調べ）。うちメール関連市場が約32億ドル、インスタントメッセージング・チャット関連が約8億ドル、コンテンツ管理・コラボレーション関連が約18億ドルであった。企業向けコラボレーション市場は年間成長率約12%で拡大中であり、2013年には100億ドル規模に達すると予測されていた。個人向けメールサービスの利用者は全世界で約17億人（Radicati Group, 2009）。
+
+■ 市場シェア
+メールサービス（2009年時点）：
+- Microsoft Outlook/Exchange：企業メール市場の約60-65%。Fortune 500企業の大半が利用
+- Gmail：約1.5億アカウント（2009年時点）。個人ユーザー中心だがGoogle Apps for Businessで企業進出中
+- Yahoo! Mail：約3億アカウント。個人向けWebメール最大手
+- Hotmail（Windows Live Mail）：約3.6億アカウント。しかしアクティブ率は低下傾向
+
+企業コラボレーション（2009年時点）：
+- Microsoft SharePoint：約1億ライセンス。年間売上約14億ドル（2009年度）
+- IBM Lotus Notes/Domino：約1.4億ライセンス。シェア低下中
+- Google Apps for Business：約200万企業が導入（2009年末時点）
+
+■ 各ツールの特徴
+Google Wave：メール・チャット・Wiki・共同編集を統合。リアルタイム文字入力表示、Playback機能、拡張APIを持つ。革新的だが複雑すぎるUI。
+Gmail：スレッド表示、検索ベースの整理、大容量ストレージ（7GB超）。シンプルで高速。
+Microsoft Exchange/Outlook：カレンダー・連絡先との統合、IT管理機能、Active Directory連携。企業標準。
+Campfire（37signals）：Webベースのグループチャット。シンプルさが売り。月額$12-$99。
+Yammer：企業内Twitter。2008年9月リリース。フリーミアムモデルで急速に普及。
+Basecamp（37signals）：プロジェクト管理+メッセージ。シンプルさを重視。月額$24-$149。
+
+■ 規制環境
+2009年当時、クラウドサービスに対する規制は比較的緩やかであった。EUデータ保護指令（95/46/EC）が存在したが、クラウドサービスへの具体的な適用は不明確であった。米国ではSOX法（上場企業のメール保存義務）やHIPAA（医療情報のメール暗号化要件）が主な規制であった。金融業界ではFINRAによるメール監視要件があった。Google Waveのデータがどの国のサーバーに保存されるかという懸念は、一部のEU企業から提起されていた。
+
+■ 技術トレンド
+2009年はWebのリアルタイム化が大きなトレンドであった。主な動向：
+- HTML5：ドラフト仕様が進展。WebSocket仕様の策定が進行中
+- AJAX/Cometの成熟：Gmail、Google Maps等でリアルタイムWebアプリが一般化
+- クラウドコンピューティング：AWS EC2（2006年開始）が急成長。Google App Engineは2008年開始
+- モバイルWeb：iPhone 3GS発売（2009年6月）、Androidが急成長開始
+- リアルタイムWeb：Twitter APIの活用、PubSubHubbub（Google開発）の登場
+- Operational Transformation：Google Docsでの共同編集技術。Waveはこれを大幅に拡張
+- XMPP：オープンなリアルタイムメッセージングプロトコル。Google TalkやFacebook Chatが採用
+
+■ 資金調達環境
+2009年はリーマンショック（2008年9月）後の回復初期であった。
+- 米国VC投資額：約176億ドル（2009年、前年比37%減。PwC/NVCA MoneyTree調べ）
+- シリコンバレーのスタートアップ資金調達は厳しい状況
+- ただしGoogle、Microsoft等の大手テック企業は豊富な現金を保有。Googleの2009年Q4現金残高は約267億ドル
+- クラウド・SaaS系スタートアップへの投資は比較的堅調
+- 37signalsのBasecampやYammerなど、小規模チーム向けSaaSが低コストで成長
+
+■ 参入障壁
+メール/コラボレーション市場への参入障壁は非常に高い。
+- ネットワーク効果：メールは送受信者の双方がアカウントを持つ必要がある。Google Waveは既存のメールシステムと互換性がなく、Wave利用者同士でしか通信できなかった。これが最大の参入障壁であった
+- スイッチングコスト：企業のメール移行は過去のメールアーカイブ、アドレス帳、ワークフローの移行を伴う。平均的な企業のメール移行プロジェクトは6-18ヶ月を要した
+- IT管理者の抵抗：新しいコミュニケーションツールの導入は、セキュリティポリシー、コンプライアンス対応、ユーザートレーニングのコストを伴う
+- ユーザーの習慣：メールは1990年代から20年以上使われており、使い方が深く浸透。新しいコミュニケーション方式の学習コストは高い
+- Google自身の課題：Waveの最大の競合はGmail（自社製品）であった。カニバリゼーションのリスクがあり、社内でもGmail派とWave派の対立があったとされる
+
+■ 出典
+- IDC "Worldwide Collaborative Applications Market 2009-2013 Forecast" (2009年)
+- Radicati Group "Email Statistics Report, 2009-2013" (2009年)
+- PwC/NVCA MoneyTree Report Q4 2009
+- Gartner "Market Share Analysis: Enterprise Content Management" (2009年)
+- Microsoft Annual Report FY2009 (SharePoint売上)

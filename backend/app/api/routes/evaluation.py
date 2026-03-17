@@ -6,13 +6,13 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.core.job_manager import JobManager, JobStatus
 from app.core.redis_client import RedisClient
 from app.evaluation.benchmarks import get_benchmark, list_benchmarks
-from app.evaluation.runner import run_all_benchmarks, run_benchmark
+from app.evaluation.runner import run_all_benchmarks, run_benchmark, run_benchmark_multi
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,8 @@ async def run_single_benchmark(benchmark_id: str) -> JSONResponse:
 
     async def _task() -> None:
         try:
+            await job_manager.set_running(job_id)
             result = await run_benchmark(benchmark_id, job_manager)
-            # run_benchmark内部でcreate_job/set_completedを呼ぶが、
-            # ここでは親ジョブに結果を集約する
             await job_manager.set_completed(job_id, {
                 "type": "evaluation_single",
                 "benchmark_id": benchmark_id,
@@ -101,6 +100,60 @@ async def run_single_benchmark(benchmark_id: str) -> JSONResponse:
     )
 
 
+# ─── 単一ベンチマーク複数回実行（統計評価） ───
+
+
+@router.post("/run/{benchmark_id}/multi")
+async def run_benchmark_statistical(
+    benchmark_id: str,
+    num_runs: int = Query(default=5, ge=2, le=20),
+) -> JSONResponse:
+    """指定ベンチマークを複数回実行して統計的に評価する.
+
+    LLMの非決定性を考慮し、方向一致の再現性を統計的に評価する。
+    """
+    benchmark = get_benchmark(benchmark_id)
+    if benchmark is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ベンチマーク '{benchmark_id}' が見つかりません",
+        )
+
+    job_manager = _get_job_manager()
+    job_id = await job_manager.create_job(
+        scenario_description=f"[統計評価] {benchmark.name} x{num_runs}回",
+    )
+
+    async def _task() -> None:
+        try:
+            await job_manager.set_running(job_id)
+            stats = await run_benchmark_multi(
+                benchmark_id, job_manager, num_runs, parent_job_id=job_id,
+            )
+            await job_manager.set_completed(job_id, {
+                "type": "evaluation_multi",
+                "benchmark_id": benchmark_id,
+                "num_runs": num_runs,
+                "statistics": stats.model_dump(),
+            })
+        except Exception as exc:
+            logger.exception("統計評価失敗: %s", benchmark_id)
+            await job_manager.set_failed(job_id, str(exc))
+
+    asyncio.create_task(_task())
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "queued",
+            "benchmark_id": benchmark_id,
+            "benchmark_name": benchmark.name,
+            "num_runs": num_runs,
+        },
+    )
+
+
 # ─── 全ベンチマーク実行 ───
 
 
@@ -119,7 +172,10 @@ async def run_all() -> JSONResponse:
 
     async def _task() -> None:
         try:
-            suite_result = await run_all_benchmarks(job_manager)
+            await job_manager.set_running(job_id)
+            suite_result = await run_all_benchmarks(
+                job_manager, parent_job_id=job_id,
+            )
             await job_manager.set_completed(job_id, {
                 "type": "evaluation_suite",
                 "suite": suite_result.model_dump(),

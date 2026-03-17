@@ -17,7 +17,7 @@ import time
 from collections import deque
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.config import settings
@@ -116,6 +116,7 @@ async def create_simulation(
     job_manager = _get_job_manager()
     job_id = await job_manager.create_job(
         scenario_description=description[:200],
+        service_name=service_name,
     )
     await job_manager.save_scenario(job_id, scenario.model_dump())
 
@@ -218,6 +219,7 @@ async def rerun_simulation(job_id: str) -> JSONResponse:
     # 新しいジョブを作成（文書はNeo4jで同じsimulation_id=job_idを参照）
     new_job_id = await job_manager.create_job(
         scenario_description=scenario.description[:200],
+        service_name=scenario.service_name,
     )
     await job_manager.save_scenario(new_job_id, scenario_data)
 
@@ -288,9 +290,8 @@ async def _run_simulation_task(
         analyzer = ScenarioAnalyzer(llm=llm)
         enriched = await analyzer.analyze_async(scenario)
         logger.info(
-            "シナリオ解析: ディメンション%d件, ステークホルダー%d件, 経済環境%.1f, 技術破壊度%.1f",
+            "シナリオ解析: ディメンション%d件, ステークホルダー%d件",
             len(enriched.detected_dimensions), len(enriched.detected_stakeholders),
-            scenario.economic_climate, scenario.tech_disruption,
         )
 
         # 知識グラフコンポーネント
@@ -443,11 +444,19 @@ async def _run_simulation_task(
 # ─── 結果取得 ───
 
 @router.get("/")
-async def list_simulations() -> list[dict[str, Any]]:
-    """過去のシミュレーション一覧を取得する."""
+async def list_simulations(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    """過去のシミュレーション一覧を取得する（ページネーション対応）."""
     job_manager = _get_job_manager()
-    jobs = await job_manager.list_jobs()
-    return [j.model_dump() for j in jobs]
+    jobs, total = await job_manager.list_jobs(skip=skip, limit=limit)
+    return {
+        "items": [j.model_dump() for j in jobs],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/{job_id}")
@@ -471,6 +480,22 @@ async def get_simulation_progress(job_id: str) -> dict[str, Any]:
     if info is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
     return {"job_id": job_id, "status": info.status.value, "progress": info.progress}
+
+
+# ─── シナリオ名更新 ───
+
+@router.patch("/{job_id}")
+async def update_simulation(job_id: str, body: dict[str, Any]) -> dict[str, str]:
+    """シナリオ名を更新する."""
+    job_manager = _get_job_manager()
+    info = await job_manager.get_job_info(job_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    scenario_name = body.get("scenario_name")
+    if scenario_name is None:
+        raise HTTPException(status_code=400, detail="scenario_name は必須です")
+    await job_manager.update_scenario_name(job_id, str(scenario_name))
+    return {"status": "updated", "job_id": job_id}
 
 
 # ─── 削除 ───

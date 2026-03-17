@@ -88,7 +88,6 @@ class TestScenarioToEngine:
         """LLMなしの場合、静的イベントは空リストを返す."""
         scenario = ScenarioInput(
             description="AI技術の急速な普及によるサービス市場の変化を予測する",
-            tech_disruption=0.8,
         )
         scheduler = EventScheduler(llm=None)
         events = await scheduler.generate_from_scenario(scenario)

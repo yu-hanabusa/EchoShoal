@@ -15,7 +15,7 @@ class StubAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["adopt_service", "upskill"]
 
-    async def decide_actions(self, market: ServiceMarketState, rag_context: str = "") -> list[AgentAction]:
+    async def decide_actions(self, market: ServiceMarketState, rag_context: str = "", total_rounds: int = 0) -> list[AgentAction]:
         return [
             AgentAction(
                 agent_id=self.id,
@@ -95,41 +95,6 @@ class TestSimulationEngine:
 
         assert len(results) == 1
         assert any("error" in e for e in results[0].events)
-
-    @pytest.mark.asyncio
-    async def test_scenario_tech_disruption(self):
-        """_apply_scenario_effects still works for engines without event_scheduler."""
-        scenario = ScenarioInput(
-            description="AI技術の急速な普及テスト",
-            tech_disruption=1.0,
-            num_rounds=5,
-        )
-        engine = _make_engine_with_mock_llm(agents=[make_stub_agent()], scenario=scenario)
-
-        with patch.object(engine, "_select_active_agents", return_value=[]):
-            await engine.run()
-
-        # _apply_scenario_effects applies delta of tech_disruption * 0.005 per round
-        # 5 rounds * 1.0 * 0.005 = 0.025 increase from 0.0
-        assert engine.market.ai_disruption_level > 0.0
-
-    @pytest.mark.asyncio
-    async def test_scenario_economic_climate(self):
-        """_apply_scenario_effects adjusts economic_sentiment over rounds."""
-        scenario = ScenarioInput(
-            description="経済ショックのテストシナリオ",
-            economic_climate=-0.5,
-            num_rounds=3,
-        )
-        engine = _make_engine_with_mock_llm(scenario=scenario)
-
-        original_sentiment = engine.market.economic_sentiment  # 0.0
-        await engine.run()
-
-        # economic_climate < 0 means negative delta, but sentiment starts at 0.0
-        # so it will be clamped to 0.0
-        assert engine.market.economic_sentiment >= 0.0
-        assert engine.market.economic_sentiment == pytest.approx(0.0)
 
     def test_get_summary(self):
         agents = [make_stub_agent("A")]

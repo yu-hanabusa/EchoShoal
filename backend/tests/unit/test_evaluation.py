@@ -16,13 +16,13 @@ from app.evaluation.comparator import (
     evaluate_benchmark,
     evaluate_trend,
     extract_metric_values,
-    pearson_r,
 )
 from app.evaluation.models import (
     BenchmarkScenario,
     EvaluationResult,
     EvaluationSuiteResult,
     ExpectedTrend,
+    RunStatistics,
     TrendDirection,
     TrendResult,
 )
@@ -78,24 +78,19 @@ class TestModels:
 
     def test_expected_trend_defaults(self):
         et = ExpectedTrend(metric="dimensions.user_adoption", direction=TrendDirection.UP)
-        assert et.magnitude == 0.0
-        assert et.weight == 1.0
         assert et.start_round is None
         assert et.end_round is None
+        assert et.description == ""
 
     def test_trend_result_construction(self):
         tr = TrendResult(
             metric="dimensions.user_adoption",
             expected_direction=TrendDirection.UP,
             actual_direction=TrendDirection.UP,
-            expected_magnitude=20.0,
             actual_change_rate=18.0,
             direction_correct=True,
-            magnitude_error=0.1,
-            score=0.97,
         )
         assert tr.direction_correct is True
-        assert tr.score == 0.97
 
     def test_evaluation_result_construction(self):
         er = EvaluationResult(
@@ -103,22 +98,31 @@ class TestModels:
             benchmark_name="テスト",
             trend_results=[],
             direction_accuracy=0.8,
-            mean_magnitude_error=0.2,
-            overall_score=0.7,
             simulation_rounds=12,
         )
-        assert er.correlation is None
-        assert 0 <= er.overall_score <= 1
+        assert 0 <= er.direction_accuracy <= 1
 
     def test_evaluation_suite_result(self):
         sr = EvaluationSuiteResult(
             results=[],
-            mean_overall_score=0.6,
             mean_direction_accuracy=0.7,
-            total_benchmarks=5,
-            passed_benchmarks=3,
+            total_benchmarks=9,
+            passed_benchmarks=5,
         )
-        assert sr.pass_threshold == 0.5
+        assert sr.pass_threshold == 0.6
+
+    def test_run_statistics_construction(self):
+        rs = RunStatistics(
+            num_runs=5,
+            per_run_results=[],
+            mean_direction_accuracy=0.75,
+            stddev_direction_accuracy=0.1,
+            min_direction_accuracy=0.6,
+            max_direction_accuracy=0.9,
+            per_trend_hit_rates={"dimensions.user_adoption": 0.8},
+        )
+        assert rs.num_runs == 5
+        assert rs.per_trend_hit_rates["dimensions.user_adoption"] == 0.8
 
 
 # ─── ベンチマークレジストリテスト ───
@@ -136,7 +140,7 @@ class TestBenchmarks:
 
     def test_list_benchmarks_returns_all(self):
         benchmarks = list_benchmarks()
-        assert len(benchmarks) == 5
+        assert len(benchmarks) == 9  # 5 success + 4 failure
 
     def test_get_benchmark_returns_correct(self):
         b = get_benchmark("slack_2014")
@@ -151,17 +155,29 @@ class TestBenchmarks:
         for b in list_benchmarks():
             assert len(b.scenario_input.description) >= 10
             assert 1 <= b.scenario_input.num_rounds <= 36
-            assert -1.0 <= b.scenario_input.economic_climate <= 1.0
-            assert -1.0 <= b.scenario_input.tech_disruption <= 1.0
 
     def test_all_benchmarks_have_tags(self):
         for b in list_benchmarks():
             assert len(b.tags) > 0
 
-    def test_all_benchmarks_have_references(self):
-        """ベンチマークがタグを持つことを確認（参考URL/説明はオプショナルの場合あり）."""
-        for b in list_benchmarks():
-            assert len(b.tags) > 0
+    def test_success_benchmarks_exist(self):
+        """成功事例ベンチマークが存在すること."""
+        success = [b for b in list_benchmarks() if "success" in b.tags]
+        assert len(success) >= 5
+
+    def test_failure_benchmarks_exist(self):
+        """失敗事例ベンチマークが存在すること."""
+        failure = [b for b in list_benchmarks() if "failure" in b.tags]
+        assert len(failure) >= 4
+
+    def test_failure_benchmarks_have_down_trends(self):
+        """失敗事例には少なくとも1つのDOWNトレンドが含まれること."""
+        failure = [b for b in list_benchmarks() if "failure" in b.tags]
+        for b in failure:
+            down_trends = [
+                et for et in b.expected_trends if et.direction == TrendDirection.DOWN
+            ]
+            assert len(down_trends) > 0, f"{b.id} has no DOWN trends"
 
     def test_expected_trends_have_valid_metrics(self):
         """メトリクスパスが有効なフォーマットであること."""
@@ -179,6 +195,20 @@ class TestBenchmarks:
                 assert prefix in valid_prefixes, (
                     f"{b.id}: invalid metric '{et.metric}'"
                 )
+
+    def test_no_arbitrary_numeric_params(self):
+        """ScenarioInputに恣意的な数値パラメータが含まれないこと."""
+        for b in list_benchmarks():
+            assert not hasattr(b.scenario_input, "economic_climate")
+            assert not hasattr(b.scenario_input, "tech_disruption")
+
+    def test_no_weights_or_magnitudes(self):
+        """ExpectedTrendに重みや規模値が含まれないこと."""
+        for b in list_benchmarks():
+            for et in b.expected_trends:
+                assert not hasattr(et, "weight")
+                assert not hasattr(et, "magnitude")
+                assert not hasattr(et, "magnitude_tolerance")
 
 
 # ─── メトリクス抽出テスト ───
@@ -264,33 +294,29 @@ class TestComputeActualDirection:
 
 
 class TestEvaluateTrend:
-    def test_correct_direction_up_scores_high(self):
-        """期待UP、実際UPの場合にスコアが高い."""
+    def test_correct_direction_up(self):
+        """期待UP、実際UPの場合にdirection_correct=True."""
         rounds = make_rounds_with_trend(
             n=12, dim_start=0.3, dim_delta=0.02,
         )
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=20.0,
         )
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is True
-        assert result.score >= 0.7
 
-    def test_wrong_direction_scores_low(self):
-        """期待UP、実際DOWNの場合にスコアが低い."""
+    def test_wrong_direction(self):
+        """期待UP、実際DOWNの場合にdirection_correct=False."""
         rounds = make_rounds_with_trend(
             n=12, dim_start=0.7, dim_delta=-0.02,
         )
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=20.0,
         )
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is False
-        assert result.score < 0.5
 
     def test_correct_direction_down(self):
         rounds = make_rounds_with_trend(
@@ -299,7 +325,6 @@ class TestEvaluateTrend:
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.DOWN,
-            magnitude=-20.0,
         )
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is True
@@ -311,30 +336,9 @@ class TestEvaluateTrend:
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.STABLE,
-            magnitude=0.0,
         )
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is True
-
-    def test_magnitude_close_scores_higher(self):
-        """規模が近いほどスコアが高い."""
-        rounds = make_rounds_with_trend(
-            n=12, dim_start=0.3, dim_delta=0.02,
-        )
-        # 実際の変化率は約73% (0.3→0.52)
-        et_close = ExpectedTrend(
-            metric="dimensions.user_adoption",
-            direction=TrendDirection.UP,
-            magnitude=73.0,  # 実際の変化率に近い
-        )
-        et_far = ExpectedTrend(
-            metric="dimensions.user_adoption",
-            direction=TrendDirection.UP,
-            magnitude=500.0,  # 実際から大きく外れる
-        )
-        result_close = evaluate_trend(et_close, rounds)
-        result_far = evaluate_trend(et_far, rounds)
-        assert result_close.score >= result_far.score
 
     def test_insufficient_data(self):
         """データが不足する場合のフォールバック."""
@@ -342,10 +346,9 @@ class TestEvaluateTrend:
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=20.0,
         )
         result = evaluate_trend(et, rounds)
-        assert result.score == 0.0
+        assert result.direction_correct is False
 
     def test_round_slicing_applied(self):
         """start_round/end_roundが正しく適用される."""
@@ -355,7 +358,6 @@ class TestEvaluateTrend:
         et = ExpectedTrend(
             metric="dimensions.user_adoption",
             direction=TrendDirection.UP,
-            magnitude=20.0,
             start_round=1,
             end_round=6,
         )
@@ -369,40 +371,21 @@ class TestEvaluateTrend:
         et = ExpectedTrend(
             metric="ai_disruption_level",
             direction=TrendDirection.UP,
-            magnitude=30.0,
         )
         result = evaluate_trend(et, rounds)
         assert result.direction_correct is True
 
-
-# ─── ピアソン相関テスト ───
-
-
-class TestPearsonR:
-    def test_perfect_positive(self):
-        r = pearson_r([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])
-        assert r is not None
-        assert r == pytest.approx(1.0)
-
-    def test_perfect_negative(self):
-        r = pearson_r([1, 2, 3, 4, 5], [10, 8, 6, 4, 2])
-        assert r is not None
-        assert r == pytest.approx(-1.0)
-
-    def test_no_correlation(self):
-        r = pearson_r([1, 2, 3, 4, 5], [2, 4, 1, 5, 3])
-        assert r is not None
-        assert -0.5 < r < 0.5
-
-    def test_insufficient_data(self):
-        assert pearson_r([1, 2], [3, 4]) is None
-        assert pearson_r([1], [2]) is None
-
-    def test_zero_variance(self):
-        assert pearson_r([5, 5, 5], [1, 2, 3]) is None
-
-    def test_mismatched_lengths(self):
-        assert pearson_r([1, 2, 3], [1, 2]) is None
+    def test_actual_change_rate_populated(self):
+        """actual_change_rateが正しく計算されること."""
+        rounds = make_rounds_with_trend(
+            n=12, dim_start=0.3, dim_delta=0.02,
+        )
+        et = ExpectedTrend(
+            metric="dimensions.user_adoption",
+            direction=TrendDirection.UP,
+        )
+        result = evaluate_trend(et, rounds)
+        assert result.actual_change_rate > 0
 
 
 # ─── ベンチマーク全体評価テスト ───
@@ -426,7 +409,7 @@ class TestEvaluateBenchmark:
         )
 
     def test_perfect_match(self):
-        """全トレンドが正しい方向に動く場合."""
+        """全トレンドが正しい方向に動く場合 → direction_accuracy=1.0."""
         rounds = make_rounds_with_trend(
             n=12,
             dim_start=0.3,
@@ -438,20 +421,17 @@ class TestEvaluateBenchmark:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                magnitude=20.0,
             ),
             ExpectedTrend(
                 metric="ai_disruption_level",
                 direction=TrendDirection.UP,
-                magnitude=30.0,
             ),
         ])
         result = evaluate_benchmark(benchmark, rounds)
         assert result.direction_accuracy == 1.0
-        assert result.overall_score >= 0.6
 
     def test_partial_match(self):
-        """一部のトレンドのみ正しい場合."""
+        """一部のトレンドのみ正しい場合 → direction_accuracy=0.5."""
         rounds = make_rounds_with_trend(
             n=12,
             dim_start=0.3,
@@ -463,34 +443,45 @@ class TestEvaluateBenchmark:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                magnitude=20.0,
-                weight=1.0,
             ),
             ExpectedTrend(
                 metric="economic_sentiment",
                 direction=TrendDirection.UP,  # 実際はDOWN
-                magnitude=30.0,
-                weight=1.0,
             ),
         ])
         result = evaluate_benchmark(benchmark, rounds)
-        assert 0.0 < result.direction_accuracy < 1.0
+        assert result.direction_accuracy == pytest.approx(0.5)
 
-    def test_overall_score_range(self):
-        """スコアは常に0〜1."""
+    def test_no_match(self):
+        """全トレンドが不正解の場合 → direction_accuracy=0.0."""
+        rounds = make_rounds_with_trend(
+            n=12,
+            dim_start=0.7,
+            dim_delta=-0.02,  # DOWN
+        )
+        benchmark = self._make_benchmark([
+            ExpectedTrend(
+                metric="dimensions.user_adoption",
+                direction=TrendDirection.UP,  # 不正解
+            ),
+        ])
+        result = evaluate_benchmark(benchmark, rounds)
+        assert result.direction_accuracy == 0.0
+
+    def test_direction_accuracy_range(self):
+        """direction_accuracyは常に0〜1."""
         rounds = make_rounds_with_trend(n=12)
         benchmark = self._make_benchmark([
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                magnitude=20.0,
             ),
         ])
         result = evaluate_benchmark(benchmark, rounds)
-        assert 0.0 <= result.overall_score <= 1.0
+        assert 0.0 <= result.direction_accuracy <= 1.0
 
-    def test_correlation_computed_with_enough_trends(self):
-        """3つ以上のトレンドがある場合に相関が計算される."""
+    def test_all_trends_evaluated(self):
+        """全トレンドが評価されること."""
         rounds = make_rounds_with_trend(
             n=12,
             dim_start=0.3, dim_delta=0.02,
@@ -501,24 +492,21 @@ class TestEvaluateBenchmark:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                magnitude=20.0,
             ),
             ExpectedTrend(
                 metric="economic_sentiment",
                 direction=TrendDirection.UP,
-                magnitude=15.0,
             ),
             ExpectedTrend(
                 metric="ai_disruption_level",
                 direction=TrendDirection.UP,
-                magnitude=30.0,
             ),
         ])
         result = evaluate_benchmark(benchmark, rounds)
-        assert result.correlation is not None
+        assert len(result.trend_results) == 3
 
-    def test_weighted_scoring(self):
-        """重みが高いトレンドが正しい場合、スコアが高くなる."""
+    def test_equal_weight_for_all_trends(self):
+        """全トレンドが均等に評価されること（重みなし）."""
         rounds = make_rounds_with_trend(
             n=12,
             dim_start=0.3,
@@ -526,39 +514,19 @@ class TestEvaluateBenchmark:
             economic_sentiment_start=0.6,
             economic_sentiment_delta=-0.02,  # economic_sentiment DOWN
         )
-        # 重要なトレンド(user_adoption UP)が正解、低重要(economic_sentiment UP)が不正解
-        benchmark_high_weight = self._make_benchmark([
+        # 1/2正解 → 0.5
+        benchmark = self._make_benchmark([
             ExpectedTrend(
                 metric="dimensions.user_adoption",
-                direction=TrendDirection.UP,
-                magnitude=20.0,
-                weight=3.0,  # 高い重み
+                direction=TrendDirection.UP,  # 正解
             ),
             ExpectedTrend(
                 metric="economic_sentiment",
                 direction=TrendDirection.UP,  # 不正解
-                magnitude=30.0,
-                weight=1.0,
             ),
         ])
-        # 逆: 低重要トレンドが正解、高重要が不正解
-        benchmark_low_weight = self._make_benchmark([
-            ExpectedTrend(
-                metric="dimensions.user_adoption",
-                direction=TrendDirection.UP,
-                magnitude=20.0,
-                weight=1.0,
-            ),
-            ExpectedTrend(
-                metric="economic_sentiment",
-                direction=TrendDirection.UP,  # 不正解
-                magnitude=30.0,
-                weight=3.0,  # 高い重み
-            ),
-        ])
-        result_high = evaluate_benchmark(benchmark_high_weight, rounds)
-        result_low = evaluate_benchmark(benchmark_low_weight, rounds)
-        assert result_high.direction_accuracy > result_low.direction_accuracy
+        result = evaluate_benchmark(benchmark, rounds)
+        assert result.direction_accuracy == pytest.approx(0.5)
 
 
 # ─── APIエンドポイントテスト ───
@@ -581,7 +549,7 @@ class TestBenchmarksEndpoint:
             response = await client.get("/api/evaluation/benchmarks")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 5
+        assert len(data) == 9
         assert all("id" in b for b in data)
         assert all("name" in b for b in data)
         assert all("expected_trend_count" in b for b in data)
@@ -610,6 +578,22 @@ class TestRunBenchmarkEndpoint:
         assert response.status_code == 404
 
 
+class TestRunMultiEndpoint:
+    @pytest.mark.asyncio
+    async def test_returns_202(self):
+        mock_jm = make_mock_job_manager()
+        with patch("app.api.routes.evaluation._get_job_manager", return_value=mock_jm):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/api/evaluation/run/slack_2014/multi?num_runs=3",
+                )
+        assert response.status_code == 202
+        data = response.json()
+        assert data["num_runs"] == 3
+        assert data["benchmark_id"] == "slack_2014"
+
+
 class TestRunAllEndpoint:
     @pytest.mark.asyncio
     async def test_returns_202(self):
@@ -620,7 +604,7 @@ class TestRunAllEndpoint:
                 response = await client.post("/api/evaluation/run-all")
         assert response.status_code == 202
         data = response.json()
-        assert data["benchmark_count"] == 5
+        assert data["benchmark_count"] == 9
 
 
 class TestGetResultEndpoint:
@@ -635,7 +619,7 @@ class TestGetResultEndpoint:
         mock_jm.get_result = AsyncMock(return_value={
             "type": "evaluation_single",
             "benchmark_id": "slack_2014",
-            "evaluation": {"overall_score": 0.75},
+            "evaluation": {"direction_accuracy": 0.75},
         })
         with patch("app.api.routes.evaluation._get_job_manager", return_value=mock_jm):
             transport = ASGITransport(app=app)

@@ -121,7 +121,8 @@ class BaseAgent(ABC):
         ...
 
     async def decide_actions(
-        self, market: ServiceMarketState, rag_context: str = ""
+        self, market: ServiceMarketState, rag_context: str = "",
+        total_rounds: int = 0,
     ) -> list[AgentAction]:
         """Use LLM to decide which actions to take this round.
 
@@ -130,7 +131,7 @@ class BaseAgent(ABC):
         3. 失敗時はフォールバック
         """
         try:
-            prompt = self._build_decision_prompt(market, rag_context=rag_context)
+            prompt = self._build_decision_prompt(market, rag_context=rag_context, total_rounds=total_rounds)
             system_prompt = self._build_system_prompt()
 
             response = await self.llm.generate_json(
@@ -273,15 +274,24 @@ class BaseAgent(ABC):
         return "\n".join(lines) if lines else "バランスの取れた判断をします。"
 
     def _build_decision_prompt(
-        self, market: ServiceMarketState, rag_context: str = ""
+        self, market: ServiceMarketState, rag_context: str = "",
+        total_rounds: int = 0,
     ) -> str:
         top_dims = sorted(
             market.dimensions.items(), key=lambda x: x[1], reverse=True
         )[:3]
         dim_str = ", ".join(f"{d.value}: {v:.2f}" for d, v in top_dims)
 
+        # 経過時間の文脈（1ラウンド = 1ヶ月）
+        round_num = market.round_number
+        remaining = total_rounds - round_num if total_rounds > 0 else 0
+        time_context = f"（シミュレーション開始から{round_num}ヶ月目"
+        if total_rounds > 0:
+            time_context += f" / 全{total_rounds}ヶ月、残り{remaining}ヶ月"
+        time_context += "）"
+
         prompt = (
-            f"【ラウンド {market.round_number}】\n"
+            f"【ラウンド {round_num}】{time_context}\n"
             f"対象サービス: {market.service_name}\n"
             f"自社状況: 売上{self.state.revenue}万円, コスト{self.state.cost}万円, "
             f"人員{self.state.headcount}名, 契約{self.state.active_contracts}件\n"
@@ -328,6 +338,9 @@ class BaseAgent(ABC):
 
     def to_summary(self) -> dict[str, Any]:
         """Return a summary dict for reports."""
+        # Collect unique action types from action history
+        action_types = sorted({a.action_type for a in self._action_history})
+
         return {
             "id": self.id,
             "name": self.name,
@@ -338,6 +351,7 @@ class BaseAgent(ABC):
             "revenue": self.state.revenue,
             "satisfaction": self.state.satisfaction,
             "reputation": self.state.reputation,
+            "action_types": action_types,
             "personality": {
                 "conservatism": self.personality.conservatism,
                 "bandwagon": self.personality.bandwagon,

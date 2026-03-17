@@ -10,11 +10,30 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.core.documents.models import DocumentInfo, ParsedDocument, ProcessResult
+from app.core.documents.models import (
+    DocumentInfo,
+    ExtractedRelationship,
+    ParsedDocument,
+    ProcessResult,
+)
 from app.core.graph.client import GraphClient
 from app.core.nlp.analyzer import AnalysisResult, JapaneseAnalyzer
 
 logger = logging.getLogger(__name__)
+
+# LLMが返す関係タイプの許可リスト
+_ALLOWED_RELATION_TYPES = frozenset({
+    "COMPETES_WITH",
+    "PROVIDES_INFRA",
+    "TARGET_SECTOR",
+    "PARTNERS_WITH",
+    "INVESTS_IN",
+    "REGULATES",
+    "USES",
+    "ACQUIRES",
+    "DEPENDS_ON",
+    "AFFECTS",
+})
 
 # NLP抽出結果の技術名 → 既存 Skill ノード名のマッピング
 _TECH_TO_SKILL: dict[str, str] = {
@@ -99,6 +118,19 @@ class DocumentProcessor:
         new_nodes += await self._link_organizations(doc.id, analysis.organizations)
         new_nodes += await self._link_policies(doc.id, analysis.policies)
 
+        # エンティティ間の関係をLLMで抽出
+        entities_map = {
+            "technologies": analysis.technologies,
+            "organizations": analysis.organizations,
+            "policies": analysis.policies,
+        }
+        relationships = await self._extract_relationships_with_llm(
+            doc.text, entities_map,
+        )
+        relationships_stored = await self._store_relationships(
+            doc.id, relationships,
+        )
+
         return ProcessResult(
             document_id=doc.id,
             filename=doc.filename,
@@ -112,6 +144,8 @@ class DocumentProcessor:
             policies=analysis.policies,
             keywords=analysis.keywords[:20],
             new_nodes_created=new_nodes,
+            relationships=relationships,
+            relationships_stored=relationships_stored,
         )
 
     async def _store_document(
@@ -123,6 +157,7 @@ class DocumentProcessor:
             "SET d.filename = $filename, "
             "    d.source = $source, "
             "    d.text_length = $text_length, "
+            "    d.text_summary = $text_summary, "
             "    d.page_count = $page_count, "
             "    d.entity_count = $entity_count, "
             "    d.simulation_id = $simulation_id, "
@@ -132,11 +167,55 @@ class DocumentProcessor:
                 "filename": doc.filename,
                 "source": doc.source,
                 "text_length": len(doc.text),
+                "text_summary": self._extract_summary(doc.text),
                 "page_count": doc.page_count,
                 "entity_count": len(analysis.entities),
                 "simulation_id": self.simulation_id,
             },
         )
+
+    @staticmethod
+    def _extract_summary(text: str, max_chars: int = 2000) -> str:
+        """ドキュメント本文から要約テキストを抽出する.
+
+        各セクション（■区切り）の冒頭を抽出し、
+        エージェントがRAGで参照できる形にする。
+        LLMは使わず、構造的な切り出しのみで行う。
+        """
+        if not text:
+            return ""
+
+        lines = text.strip().split("\n")
+        summary_parts: list[str] = []
+        current_section = ""
+        section_lines: list[str] = []
+
+        for line in lines:
+            stripped = line.strip()
+            # セクション区切りを検出（■ または === で始まる行）
+            if stripped.startswith("■") or stripped.startswith("==="):
+                # 前のセクションを保存
+                if current_section and section_lines:
+                    content = " ".join(section_lines[:3])  # 各セクション冒頭3行
+                    summary_parts.append(f"{current_section}: {content}")
+                current_section = stripped.lstrip("■ ")
+                section_lines = []
+            elif stripped and current_section:
+                section_lines.append(stripped)
+            elif stripped and not current_section:
+                # タイトル行（最初のセクション前）
+                if not summary_parts:
+                    summary_parts.append(stripped)
+
+        # 最後のセクション
+        if current_section and section_lines:
+            content = " ".join(section_lines[:3])
+            summary_parts.append(f"{current_section}: {content}")
+
+        result = "\n".join(summary_parts)
+        if len(result) > max_chars:
+            result = result[:max_chars] + "..."
+        return result
 
     async def _link_entities(
         self,
@@ -218,6 +297,128 @@ class DocumentProcessor:
             )
             for r in results
         ]
+
+    async def _extract_relationships_with_llm(
+        self,
+        text: str,
+        entities: dict[str, list[str]],
+    ) -> list[ExtractedRelationship]:
+        """抽出済みエンティティ間の関係をLLMで推定する."""
+        all_names = set()
+        for names in entities.values():
+            all_names.update(names)
+
+        if len(all_names) < 2:
+            return []
+
+        entity_lines = []
+        for category, names in entities.items():
+            if names:
+                entity_lines.append(f"- {category}: {', '.join(names)}")
+        entity_text = "\n".join(entity_lines)
+
+        allowed_types = ", ".join(sorted(_ALLOWED_RELATION_TYPES))
+
+        try:
+            from app.core.llm.router import LLMRouter, TaskType
+            llm = LLMRouter()
+            response = await llm.generate_json(
+                task_type=TaskType.AGENT_DECISION,
+                prompt=(
+                    f"Text:\n{text[:2000]}\n\n"
+                    f"Extracted entities:\n{entity_text}\n\n"
+                    "Identify relationships between these entities based on the text.\n"
+                    f"Allowed relationship types: {allowed_types}\n\n"
+                    "Return JSON:\n"
+                    '{"relationships": [{"source": "Entity A", "target": "Entity B", '
+                    '"type": "COMPETES_WITH"}]}\n'
+                    "Rules:\n"
+                    "- source and target MUST be from the extracted entities list above\n"
+                    "- type MUST be one of the allowed types\n"
+                    "- Do not create self-referential relationships\n"
+                ),
+                system_prompt="Extract entity relationships. JSON only.",
+            )
+            raw = response.get("relationships", [])
+            if not isinstance(raw, list):
+                return []
+
+            results: list[ExtractedRelationship] = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                source = str(item.get("source", "")).strip()
+                target = str(item.get("target", "")).strip()
+                rel_type = str(item.get("type", "")).strip().upper()
+
+                # バリデーション
+                if source == target:
+                    continue
+                if rel_type not in _ALLOWED_RELATION_TYPES:
+                    continue
+                # エンティティ名の完全一致またはサブストリングマッチ
+                source_match = self._match_entity(source, all_names)
+                target_match = self._match_entity(target, all_names)
+                if not source_match or not target_match:
+                    continue
+
+                results.append(ExtractedRelationship(
+                    source=source_match,
+                    target=target_match,
+                    relation_type=rel_type,
+                ))
+            logger.info("LLMが%d件のエンティティ間関係を抽出", len(results))
+            return results
+        except Exception:
+            logger.warning("LLMによるエンティティ関係抽出失敗")
+            return []
+
+    @staticmethod
+    def _match_entity(name: str, known_names: set[str]) -> str | None:
+        """LLMが返した名前を抽出済みエンティティに照合する."""
+        if name in known_names:
+            return name
+        # サブストリングマッチ（LLMが略称や表記揺れを返す場合）
+        for known in known_names:
+            if name in known or known in name:
+                return known
+        return None
+
+    async def _store_relationships(
+        self,
+        doc_id: str,
+        relationships: list[ExtractedRelationship],
+    ) -> int:
+        """抽出した関係をNeo4jに格納する."""
+        stored = 0
+        for rel in relationships:
+            if rel.relation_type not in _ALLOWED_RELATION_TYPES:
+                continue
+            try:
+                await self.graph.execute_write(
+                    "MATCH (src) WHERE src.name = $source "
+                    "  AND (src:Company OR src:Skill OR src:Policy) "
+                    "MATCH (tgt) WHERE tgt.name = $target "
+                    "  AND (tgt:Company OR tgt:Skill OR tgt:Policy) "
+                    "MERGE (src)-[r:ENTITY_RELATION {relation_type: $rel_type}]->(tgt) "
+                    "SET r.source_doc = $doc_id, r.confidence = $confidence",
+                    {
+                        "source": rel.source,
+                        "target": rel.target,
+                        "rel_type": rel.relation_type,
+                        "doc_id": doc_id,
+                        "confidence": rel.confidence,
+                    },
+                )
+                stored += 1
+            except Exception:
+                logger.warning(
+                    "関係格納失敗: %s -[%s]-> %s",
+                    rel.source, rel.relation_type, rel.target,
+                )
+        if stored:
+            logger.info("Neo4jに%d件のエンティティ関係を格納", stored)
+        return stored
 
     async def _extract_orgs_with_llm(self, text: str) -> list[str]:
         """文書テキストから組織名・サービス名を抽出する.

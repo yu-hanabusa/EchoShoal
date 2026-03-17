@@ -62,8 +62,6 @@ class EventScheduler:
             f"対象サービス: {scenario.service_name or '未指定'}\n"
             f"シナリオ: {scenario.description}\n"
             f"シミュレーション期間: {scenario.num_rounds}ラウンド（1ラウンド = 1ヶ月）\n"
-            f"経済環境: {scenario.economic_climate}\n"
-            f"技術破壊度: {scenario.tech_disruption}\n"
         )
         if scenario.regulatory_change:
             prompt += f"規制変更: {scenario.regulatory_change}\n"

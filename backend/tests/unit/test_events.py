@@ -208,7 +208,6 @@ class TestEventScheduler:
         scheduler = EventScheduler(llm=None)
         scenario = ScenarioInput(
             description="AI技術の急速な普及によるサービス市場の変化",
-            tech_disruption=0.5,
         )
         events = await scheduler.generate_from_scenario(scenario)
         assert len(events) == 0
@@ -219,7 +218,6 @@ class TestEventScheduler:
         scheduler = EventScheduler(llm=None)
         scenario = ScenarioInput(
             description="深刻な景気後退によるサービス市場への影響を予測する",
-            economic_climate=-0.5,
         )
         events = await scheduler.generate_from_scenario(scenario)
         assert len(events) == 0
@@ -271,7 +269,6 @@ class TestEventScheduler:
         scheduler = EventScheduler(llm=mock_llm)
         scenario = ScenarioInput(
             description="テスト用のシナリオ説明文です。技術破壊テスト",
-            tech_disruption=0.8,
         )
         events = await scheduler.generate_from_scenario(scenario)
 

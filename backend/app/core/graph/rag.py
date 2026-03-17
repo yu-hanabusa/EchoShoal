@@ -35,6 +35,7 @@ class AgentDecisionContext:
     active_events: str = ""
     document_insights: str = ""
     reference_stats: str = ""
+    agent_relationships: str = ""
 
     def to_prompt(self) -> str:
         """プロンプト用テキストに変換する."""
@@ -54,6 +55,8 @@ class AgentDecisionContext:
             sections.append(self.document_insights)
         if self.reference_stats:
             sections.append(self.reference_stats)
+        if self.agent_relationships:
+            sections.append(self.agent_relationships)
 
         if not sections:
             return ""
@@ -127,6 +130,12 @@ class GraphRAGRetriever:
             ctx.reference_stats = await self._get_reference_stats()
         except Exception:
             logger.warning("統計データの取得に失敗")
+
+        # 8. エージェント間の関係（RELATES_TO）
+        try:
+            ctx.agent_relationships = await self._get_agent_relationships(agent_id)
+        except Exception:
+            logger.warning("エージェント関係の取得に失敗: agent=%s", agent_id)
 
         return ctx
 
@@ -246,7 +255,32 @@ class GraphRAGRetriever:
         return "\n".join(lines)
 
     async def _get_document_insights(self) -> str:
-        """アップロード文書から得た知識を取得する."""
+        """アップロード文書から得た知識を取得する.
+
+        2段階の情報を提供:
+        1. 文書の要約テキスト（市場データ、価格、ユーザー行動の詳細）
+        2. 抽出されたエンティティとその関係（企業名、技術名、政策名）
+        """
+        # 1. 文書の要約テキストを取得
+        summary_results = await self.graph.execute_read(
+            "MATCH (d:Document) "
+            "WHERE d.simulation_id = $sim_id AND d.text_summary IS NOT NULL "
+            "  AND d.text_summary <> '' "
+            "RETURN d.filename AS filename, d.text_summary AS summary "
+            "ORDER BY d.uploaded_at DESC "
+            "LIMIT 5",
+            {"sim_id": self.simulation_id},
+        )
+
+        lines: list[str] = []
+
+        if summary_results:
+            lines.append("【参考資料の要約】")
+            for row in summary_results:
+                lines.append(f"--- {row['filename']} ---")
+                lines.append(row["summary"])
+
+        # 2. エンティティ情報
         results = await self.graph.execute_read(
             "MATCH (d:Document)-[:MENTIONS]->(e) "
             "WHERE d.simulation_id = $sim_id "
@@ -257,20 +291,96 @@ class GraphRAGRetriever:
             {"sim_id": self.simulation_id},
         )
 
+        if results:
+            lines.append("【参考資料のエンティティ】")
+            for row in results:
+                source = row["source"] or "不明"
+                entity_type = row["type"]
+                entities = row["entities"][:10]
+                type_label = {"Skill": "技術", "Company": "企業", "Policy": "政策"}.get(
+                    entity_type, entity_type
+                )
+                lines.append(
+                    f"  {source}: {type_label} - {', '.join(entities)}"
+                )
+
+        # 3. エンティティ間の関係
+        rel_results = await self.graph.execute_read(
+            "MATCH (d:Document {simulation_id: $sim_id})-[:MENTIONS]->(src) "
+            "MATCH (src)-[r:ENTITY_RELATION]->(tgt) "
+            "RETURN src.name AS source, r.relation_type AS rel_type, "
+            "       tgt.name AS target "
+            "LIMIT 20",
+            {"sim_id": self.simulation_id},
+        )
+
+        if rel_results:
+            _REL_LABELS = {
+                "COMPETES_WITH": "と競合",
+                "PROVIDES_INFRA": "にインフラ提供",
+                "TARGET_SECTOR": "をターゲット",
+                "PARTNERS_WITH": "と提携",
+                "INVESTS_IN": "に投資",
+                "REGULATES": "を規制",
+                "USES": "を利用",
+                "ACQUIRES": "を買収",
+                "DEPENDS_ON": "に依存",
+                "AFFECTS": "に影響",
+            }
+            lines.append("  --- エンティティ間の関係 ---")
+            for row in rel_results:
+                label = _REL_LABELS.get(row["rel_type"], row["rel_type"])
+                lines.append(f"  {row['source']} {label} {row['target']}")
+
+        return "\n".join(lines) if lines else ""
+
+    async def _get_agent_relationships(self, agent_id: str) -> str:
+        """エージェント間の関係（RELATES_TO）を取得する."""
+        results = await self.graph.execute_read(
+            "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
+            "-[r:RELATES_TO]->(b:Agent) "
+            "RETURN a.name AS source, r.relation_type AS rel_type, "
+            "       b.name AS target "
+            "UNION "
+            "MATCH (b:Agent)-[r:RELATES_TO]->"
+            "(a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
+            "RETURN b.name AS source, r.relation_type AS rel_type, "
+            "       a.name AS target",
+            {"agent_id": agent_id, "sim_id": self.simulation_id},
+        )
+
         if not results:
             return ""
 
-        lines: list[str] = ["【参考資料からの知識】"]
+        # Resolve agent's own name for labeling
+        own_name: str | None = None
+        name_result = await self.graph.execute_read(
+            "MATCH (a:Agent {agent_id: $agent_id, simulation_id: $sim_id}) "
+            "RETURN a.name AS name LIMIT 1",
+            {"agent_id": agent_id, "sim_id": self.simulation_id},
+        )
+        if name_result:
+            own_name = name_result[0]["name"]
+
+        _REL_LABELS = {
+            "competitor": "と競合",
+            "partner": "と提携",
+            "investor": "に投資",
+            "user": "を利用",
+            "regulator": "を規制",
+            "acquirer": "を買収",
+            "interest": "に関心",
+            "former_user": "を解約済み",
+            "advocate": "を推薦",
+            "critic": "を批判",
+        }
+
+        lines: list[str] = ["【エージェント間の関係】"]
         for row in results:
-            source = row["source"] or "不明"
-            entity_type = row["type"]
-            entities = row["entities"][:10]
-            type_label = {"Skill": "技術", "Company": "企業", "Policy": "政策"}.get(
-                entity_type, entity_type
-            )
-            lines.append(
-                f"  {source}: {type_label} - {', '.join(entities)}"
-            )
+            src = "自社" if row["source"] == own_name else row["source"]
+            tgt = "自社" if row["target"] == own_name else row["target"]
+            label = _REL_LABELS.get(row["rel_type"], row["rel_type"])
+            lines.append(f"  {src} {label} {tgt}")
 
         return "\n".join(lines)
 

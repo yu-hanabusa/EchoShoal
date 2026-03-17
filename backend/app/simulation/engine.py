@@ -73,11 +73,13 @@ class SimulationEngine:
         self._enriched_scenario = enriched_scenario
         self._scenario_summary = enriched_scenario.context_summary if enriched_scenario else ""
         self._initial_relationships: list[dict[str, str]] = []
+        self._total_rounds: int = 0
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
         rounds = num_rounds or (self.scenario.num_rounds if self.scenario else settings.default_rounds)
         rounds = min(rounds, settings.max_rounds)
+        self._total_rounds = rounds
 
         logger.info("Starting simulation: %d rounds, %d agents", rounds, len(self.agents))
 
@@ -181,7 +183,7 @@ class SimulationEngine:
                     rag_context += intra_round
 
                 # LLM意思決定（性格バイアス + ノイズ注入済み）
-                actions = await agent.decide_actions(self.market, rag_context=rag_context)
+                actions = await agent.decide_actions(self.market, rag_context=rag_context, total_rounds=self._total_rounds)
                 self._llm_call_count += 1
 
                 # 行動を適用
@@ -274,8 +276,6 @@ class SimulationEngine:
                 self._event_scheduler.events, round_number, self.market
             )
             events.extend(event_msgs)
-        elif self.scenario:
-            self._apply_scenario_effects(round_number)
 
         # ナラティブ生成（アクション数が多いまたはイベントがあるラウンド）
         narrative = ""
@@ -422,7 +422,17 @@ class SimulationEngine:
         prompt = (
             f"Service: {enriched.original.service_name or 'unknown'}\n"
             f"Scenario: {enriched.original.description[:500]}\n\n"
-            "Estimate the INITIAL market state (0.0-1.0 scale) for this service.\n"
+            "Estimate the INITIAL market state (0.0-1.0 scale) for this service "
+            "AT THE MOMENT OF LAUNCH.\n\n"
+            "各ディメンションの意味:\n"
+            "- user_adoption: このサービスの市場浸透度（0.0=未発売, 0.1=ベータ段階, 0.5=普及中, 1.0=市場飽和）\n"
+            "- revenue_potential: 収益化の見込み（0.0=収益モデル未定, 0.5=初期収益あり）\n"
+            "- tech_maturity: 基盤技術の成熟度（0.0=実験段階, 0.5=実用レベル, 1.0=枯れた技術）\n"
+            "- competitive_pressure: 競合の激しさ（0.0=競合なし, 0.5=複数競合, 1.0=レッドオーシャン）\n"
+            "- regulatory_risk: 規制リスク（0.0=規制なし, 0.5=規制議論中, 1.0=厳格な規制下）\n"
+            "- market_awareness: 市場認知度（0.0=無名, 0.5=業界で認知, 1.0=一般認知）\n"
+            "- ecosystem_health: 連携エコシステム（0.0=なし, 0.5=パートナー数社, 1.0=豊富）\n"
+            "- funding_climate: 資金調達環境（0.0=投資冷え込み, 0.5=通常, 1.0=バブル）\n\n"
             "Return EXACTLY this JSON structure with your estimated values:\n"
             '{"dimensions": {'
             '"user_adoption": 0.1, "revenue_potential": 0.2, "tech_maturity": 0.3, '
@@ -443,7 +453,7 @@ class SimulationEngine:
             )
             self._llm_call_count += 1
 
-            # ディメンション初期値を設定
+            # ディメンション初期値を設定（LLMの判断をそのまま使用）
             raw_dims = response.get("dimensions", {})
             for dim in MarketDimension:
                 if dim.value in raw_dims:
@@ -549,30 +559,6 @@ class SimulationEngine:
 
         return market_effects
 
-    def _apply_scenario_effects(self, round_number: int) -> None:
-        """Apply scenario-specific effects to the market."""
-        if not self.scenario:
-            return
-
-        # Tech disruption gradually increases relevant dimensions
-        if self.scenario.tech_disruption != 0:
-            delta = self.scenario.tech_disruption * 0.005
-            self.market.ai_disruption_level = max(
-                0.0, min(1.0, self.market.ai_disruption_level + delta)
-            )
-            if self.scenario.tech_disruption > 0:
-                self.market.dimensions[MarketDimension.TECH_MATURITY] = min(
-                    1.0,
-                    self.market.dimensions[MarketDimension.TECH_MATURITY] + 0.01,
-                )
-
-        # Economic climate affects sentiment
-        if self.scenario.economic_climate != 0:
-            delta = self.scenario.economic_climate * 0.01
-            self.market.economic_sentiment = max(
-                0.0, min(1.0, self.market.economic_sentiment + delta)
-            )
-
     def get_summary(self) -> dict[str, Any]:
         """Return simulation summary."""
         return {
@@ -583,12 +569,46 @@ class SimulationEngine:
             "initial_relationships": self._initial_relationships,
         }
 
+    # ENTITY_RELATION → エージェント間関係タイプのマッピング
+    _ENTITY_REL_TO_AGENT_REL: dict[str, str] = {
+        "COMPETES_WITH": "competitor",
+        "PROVIDES_INFRA": "partner",
+        "TARGET_SECTOR": "user",
+        "PARTNERS_WITH": "partner",
+        "INVESTS_IN": "investor",
+        "REGULATES": "regulator",
+        "USES": "user",
+        "ACQUIRES": "acquirer",
+        "DEPENDS_ON": "partner",
+        "AFFECTS": "interest",
+    }
+
     async def _generate_initial_relationships(self) -> None:
-        """LLMでエージェント間の初期関係構造を推定する."""
+        """初期関係を生成する.
+
+        優先順位:
+        1. ドキュメントから抽出済みのENTITY_RELATIONをエージェント名に照合
+        2. LLMでエージェント間関係を推定（未カバー分）
+        3. ステークホルダー種別ベースの構造的関係（フォールバック）
+        """
         agent_names = [a.name for a in self.agents]
         if len(agent_names) < 2:
             return
 
+        # 1. ドキュメントのENTITY_RELATIONからエージェント間関係を導出
+        doc_rels = await self._relationships_from_documents(agent_names)
+        if doc_rels:
+            self._initial_relationships.extend(doc_rels)
+            logger.info(
+                "ドキュメント由来の初期関係%d件を生成", len(doc_rels),
+            )
+
+        # カバー済みエージェントペアを記録
+        covered_pairs = {
+            (r["from"], r["to"]) for r in self._initial_relationships
+        }
+
+        # 2. LLMでエージェント間関係を推定（未カバー分）
         names_text = ", ".join(agent_names[:30])
         service = self.scenario.service_name if self.scenario else ""
 
@@ -614,7 +634,8 @@ class SimulationEngine:
                     if (isinstance(r, dict)
                             and r.get("from") in valid_names
                             and r.get("to") in valid_names
-                            and r.get("from") != r.get("to")):
+                            and r.get("from") != r.get("to")
+                            and (r["from"], r["to"]) not in covered_pairs):
                         self._initial_relationships.append({
                             "from": r["from"],
                             "to": r["to"],
@@ -622,13 +643,79 @@ class SimulationEngine:
                             "round": 0,
                             "weight": 1,
                         })
-                logger.info("初期関係%d件を生成", len(self._initial_relationships))
+                        covered_pairs.add((r["from"], r["to"]))
+                logger.info("初期関係%d件（LLM+ドキュメント合計）", len(self._initial_relationships))
         except Exception:
-            logger.warning("初期関係生成失敗、ステークホルダー種別ベースフォールバック")
+            logger.warning("LLMによる初期関係生成失敗")
 
-        # LLM成功・失敗に関わらず、最低限の関係が必要
+        # 3. フォールバック: 最低限の関係が必要
         if not self._initial_relationships:
             self._generate_structural_relationships()
+
+    async def _relationships_from_documents(
+        self, agent_names: list[str],
+    ) -> list[dict[str, Any]]:
+        """Neo4jのENTITY_RELATIONをエージェント名に照合して初期関係を導出する."""
+        if not self._memory:
+            return []
+
+        sim_id = self.scenario.service_name if self.scenario else ""
+        if not sim_id:
+            return []
+
+        try:
+            rows = await self._memory.graph.execute_read(
+                "MATCH (src)-[r:ENTITY_RELATION]->(tgt) "
+                "RETURN src.name AS source, tgt.name AS target, "
+                "       r.relation_type AS rel_type",
+            )
+        except Exception:
+            logger.warning("ENTITY_RELATION取得失敗")
+            return []
+
+        if not rows:
+            return []
+
+        # エージェント名の照合用インデックス（部分一致対応）
+        name_lower = {n.lower(): n for n in agent_names}
+
+        def match_agent(entity_name: str) -> str | None:
+            el = entity_name.lower()
+            # 完全一致
+            if el in name_lower:
+                return name_lower[el]
+            # エンティティ名がエージェント名に含まれる or 逆
+            for nl, original in name_lower.items():
+                if el in nl or nl in el:
+                    return original
+            return None
+
+        results: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for row in rows:
+            rel_type = row.get("rel_type", "")
+            agent_rel = self._ENTITY_REL_TO_AGENT_REL.get(rel_type)
+            if not agent_rel:
+                continue
+
+            src_agent = match_agent(row["source"])
+            tgt_agent = match_agent(row["target"])
+            if not src_agent or not tgt_agent or src_agent == tgt_agent:
+                continue
+            if (src_agent, tgt_agent) in seen:
+                continue
+
+            results.append({
+                "from": src_agent,
+                "to": tgt_agent,
+                "type": agent_rel,
+                "round": 0,
+                "weight": 2,  # ドキュメント由来は重み高め
+            })
+            seen.add((src_agent, tgt_agent))
+
+        return results
 
     def _generate_structural_relationships(self) -> None:
         """ステークホルダー種別に基づく構造的な関係を生成する.

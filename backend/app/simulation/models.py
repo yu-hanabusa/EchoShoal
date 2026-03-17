@@ -69,9 +69,7 @@ class ScenarioInput(BaseModel):
     service_url: str | None = Field(default=None, description="GitHub/プロダクトURL")
     target_market: str | None = Field(default=None, description="ターゲット市場の説明")
 
-    # 環境パラメータ
-    economic_climate: float = Field(default=0.0, ge=-1.0, le=1.0)
-    tech_disruption: float = Field(default=0.0, ge=-1.0, le=1.0)
+    # 規制環境（descriptionに含めきれない場合の補足）
     regulatory_change: str | None = None
 
 

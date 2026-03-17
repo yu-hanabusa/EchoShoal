@@ -66,25 +66,9 @@ class TestScenarioInput:
                 num_rounds=100,
             )
 
-    def test_tech_disruption_bounds(self):
-        with pytest.raises(ValidationError):
-            ScenarioInput(
-                description="テストシナリオの説明文です",
-                tech_disruption=2.0,
-            )
-
-    def test_economic_climate_bounds(self):
-        with pytest.raises(ValidationError):
-            ScenarioInput(
-                description="テストシナリオの説明文です",
-                economic_climate=2.0,
-            )
-
     def test_default_values(self):
         scenario = ScenarioInput(description="テストシナリオの説明文です")
         assert scenario.num_rounds == 24
-        assert scenario.economic_climate == 0.0
-        assert scenario.tech_disruption == 0.0
         assert scenario.service_name == ""
         assert scenario.service_url is None
         assert scenario.target_market is None
