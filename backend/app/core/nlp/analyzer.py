@@ -1,10 +1,10 @@
-"""日本語テキスト解析パイプライン（GiNZA + spaCy ベース）.
+"""日本語テキスト解析パイプライン（ルールベース辞書）.
 
 シナリオのテキストから以下を抽出する:
-- 組織名（企業名、省庁名）
 - 技術名（プログラミング言語、フレームワーク、クラウドサービス等）
 - 制度・政策名
-- 数値表現（人数、金額、割合等）
+
+組織名の抽出はLLMが担当する（DocumentProcessor._extract_orgs_with_llm）。
 """
 
 from __future__ import annotations
@@ -15,19 +15,12 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# GiNZA / spaCy はオプショナル依存
-try:
-    import spacy
-    _NLP_AVAILABLE = True
-except ImportError:
-    _NLP_AVAILABLE = False
-
 
 @dataclass
 class ExtractedEntity:
     """抽出されたエンティティ."""
     text: str
-    label: str       # ORGANIZATION, TECHNOLOGY, POLICY, QUANTITY, etc.
+    label: str       # TECHNOLOGY, POLICY, etc.
     start: int = 0
     end: int = 0
 
@@ -43,7 +36,7 @@ class AnalysisResult:
     keywords: list[str] = field(default_factory=list)
 
 
-# IT業界の技術辞書（GiNZAの固有表現認識を補完するルールベース辞書）
+# IT業界の技術辞書（ルールベース辞書）
 _TECH_PATTERNS = {
     # プログラミング言語
     r"\b(Python|Go|Java|PHP|Ruby|Rust|C\+\+|C#|TypeScript|JavaScript|Kotlin|Swift|COBOL|VB\.NET)\b",
@@ -71,28 +64,14 @@ _COMPILED_POLICY = [re.compile(p) for p in _POLICY_PATTERNS]
 
 
 class JapaneseAnalyzer:
-    """日本語テキストを解析してエンティティを抽出する."""
+    """日本語テキストを解析してエンティティを抽出する.
 
-    def __init__(self):
-        self._nlp = None
-
-    def _load_model(self):
-        """GiNZA モデルを遅延ロードする."""
-        if self._nlp is not None:
-            return
-        if not _NLP_AVAILABLE:
-            logger.warning("spaCy/GiNZA が未インストールのためルールベース解析のみ利用可能です")
-            return
-        try:
-            self._nlp = spacy.load("ja_ginza")
-            logger.info("GiNZA モデルをロードしました")
-        except OSError:
-            logger.warning("ja_ginza モデルが見つかりません。ルールベース解析のみ利用可能です")
+    技術名・政策名をルールベース辞書で抽出する。
+    組織名の抽出はLLMが担当するため、このクラスでは行わない。
+    """
 
     def analyze(self, text: str) -> AnalysisResult:
         """テキストを解析し、エンティティを抽出する."""
-        self._load_model()
-
         result = AnalysisResult()
 
         # ルールベース: 技術名抽出
@@ -121,48 +100,4 @@ class JapaneseAnalyzer:
                 if match.group() not in result.policies:
                     result.policies.append(match.group())
 
-        # GiNZA NER: 組織名・数量・その他の固有表現
-        if self._nlp is not None:
-            doc = self._nlp(text)
-            for ent in doc.ents:
-                label = _map_ginza_label(ent.label_)
-                entity = ExtractedEntity(
-                    text=ent.text,
-                    label=label,
-                    start=ent.start_char,
-                    end=ent.end_char,
-                )
-                result.entities.append(entity)
-
-                if label == "ORGANIZATION" and ent.text not in result.organizations:
-                    result.organizations.append(ent.text)
-                elif label == "QUANTITY" and ent.text not in result.quantities:
-                    result.quantities.append(ent.text)
-
-            # キーワード抽出（名詞句）
-            for chunk in doc.noun_chunks:
-                if len(chunk.text) >= 2 and chunk.text not in result.keywords:
-                    result.keywords.append(chunk.text)
-
         return result
-
-
-def _map_ginza_label(ginza_label: str) -> str:
-    """GiNZA の固有表現ラベルを内部ラベルにマッピング."""
-    mapping = {
-        "ORG": "ORGANIZATION",
-        "PERSON": "PERSON",
-        "GPE": "LOCATION",
-        "LOC": "LOCATION",
-        "DATE": "DATE",
-        "TIME": "TIME",
-        "MONEY": "QUANTITY",
-        "PERCENT": "QUANTITY",
-        "QUANTITY": "QUANTITY",
-        "CARDINAL": "QUANTITY",
-        "PRODUCT": "TECHNOLOGY",
-        "EVENT": "EVENT",
-        "LAW": "POLICY",
-        "NORP": "ORGANIZATION",
-    }
-    return mapping.get(ginza_label, "OTHER")

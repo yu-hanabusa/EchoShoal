@@ -72,6 +72,9 @@ class ScenarioInput(BaseModel):
     # 規制環境（descriptionに含めきれない場合の補足）
     regulatory_change: str | None = None
 
+    # 市場調査の対象年（指定なしの場合は現在年）
+    target_year: int | None = Field(default=None, description="市場調査の対象年（例: 2014）")
+
 
 class DocumentReference(BaseModel):
     """文書参照ログ — どの文書がどのエージェントに参照されたか."""

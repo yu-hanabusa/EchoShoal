@@ -21,7 +21,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.core.documents.models import DocumentInfo, ProcessResult
+from app.core.documents.models import DocumentInfo, ParsedDocument, ProcessResult
 from app.core.documents.parser import DocumentParseError, DocumentParser
 from app.core.documents.processor import DocumentProcessor
 from app.core.graph.agent_memory import AgentMemoryStore
@@ -30,19 +30,12 @@ from app.core.graph.rag import GraphRAGRetriever
 from app.core.job_manager import JobManager, JobStatus
 from app.core.llm.router import LLMRouter
 from app.core.redis_client import RedisClient
-from app.simulation.engine import SimulationEngine
+from app.oasis.simulation_runner import OASISSimulationEngine
 from app.simulation.events.scheduler import EventScheduler
 from app.simulation.agent_generator import AgentGenerator
 from app.simulation.factory import create_default_agents
 from app.simulation.models import ScenarioInput
 from app.simulation.scenario_analyzer import ScenarioAnalyzer
-
-# OASIS engine (lazy import to avoid hard dependency)
-_OASIS_AVAILABLE = True
-try:
-    from app.oasis.simulation_runner import OASISSimulationEngine
-except ImportError:
-    _OASIS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +77,54 @@ async def _get_graph_client() -> GraphClient | None:
     return None
 
 
+# ─── 市場調査（シミュレーション前のデータ収集） ───
+
+@router.post("/research")
+async def run_research(
+    service_name: str = Form(...),
+    description: str = Form(default=""),
+    target_year: int = Form(default=0),
+) -> JSONResponse:
+    """サービスの市場調査を実行し、3つのレポートを返す.
+
+    シミュレーション開始前にフロントエンドで結果を確認するためのエンドポイント。
+    Google Trends / GitHub / Yahoo Finance からデータを収集し、
+    LLMで市場分析・ユーザー行動・ステークホルダーの3レポートを生成する。
+    """
+    from app.core.market_research.pipeline import run_market_research
+    from app.simulation.scenario_analyzer import ScenarioAnalyzer
+
+    llm = LLMRouter()
+    actual_year = target_year if target_year >= 2000 else None
+
+    # シナリオ解析で競合名を推定
+    competitors: list[str] = []
+    try:
+        analyzer = ScenarioAnalyzer(llm=llm)
+        scenario = ScenarioInput(
+            description=description or f"{service_name}の市場分析",
+            service_name=service_name,
+        )
+        enriched = await analyzer.analyze_async(scenario)
+        if enriched.interpolated_info:
+            competitors = enriched.interpolated_info.competitors
+    except Exception as e:
+        logger.warning("競合推定失敗（市場調査は続行）: %s", e)
+
+    result = await run_market_research(
+        service_name=service_name,
+        description=description or f"{service_name}の市場分析",
+        target_year=actual_year,
+        competitors=competitors,
+        llm=llm,
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content=result.model_dump(),
+    )
+
+
 # ─── メイン: シミュレーション作成 + 即実行 ───
 
 @router.post("/")
@@ -92,7 +133,11 @@ async def create_simulation(
     num_rounds: int = Form(default=24),
     service_name: str = Form(default=""),
     service_url: str = Form(default=""),
+    target_year: int = Form(default=0),
     files: list[UploadFile] = File(default=[]),
+    research_market_report: str = Form(default=""),
+    research_user_behavior: str = Form(default=""),
+    research_stakeholders: str = Form(default=""),
 ) -> JSONResponse:
     """シミュレーションを作成し、即座に実行を開始する.
 
@@ -111,6 +156,7 @@ async def create_simulation(
         num_rounds=min(num_rounds, settings.max_rounds),
         service_name=service_name,
         service_url=service_url or None,
+        target_year=target_year if target_year >= 2000 else None,
     )
 
     job_manager = _get_job_manager()
@@ -120,8 +166,28 @@ async def create_simulation(
     )
     await job_manager.save_scenario(job_id, scenario.model_dump())
 
-    # 文書があればNLP解析→知識グラフに格納
+    # 市場調査結果をドキュメントとして格納
     graph_client = await _get_graph_client()
+    research_docs = [
+        ("market_report.txt", research_market_report),
+        ("user_behavior.txt", research_user_behavior),
+        ("stakeholders.txt", research_stakeholders),
+    ]
+    if graph_client:
+        processor = DocumentProcessor(graph_client, simulation_id=job_id)
+        parser = DocumentParser()
+        for filename, text in research_docs:
+            if text.strip():
+                try:
+                    doc = ParsedDocument(
+                        text=text, filename=filename, source="market_research",
+                    )
+                    await processor.process(doc)
+                    logger.info("市場調査レポート格納: %s → job=%s", filename, job_id)
+                except Exception as exc:
+                    logger.warning("市場調査レポート格納スキップ: %s - %s", filename, exc)
+
+    # ユーザー文書があればNLP解析→知識グラフに格納
     if graph_client and files:
         parser = DocumentParser()
         processor = DocumentProcessor(graph_client, simulation_id=job_id)
@@ -346,28 +412,14 @@ async def _run_simulation_task(
                 phase=f"{current}ヶ月目をシミュレーション中（{total}ヶ月中）",
             )
 
-        # エンジン選択: OASIS or Legacy
-        use_oasis = settings.simulation_engine == "oasis" and _OASIS_AVAILABLE
-        oasis_engine = None
-
-        if use_oasis:
-            logger.info("OASISエンジンを使用: job=%s", job_id)
-            oasis_engine = OASISSimulationEngine(
-                agents=agents, llm=llm, scenario=scenario,
-                on_progress=on_progress, event_scheduler=event_scheduler,
-                enriched_scenario=enriched,
-                simulation_id=job_id,
-                rag=rag, agent_memory=agent_memory,
-            )
-            engine = oasis_engine
-        else:
-            logger.info("Legacyエンジンを使用: job=%s", job_id)
-            engine = SimulationEngine(
-                agents=agents, llm=llm, scenario=scenario,
-                on_progress=on_progress, event_scheduler=event_scheduler,
-                enriched_scenario=enriched,
-                rag=rag, agent_memory=agent_memory,
-            )
+        oasis_engine = OASISSimulationEngine(
+            agents=agents, llm=llm, scenario=scenario,
+            on_progress=on_progress, event_scheduler=event_scheduler,
+            enriched_scenario=enriched,
+            simulation_id=job_id,
+            rag=rag, agent_memory=agent_memory,
+        )
+        engine = oasis_engine
 
         results = await engine.run()
 

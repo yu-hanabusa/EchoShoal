@@ -1,9 +1,7 @@
-"""OASIS シミュレーションランナー — SNS空間でのエージェント間インタラクション.
+"""OASIS シミュレーションエンジン — SNS空間でのエージェント間インタラクション.
 
 OASISフレームワークを使用して、エージェントがReddit/Twitter的なSNS空間で
 投稿・コメント・リポスト・フォローを通じてインタラクションする。
-
-既存のSimulationEngineを置換し、同じRoundResult形式で結果を返す。
 """
 
 from __future__ import annotations
@@ -35,8 +33,8 @@ ProgressCallback = Callable[[int, int], Coroutine[Any, Any, None]]
 class OASISSimulationEngine:
     """OASISベースのシミュレーションエンジン.
 
-    既存のSimulationEngineと同じインターフェース（run(), get_summary()）を持ち、
-    内部でOASIS環境を使用してエージェント間のSNSインタラクションを実行する。
+    run() と get_summary() インターフェースで、
+    OASIS環境を使用してエージェント間のSNSインタラクションを実行する。
     """
 
     def __init__(
@@ -169,6 +167,10 @@ class OASISSimulationEngine:
                 model=oasis_model,
                 available_actions=available_actions,
             )
+            # SocialAgentはmessage_window_size/token_limitを
+            # super().__init__に渡さないため、メモリを再構成して
+            # コンテキスト膨張を防止する（335KB→1KB truncation対策）
+            self._apply_context_limits(social_agent)
             self._agent_graph.add_agent(social_agent)
             self._oasis_agents[profile["user_id"]] = social_agent
 
@@ -201,20 +203,43 @@ class OASISSimulationEngine:
 
         logger.info("OASIS環境セットアップ完了: %dエージェント", len(self._oasis_agents))
 
+    @staticmethod
+    def _apply_context_limits(agent: Any) -> None:
+        """SocialAgentのメモリにコンテキスト制限を適用する.
+
+        OASIS SocialAgentはmessage_window_size/token_limitを
+        ChatAgent.__init__に渡さないため、初期化後にメモリを再構成する。
+        これによりラウンド進行時のコンテキスト膨張（335KB→truncation）を防止する。
+        """
+        from camel.memories import ChatHistoryMemory, ScoreBasedContextCreator
+
+        context_creator = ScoreBasedContextCreator(
+            agent.model_backend.token_counter,
+            settings.oasis_context_token_limit,
+        )
+        agent._memory = ChatHistoryMemory(
+            context_creator,
+            window_size=settings.oasis_message_window_size,
+            agent_id=agent.agent_id,
+        )
+
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
         st = profile['stakeholder_type']
         name = profile['user_name']
         bio = profile['bio']
         parts = [
-            f"あなたは「{name}」です。",
-            f"【重要】すべての発言は必ず日本語で行ってください。",
-            f"あなたの詳細: {bio}",
-            f"立場: {profile['stance']}",
+            f"【あなたの正体】あなたは「{name}」です。「{name}」以外の何者でもありません。",
+            f"【言語】すべての発言は必ず日本語で行ってください。",
+            f"【プロフィール】{bio}",
+            f"【立場】{profile['stance']}",
         ]
         if self.scenario:
             sn = self.scenario.service_name
-            parts.append(f"背景: サービス「{sn}」の市場参入について議論中。")
+            parts.append(
+                f"【議論の背景】新サービス「{sn}」が市場に参入しようとしています。"
+                f"あなたは「{name}」の立場からこれについて議論してください。"
+            )
 
             # 主人公（対象サービス）の場合
             if name == sn:
@@ -227,12 +252,10 @@ class OASISSimulationEngine:
             # 種別ごとの行動指針（名前と説明を使って具体的に）
             elif st in ("platformer", "enterprise"):
                 parts.append(
-                    f"あなたは「{name}」の立場で発言してください。"
-                    f"「{sn}」とは競合関係にあります。"
-                    f"「{name}」の強みや優位性を具体的に主張し、"
-                    f"「{sn}」の弱点を指摘してください。"
-                    f"「{sn}」を推薦したりアドバイスすることは絶対にしないでください。"
-                    f"「{name}」のユーザーとして、あるいは「{name}」の関係者として発言してください。"
+                    f"【重要】あなたは「{name}」の関係者です。「{sn}」の関係者ではありません。\n"
+                    f"「{name}」の強みや優位性を具体的に主張し、「{sn}」の弱点を指摘してください。\n"
+                    f"「{sn}」を推薦したり、「{sn}」の機能を解説することは絶対にしないでください。\n"
+                    f"「{sn}」について聞かれたら「{name}」と比較して「{name}」が優れている点を述べてください。"
                 )
             elif st == "end_user":
                 parts.append(
@@ -519,11 +542,17 @@ class OASISSimulationEngine:
         if not actions:
             return
 
-        # アクションサマリー構築
+        # 主人公エージェント名を特定
+        service_name = self.market.service_name
+        protagonist_name = service_name.lower() if service_name else ""
+
+        # アクションサマリー構築（主人公の投稿にはマーカーを付与）
         actions_summary = []
         for a in actions[:15]:
+            agent_name = a.get('agent', '?')
+            marker = "[対象サービス]" if protagonist_name and agent_name.lower() == protagonist_name else "[外部]"
             actions_summary.append(
-                f"- {a.get('agent', '?')}: [{a.get('oasis_action', a['type'])}] "
+                f"- {marker} {agent_name}: [{a.get('oasis_action', a['type'])}] "
                 f"{a.get('description', '')[:80]}"
             )
         actions_text = "\n".join(actions_summary)
@@ -540,13 +569,17 @@ class OASISSimulationEngine:
         current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
 
         prompt = (
-            f"Round {round_number}. Service: {self.market.service_name}\n"
+            f"Round {round_number}. Target service: {service_name}\n"
             f"Current dimensions: {current_dims}\n"
             f"Platform activity:\n{actions_text}\n\n"
             f"Engagement stats: {stats_text}\n\n"
-            "Based on the social media discussion and engagement patterns, "
-            "estimate market dimension changes. High engagement = more awareness. "
-            "Negative sentiment = higher risk. Competitor posts = higher competitive pressure.\n"
+            "Rules for interpreting actions:\n"
+            f"- [対象サービス] = posts by '{service_name}' team. Their proactive actions "
+            "(marketing, new features, partnerships) should POSITIVELY affect "
+            "user_adoption, market_awareness, ecosystem_health.\n"
+            "- [外部] = posts by competitors, users, investors, etc. "
+            "Competitor criticism = higher competitive_pressure. "
+            "User complaints = lower user_adoption. Positive reviews = higher user_adoption.\n\n"
             "Return EXACTLY this JSON with delta values (-0.1 to +0.1):\n"
             '{"dimension_deltas": {'
             '"user_adoption": 0.0, "revenue_potential": 0.0, "tech_maturity": 0.0, '

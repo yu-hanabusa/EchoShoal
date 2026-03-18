@@ -1,12 +1,14 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { runMarketResearch } from "../api/client";
+import type { MarketResearchResult } from "../api/types";
 
 const BASE_URL = "/api";
 
 const GITHUB_URL_PATTERN = /^https?:\/\/github\.com\/[^/]+\/[^/]+\/?$/;
 
 function isValidGithubUrl(url: string): boolean {
-  if (!url) return true; // 空は許可（任意フィールド）
+  if (!url) return true;
   return GITHUB_URL_PATTERN.test(url.trim());
 }
 
@@ -16,15 +18,20 @@ export default function NewSimulationPage() {
   const [serviceDescription, setServiceDescription] = useState("");
   const [serviceUrl, setServiceUrl] = useState("");
   const [description, setDescription] = useState("");
+  const [targetYear, setTargetYear] = useState(new Date().getFullYear());
   const [numRounds, setNumRounds] = useState(24);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [researching, setResearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [researchResult, setResearchResult] = useState<MarketResearchResult | null>(null);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const charCount = description.length;
   const isValid = charCount >= 10 && !urlError;
+  const canResearch = serviceName.trim().length > 0;
 
   const handleUrlChange = (value: string) => {
     setServiceUrl(value);
@@ -40,7 +47,6 @@ export default function NewSimulationPage() {
     if (!selected || selected.length === 0) return;
     const newFiles = Array.from(selected);
     setFiles((prev) => [...prev, ...newFiles]);
-    // 同じファイルを再選択できるようにリセット
     e.target.value = "";
   };
 
@@ -48,11 +54,28 @@ export default function NewSimulationPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleResearch = async () => {
+    if (!canResearch) return;
+    setResearching(true);
+    setError(null);
+    try {
+      const result = await runMarketResearch(
+        serviceName,
+        serviceDescription || description || serviceName,
+        targetYear,
+      );
+      setResearchResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "市場調査に失敗しました");
+    } finally {
+      setResearching(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
 
-    // GitHub URL最終チェック
     if (serviceUrl && !isValidGithubUrl(serviceUrl)) {
       setUrlError("https://github.com/owner/repo の形式で入力してください");
       return;
@@ -62,7 +85,6 @@ export default function NewSimulationPage() {
     setError(null);
 
     try {
-      // シナリオにサービス概要を先頭に含める
       const fullDescription = serviceDescription
         ? `【サービス概要】${serviceDescription}\n\n${description}`
         : description;
@@ -71,9 +93,17 @@ export default function NewSimulationPage() {
       formData.append("description", fullDescription);
       formData.append("num_rounds", String(numRounds));
       formData.append("service_name", serviceName);
+      formData.append("target_year", String(targetYear));
       if (serviceUrl) formData.append("service_url", serviceUrl);
       for (const file of files) {
         formData.append("files", file);
+      }
+
+      // 市場調査結果があればFormDataに含める
+      if (researchResult) {
+        formData.append("research_market_report", researchResult.market_report);
+        formData.append("research_user_behavior", researchResult.user_behavior);
+        formData.append("research_stakeholders", researchResult.stakeholders);
       }
 
       const res = await fetch(`${BASE_URL}/simulations/`, {
@@ -93,6 +123,10 @@ export default function NewSimulationPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const toggleReport = (key: string) => {
+    setExpandedReport(expandedReport === key ? null : key);
   };
 
   return (
@@ -167,6 +201,134 @@ export default function NewSimulationPage() {
                 <p className="mt-1 text-xs text-negative">{urlError}</p>
               )}
             </div>
+
+            {/* Target Year */}
+            <div className="flex items-baseline gap-3">
+              <label htmlFor="targetYear" className="text-sm font-medium text-text-secondary">
+                対象年
+              </label>
+              <input
+                id="targetYear"
+                type="number"
+                value={targetYear}
+                onChange={(e) => setTargetYear(Number(e.target.value))}
+                min={2000}
+                max={new Date().getFullYear()}
+                className="w-24 rounded-md bg-surface-1 border border-border px-3 py-1.5 text-sm text-text-primary focus:border-interactive focus:ring-1 focus:ring-interactive outline-none tabular-nums"
+              />
+              <span className="text-xs text-text-tertiary">市場調査で取得するデータの年</span>
+            </div>
+          </fieldset>
+
+          {/* Market Research */}
+          <fieldset className="rounded-md border border-border bg-surface-0 p-5 space-y-4">
+            <legend className="px-2 text-base font-medium text-text-primary">
+              Market Research
+            </legend>
+            <p className="text-sm text-text-tertiary">
+              Google Trends・GitHub・Yahoo Finance からデータを収集し、市場分析レポートを自動生成します。
+            </p>
+
+            <button
+              type="button"
+              onClick={handleResearch}
+              disabled={!canResearch || researching}
+              className="px-5 py-2.5 rounded-md bg-interactive hover:bg-interactive-hover disabled:bg-border-strong disabled:text-text-tertiary text-white text-sm font-semibold transition-colors cursor-pointer disabled:cursor-not-allowed"
+            >
+              {researching ? "市場調査を実行中..." : "市場調査を実行"}
+            </button>
+
+            {/* Research Results */}
+            {researchResult && (
+              <div className="space-y-3 mt-4">
+                {/* Data Source Status */}
+                <div className="rounded-md border border-border bg-surface-1 p-4 space-y-2">
+                  <p className="text-xs font-medium text-text-secondary mb-2">データソース状況</p>
+                  {(() => {
+                    const sources = researchResult.collected_data.sources_used;
+                    const trends = researchResult.collected_data.trends;
+                    const github = researchResult.collected_data.github_repos;
+                    const finance = researchResult.collected_data.finance_data;
+                    const errors = researchResult.collected_data.errors;
+                    const allSources = ["Google Trends", "GitHub API", "Yahoo Finance"];
+                    const hasLlmFallback = sources.length < allSources.length;
+
+                    return (
+                      <>
+                        {allSources.map((name) => {
+                          const ok = sources.includes(name);
+                          const err = errors.find((e) => e.toLowerCase().includes(name.toLowerCase().split(" ")[0].toLowerCase()));
+                          let detail = "";
+                          if (name === "Google Trends" && ok) {
+                            const points = trends.reduce((sum, t) => sum + Object.keys(t.interest_over_time).length, 0);
+                            detail = `${trends.length}キーワード・${points}データポイント取得済み`;
+                          } else if (name === "GitHub API" && ok) {
+                            detail = `リポジトリ${github.length}件取得済み`;
+                          } else if (name === "Yahoo Finance" && ok) {
+                            detail = `企業${finance.length}件取得済み`;
+                          } else if (err) {
+                            detail = "取得失敗";
+                          } else if (!ok) {
+                            detail = "データなし";
+                          }
+
+                          return (
+                            <div key={name} className="flex items-center gap-2 text-xs">
+                              <span className={ok ? "text-positive" : "text-text-tertiary"}>
+                                {ok ? "\u2705" : "\u274c"}
+                              </span>
+                              <span className={`font-medium ${ok ? "text-text-primary" : "text-text-tertiary"}`}>
+                                {name}
+                              </span>
+                              <span className="text-text-tertiary">— {detail}</span>
+                            </div>
+                          );
+                        })}
+                        {hasLlmFallback && (
+                          <div className="flex items-center gap-2 text-xs mt-1 pt-1 border-t border-border">
+                            <span className="text-interactive">&#x2139;&#xFE0F;</span>
+                            <span className="text-text-secondary">
+                              取得できなかったデータはLLMが業界知識で補完しています
+                            </span>
+                          </div>
+                        )}
+                        {sources.length === allSources.length && (
+                          <div className="flex items-center gap-2 text-xs mt-1 pt-1 border-t border-border">
+                            <span className="text-positive">&#x2705;</span>
+                            <span className="text-text-secondary">
+                              全データソースから取得完了。実データに基づくレポートです
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* Collapsible Reports */}
+                {[
+                  { key: "market", label: "市場分析レポート", content: researchResult.market_report },
+                  { key: "user", label: "ユーザー行動レポート", content: researchResult.user_behavior },
+                  { key: "stakeholder", label: "ステークホルダーレポート", content: researchResult.stakeholders },
+                ].map(({ key, label, content }) => (
+                  <div key={key} className="border border-border rounded-md">
+                    <button
+                      type="button"
+                      onClick={() => toggleReport(key)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-text-primary hover:bg-surface-1 transition-colors cursor-pointer"
+                    >
+                      <span>{label}</span>
+                      <span className="text-text-tertiary">{expandedReport === key ? "▲" : "▼"}</span>
+                    </button>
+                    {expandedReport === key && (
+                      <div className="px-4 pb-4 text-sm text-text-secondary whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+                        {content || "（生成に失敗しました）"}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </fieldset>
 
           {/* Scenario */}

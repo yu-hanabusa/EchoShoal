@@ -85,15 +85,15 @@ class DocumentProcessor:
     async def process(self, doc: ParsedDocument) -> ProcessResult:
         """文書を解析し、知識グラフに格納する.
 
-        1. NLP解析（GiNZA + ルールベース）
-        2. LLMによる組織名補完（NLPで取れなかった分）
+        1. ルールベース辞書で技術名・政策名を抽出
+        2. LLMで組織名・サービス名を抽出
         3. Documentノード作成
         4. 抽出エンティティを既存ノードにリンク
         """
-        # NLP解析
+        # ルールベース辞書で技術名・政策名を抽出
         analysis = self.nlp.analyze(doc.text)
 
-        # LLMで組織名を補完（NLPは英語名・略称を取りこぼすため）
+        # LLMで組織名を抽出
         llm_orgs = await self._extract_orgs_with_llm(doc.text)
         if llm_orgs:
             existing = set(analysis.organizations)
@@ -102,7 +102,7 @@ class DocumentProcessor:
                     analysis.organizations.append(org)
 
         logger.info(
-            "文書 '%s' を解析: 技術%d件, 組織%d件（LLM補完含む）, 政策%d件",
+            "文書 '%s' を解析: 技術%d件, 組織%d件（LLM抽出）, 政策%d件",
             doc.filename,
             len(analysis.technologies),
             len(analysis.organizations),

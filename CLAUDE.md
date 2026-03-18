@@ -21,7 +21,7 @@ stakeholder-driven "what-if" scenario analysis.
 - **Cache/Queue**: Redis
 - **LLM (light)**: Ollama (qwen2.5:14b)
 - **LLM (heavy)**: Claude API / OpenAI API
-- **NLP**: GiNZA (spaCy) + SudachiPy
+- **NLP**: ルールベース辞書 + LLM
 - **Testing**: pytest + pytest-asyncio + httpx
 
 ## Project Structure
@@ -101,7 +101,7 @@ pnpm test                        # Run tests
 - TDD: Write tests first, then implement
 - All agent behavior decisions use Ollama (local LLM)
 - Report generation and ontology design use Claude API
-- Japanese NLP uses GiNZA (rule-based NER), not LLM
+- Tech/policy NLP uses rule-based dictionaries; org extraction uses LLM
 - Keep simulation constraints minimal to preserve emergent behavior
 
 ### Post-Implementation Workflow (MANDATORY)

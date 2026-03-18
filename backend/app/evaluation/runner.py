@@ -31,7 +31,6 @@ from app.evaluation.models import (
     RunStatistics,
 )
 from app.simulation.agent_generator import AgentGenerator
-from app.simulation.engine import SimulationEngine
 from app.simulation.events.scheduler import EventScheduler
 from app.simulation.models import RoundResult
 from app.simulation.scenario_analyzer import ScenarioAnalyzer
@@ -178,35 +177,17 @@ async def run_simulation_for_benchmark(
                 phase=f"{current}ヶ月目をシミュレーション中（{total}ヶ月中）",
             )
 
-        # OASISエンジンを使用（通常シミュレーションと同じ）
-        from app.config import settings
-        use_oasis = settings.simulation_engine == "oasis"
+        from app.oasis.simulation_runner import OASISSimulationEngine
         oasis_engine = None
         social_feed = None
 
-        if use_oasis:
-            try:
-                from app.oasis.simulation_runner import OASISSimulationEngine
-                oasis_engine = OASISSimulationEngine(
-                    agents=agents, llm=llm, scenario=scenario,
-                    on_progress=on_progress, event_scheduler=event_scheduler,
-                    enriched_scenario=enriched, simulation_id=job_id,
-                    rag=rag, agent_memory=agent_memory,
-                )
-                engine = oasis_engine
-            except Exception:
-                logger.warning("OASISエンジン初期化失敗、legacyにフォールバック")
-                engine = SimulationEngine(
-                    agents=agents, llm=llm, scenario=scenario,
-                    on_progress=on_progress, event_scheduler=event_scheduler,
-                    enriched_scenario=enriched, rag=rag, agent_memory=agent_memory,
-                )
-        else:
-            engine = SimulationEngine(
-                agents=agents, llm=llm, scenario=scenario,
-                on_progress=on_progress, event_scheduler=event_scheduler,
-                enriched_scenario=enriched, rag=rag, agent_memory=agent_memory,
-            )
+        oasis_engine = OASISSimulationEngine(
+            agents=agents, llm=llm, scenario=scenario,
+            on_progress=on_progress, event_scheduler=event_scheduler,
+            enriched_scenario=enriched, simulation_id=job_id,
+            rag=rag, agent_memory=agent_memory,
+        )
+        engine = oasis_engine
 
         rounds = await engine.run()
         summary = engine.get_summary()

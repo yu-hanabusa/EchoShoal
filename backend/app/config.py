@@ -32,11 +32,18 @@ class Settings(BaseSettings):
     max_actions_per_agent: int = 2
     max_llm_calls: int = 5000
 
+    # Market Research
+    market_research_enabled: bool = True
+    market_research_timeout: int = 30  # seconds
+    github_api_token: str = ""  # optional, raises rate limit
+
     # OASIS Integration
-    simulation_engine: str = "oasis"  # "oasis" or "legacy"
     oasis_platform: str = "reddit"  # "twitter" or "reddit"
     oasis_max_agents: int = 200
     oasis_rounds_per_step: int = 1
+    oasis_message_window_size: int = 10  # 直近N件のメッセージのみ保持（コンテキスト膨張防止）
+    oasis_context_token_limit: int = 4096  # コンテキストウィンドウのトークン上限
+    oasis_max_output_tokens: int = 512  # LLM出力トークン上限
 
     # Rate Limiting
     max_concurrent_simulations: int = 3

@@ -208,6 +208,27 @@ export interface DocumentInfo {
   uploaded_at: string;
 }
 
+/** 市場調査リクエスト */
+export interface MarketResearchRequest {
+  service_name: string;
+  description: string;
+  target_year: number;
+}
+
+/** 市場調査結果 */
+export interface MarketResearchResult {
+  market_report: string;
+  user_behavior: string;
+  stakeholders: string;
+  collected_data: {
+    trends: Array<{ keyword: string; interest_over_time: Record<string, number>; related_queries: string[] }>;
+    github_repos: Array<{ repo_name: string; full_name: string; stars: number; forks: number; language: string; description: string }>;
+    finance_data: Array<{ company_name: string; ticker: string; market_cap: number | null; revenue: number | null; stock_price: number | null; sector: string }>;
+    sources_used: string[];
+    errors: string[];
+  };
+}
+
 /** チャート凡例のラベル */
 export const DIMENSION_LABELS: Record<string, string> = {
   user_adoption: "ユーザーの広がり",

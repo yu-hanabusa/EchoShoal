@@ -1,12 +1,12 @@
-"""GiNZA NLP アナライザーのユニットテスト（ルールベース部分のみ）."""
+"""NLP アナライザーのユニットテスト（ルールベース辞書）."""
 
 import pytest
 
-from app.core.nlp.analyzer import JapaneseAnalyzer, _map_ginza_label
+from app.core.nlp.analyzer import JapaneseAnalyzer
 
 
 class TestRuleBasedExtraction:
-    """GiNZA なしでも動作するルールベース抽出のテスト."""
+    """ルールベース辞書による抽出のテスト."""
 
     def setup_method(self):
         self.analyzer = JapaneseAnalyzer()
@@ -65,16 +65,8 @@ class TestRuleBasedExtraction:
         assert tech_entities[0].start == 0
         assert tech_entities[0].end == 6
 
-
-class TestGinzaLabelMapping:
-    def test_org_mapping(self):
-        assert _map_ginza_label("ORG") == "ORGANIZATION"
-
-    def test_money_mapping(self):
-        assert _map_ginza_label("MONEY") == "QUANTITY"
-
-    def test_law_mapping(self):
-        assert _map_ginza_label("LAW") == "POLICY"
-
-    def test_unknown_mapping(self):
-        assert _map_ginza_label("UNKNOWN_LABEL") == "OTHER"
+    def test_organizations_empty_by_default(self):
+        """組織名はLLMが担当するため、ルールベースでは抽出しない."""
+        text = "トヨタ自動車とソニーがAI事業で提携"
+        result = self.analyzer.analyze(text)
+        assert len(result.organizations) == 0

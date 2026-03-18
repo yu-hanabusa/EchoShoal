@@ -376,13 +376,9 @@ class TestOasisConfig:
     """OASIS設定テスト."""
 
     def test_settings_have_oasis_fields(self):
-        assert hasattr(settings, "simulation_engine")
         assert hasattr(settings, "oasis_platform")
         assert hasattr(settings, "oasis_max_agents")
         assert hasattr(settings, "oasis_rounds_per_step")
-
-    def test_default_engine_is_oasis(self):
-        assert settings.simulation_engine in ("oasis", "legacy")
 
     def test_database_path_creation(self):
         from app.oasis.config import get_database_path

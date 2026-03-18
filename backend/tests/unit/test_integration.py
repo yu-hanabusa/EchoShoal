@@ -6,7 +6,6 @@ import pytest
 
 from app.simulation.agents.base import AgentAction, AgentPersonality, AgentProfile, AgentState, BaseAgent
 from app.simulation.agents.enterprise_agent import EnterpriseAgent
-from app.simulation.engine import SimulationEngine
 from app.simulation.events.effects import apply_active_events
 from app.simulation.events.models import EventImpact, EventType, MarketEvent
 from app.simulation.events.scheduler import EventScheduler
@@ -93,66 +92,6 @@ class TestScenarioToEngine:
         events = await scheduler.generate_from_scenario(scenario)
 
         assert len(events) == 0
-
-    @pytest.mark.asyncio
-    async def test_engine_with_events(self):
-        """エンジンがイベントスケジューラを統合して動作する."""
-        scheduler = EventScheduler()
-        scheduler.add_event(MarketEvent(
-            name="テストイベント",
-            event_type=EventType.TECH_DISRUPTION,
-            trigger_round=1,
-            duration=2,
-            impact=EventImpact(dimension_delta={"tech_maturity": 0.1}),
-        ))
-
-        agent = make_stub_agent()
-        agent.decide_actions = AsyncMock(return_value=[
-            AgentAction(agent_id=agent.id, action_type="adopt_service", description="テスト")
-        ])
-
-        mock_llm = MagicMock()
-        mock_llm.generate_json = AsyncMock(return_value={"dimension_deltas": {}, "macro_deltas": {}})
-        mock_llm.generate = AsyncMock(return_value="")
-
-        engine = SimulationEngine(
-            agents=[agent], llm=mock_llm,
-            event_scheduler=scheduler,
-        )
-
-        with patch.object(engine, "_select_active_agents", return_value=[agent]):
-            results = await engine.run(num_rounds=2)
-
-        assert len(results) == 2
-        # ラウンド1でイベントが発生
-        assert any("テストイベント" in e for e in results[0].events)
-        # ラウンド2でもイベント有効（duration=2）
-        assert any("テストイベント" in e for e in results[1].events)
-
-    @pytest.mark.asyncio
-    async def test_engine_progress_callback(self):
-        """プログレスコールバックが各ラウンド後に呼ばれる."""
-        progress_calls = []
-
-        async def on_progress(current: int, total: int) -> None:
-            progress_calls.append((current, total))
-
-        agent = make_stub_agent()
-        agent.decide_actions = AsyncMock(return_value=[])
-
-        mock_llm = MagicMock()
-        mock_llm.generate_json = AsyncMock(return_value={"dimension_deltas": {}, "macro_deltas": {}})
-        mock_llm.generate = AsyncMock(return_value="")
-
-        engine = SimulationEngine(
-            agents=[agent], llm=mock_llm, on_progress=on_progress
-        )
-
-        with patch.object(engine, "_select_active_agents", return_value=[]):
-            await engine.run(num_rounds=3)
-
-        assert len(progress_calls) == 3
-        assert progress_calls[-1] == (3, 3)
 
 
 # --- Enterprise adopt_service テスト ---

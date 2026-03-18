@@ -3,6 +3,7 @@
 import type {
   DocumentInfo,
   JobInfo,
+  MarketResearchResult,
   PaginatedResponse,
   PredictionResult,
   ProcessResult,
@@ -21,6 +22,28 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(body.detail || `API error: ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** 市場調査を実行 */
+export async function runMarketResearch(
+  serviceName: string,
+  description: string,
+  targetYear: number,
+): Promise<MarketResearchResult> {
+  const formData = new FormData();
+  formData.append("service_name", serviceName);
+  formData.append("description", description);
+  formData.append("target_year", String(targetYear));
+
+  const res = await fetch(`${BASE_URL}/simulations/research`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Research error: ${res.status}`);
+  }
+  return res.json() as Promise<MarketResearchResult>;
 }
 
 /** シミュレーション一覧を取得（ページネーション対応） */

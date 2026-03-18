@@ -14,16 +14,11 @@ dependencies = [
     "neo4j>=5.0.0",
     "redis>=5.0.0",
     "python-multipart>=0.0.20",
+    "pytrends>=4.9.0",
+    "yfinance>=0.2.0",
 ]
 
 [project.optional-dependencies]
-nlp = [
-    "ginza>=5.2.0",
-    "ja-ginza>=5.2.0",
-    "spacy>=3.7.0",
-    "sudachipy>=0.6.0",
-    "sudachidict-core>=20240716",
-]
 ml = [
     "sentence-transformers>=3.0.0",
     "torch>=2.0.0",
