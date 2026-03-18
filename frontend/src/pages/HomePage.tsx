@@ -11,13 +11,21 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   failed: { label: "失敗", color: "text-negative" },
 };
 
+const PAGE_SIZE = 20;
+
 export default function HomePage() {
   const queryClient = useQueryClient();
-  const { data: simulations, isLoading } = useQuery({
-    queryKey: ["simulations"],
-    queryFn: listSimulations,
+  const [page, setPage] = useState(0);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["simulations", page],
+    queryFn: () => listSimulations(page * PAGE_SIZE, PAGE_SIZE),
     refetchInterval: false,
   });
+
+  const simulations = data?.items;
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const deleteMutation = useMutation({
     mutationFn: (jobId: string) => deleteSimulation(jobId),
@@ -168,6 +176,34 @@ export default function HomePage() {
                 })}
               </tbody>
             </table>
+
+            {/* ページネーション */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-border px-4 py-3">
+                <span className="text-xs text-text-tertiary">
+                  {total}件中 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)}件
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => p - 1)}
+                    className="px-3 py-1 text-xs rounded border border-border text-text-secondary hover:bg-surface-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    前へ
+                  </button>
+                  <span className="text-xs text-text-secondary tabular-nums">
+                    {page + 1} / {totalPages}
+                  </span>
+                  <button
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage((p) => p + 1)}
+                    className="px-3 py-1 text-xs rounded border border-border text-text-secondary hover:bg-surface-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    次へ
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

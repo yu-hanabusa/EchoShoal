@@ -172,13 +172,20 @@ export default function ReportPage() {
               </thead>
               <tbody className="text-text-primary">
                 {prediction.dimension_predictions.map((dp) => {
-                  const rate = dp.trend.change_rate;
-                  const currentLevel = dp.current_value >= 0.6 ? "高" : dp.current_value >= 0.3 ? "中" : "低";
-                  const predictedLevel = dp.predicted_value >= 0.6 ? "高" : dp.predicted_value >= 0.3 ? "中" : "低";
-                  const currentColor = dp.current_value >= 0.6 ? "bg-positive-light text-positive" : dp.current_value >= 0.3 ? "bg-caution-light text-caution" : "bg-negative-light text-negative";
-                  const predictedColor = dp.predicted_value >= 0.6 ? "bg-positive-light text-positive" : dp.predicted_value >= 0.3 ? "bg-caution-light text-caution" : "bg-negative-light text-negative";
+                  // Threat metrics: flip value so high=good, low=bad
+                  const inverted = dp.dimension === "competitive_pressure" || dp.dimension === "regulatory_risk";
+                  const curVal = inverted ? 1 - dp.current_value : dp.current_value;
+                  const predVal = inverted ? 1 - dp.predicted_value : dp.predicted_value;
+                  const rate = dp.trend.change_rate * (inverted ? -1 : 1);
+                  const currentLevel = curVal >= 0.6 ? "高" : curVal >= 0.3 ? "中" : "低";
+                  const predictedLevel = predVal >= 0.6 ? "高" : predVal >= 0.3 ? "中" : "低";
+                  const colorFor = (v: number) => v >= 0.6
+                    ? "bg-positive-light text-positive" : v >= 0.3
+                      ? "bg-caution-light text-caution" : "bg-negative-light text-negative";
+                  const currentColor = colorFor(curVal);
+                  const predictedColor = colorFor(predVal);
                   const arrow = rate > 5 ? "↑ 上昇" : rate < -5 ? "↓ 低下" : "→ 横ばい";
-                  const arrowColor = rate > 5 ? "text-positive" : rate < -5 ? "text-negative" : "text-text-tertiary";
+                  const arrowCls = rate > 5 ? "text-positive" : rate < -5 ? "text-negative" : "text-text-tertiary";
 
                   return (
                     <tr
@@ -191,7 +198,7 @@ export default function ReportPage() {
                       <td className="py-2.5 px-3 text-center">
                         <span className={`inline-block w-7 text-center text-xs font-bold rounded px-1 py-0.5 ${currentColor}`}>{currentLevel}</span>
                       </td>
-                      <td className={`py-2.5 px-3 text-center text-xs font-medium ${arrowColor}`}>
+                      <td className={`py-2.5 px-3 text-center text-xs font-medium ${arrowCls}`}>
                         {arrow}
                       </td>
                       <td className="py-2.5 pl-3 text-center">

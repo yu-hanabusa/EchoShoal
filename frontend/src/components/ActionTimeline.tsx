@@ -137,7 +137,7 @@ export default function ActionTimeline({ rounds }: Props) {
         <div className="mt-4 bg-surface-1 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-text-primary">
-              ラウンド {selectedRound} の詳細
+              {selectedRound}ヶ月目の詳細
             </h4>
             <button
               onClick={() => setSelectedRound(null)}

@@ -156,6 +156,7 @@ export interface SocialPost {
   author: string;
   content: string;
   created_at: string;
+  round?: number | null;
   likes: number;
   dislikes: number;
   shares: number;

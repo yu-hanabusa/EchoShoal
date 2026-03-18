@@ -47,6 +47,8 @@ class JobInfo(BaseModel):
     progress: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
     scenario_description: str = ""
+    service_name: str = ""
+    scenario_name: str = ""
 
 
 class JobManager:
@@ -55,7 +57,9 @@ class JobManager:
     def __init__(self, redis: RedisClient):
         self.redis = redis
 
-    async def create_job(self, scenario_description: str = "") -> str:
+    async def create_job(
+        self, scenario_description: str = "", service_name: str = "",
+    ) -> str:
         """新しいジョブを作成し、ジョブIDを返す.
 
         ジョブはCREATED状態で作成される（文書アップロード待ち）。
@@ -70,6 +74,8 @@ class JobManager:
                 "created_at": now,
                 "error": None,
                 "scenario_description": scenario_description[:200],
+                "service_name": service_name[:100],
+                "scenario_name": "",
             },
             ttl=_RESULT_TTL,
         )
@@ -166,20 +172,29 @@ class JobManager:
             progress=progress,
             error=info.get("error"),
             scenario_description=info.get("scenario_description", ""),
+            service_name=info.get("service_name", ""),
+            scenario_name=info.get("scenario_name", ""),
         )
 
     async def get_result(self, job_id: str) -> dict[str, Any] | None:
         """ジョブの結果を取得する."""
         return await self.redis.get_json(_KEY_RESULT.format(job_id=job_id))
 
-    async def list_jobs(self, limit: int = 20) -> list[JobInfo]:
-        """過去のジョブ一覧を取得する（新しい順）."""
+    async def list_jobs(
+        self, skip: int = 0, limit: int = 20,
+    ) -> tuple[list[JobInfo], int]:
+        """過去のジョブ一覧を取得する（新しい順）.
+
+        Returns:
+            (jobs, total) — ジョブリストと総数のタプル
+        """
         try:
             client = await self.redis._ensure_connected()
-            job_ids = await client.zrevrange(_KEY_INDEX, 0, limit - 1)
+            total = await client.zcard(_KEY_INDEX)
+            job_ids = await client.zrevrange(_KEY_INDEX, skip, skip + limit - 1)
         except Exception:
             logger.warning("ジョブ一覧取得失敗")
-            return []
+            return [], 0
 
         jobs: list[JobInfo] = []
         for job_id_bytes in job_ids:
@@ -187,7 +202,18 @@ class JobManager:
             info = await self.get_job_info(job_id)
             if info:
                 jobs.append(info)
-        return jobs
+        return jobs, total
+
+    async def update_scenario_name(self, job_id: str, scenario_name: str) -> bool:
+        """シナリオ名を更新する."""
+        info = await self._get_status_raw(job_id)
+        if info is None:
+            return False
+        info["scenario_name"] = scenario_name[:200]
+        await self.redis.set_json(
+            _KEY_STATUS.format(job_id=job_id), info, ttl=_RESULT_TTL
+        )
+        return True
 
     async def delete_job(self, job_id: str) -> bool:
         """ジョブとその関連データをRedisから削除する."""

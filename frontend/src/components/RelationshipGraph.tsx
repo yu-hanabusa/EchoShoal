@@ -203,7 +203,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     // 対象サービスは常に表示
     const sn = (serviceName || "").toLowerCase();
     if (sn) {
-      const target = agents.find((a) => a.name.toLowerCase().includes(sn));
+      const target = agents.find((a) => a.name.toLowerCase() === sn);
       if (target) appeared.add(target.name);
     }
     // 初期関係のエージェントも表示
@@ -242,10 +242,9 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
   // 全エージェント名（simulation全体で登場する）
   const allAgentNames = useMemo(() => {
     const names = new Set<string>();
-    const sn = (serviceName || "").toLowerCase();
-    if (sn) {
-      const target = agents.find((a) => a.name.toLowerCase().includes(sn));
-      if (target) names.add(target.name);
+    // 対象サービスを常にセンターノードとして追加
+    if (serviceName) {
+      names.add(serviceName);
     }
     if (initialRelationships) {
       for (const r of initialRelationships) { names.add(r.from); names.add(r.to); }
@@ -274,7 +273,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       x: WIDTH / 2 + (Math.random() - 0.5) * 300,
       y: HEIGHT / 2 + (Math.random() - 0.5) * 300,
       color: agentColorMap[name] || "#94a3b8",
-      isTarget: sn ? name.toLowerCase().includes(sn) : false,
+      isTarget: sn ? name.toLowerCase() === sn : false,
       hasAction: false,
     }));
 
@@ -321,13 +320,6 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       .attr("stroke-width", (d) => Math.min(d.weight + 1, 5))
       .attr("stroke-opacity", 0);
 
-    g.append("g").attr("class", "link-labels").selectAll("text")
-      .data(links).join("text")
-      .attr("text-anchor", "middle").attr("font-size", 9)
-      .attr("fill", (d) => RELATION_COLORS[d.type] || "#999")
-      .attr("font-weight", 600).attr("opacity", 0)
-      .text((d) => RELATION_LABELS[d.type] || "");
-
     // ノード
     const nodeEls = g.append("g").attr("class", "nodes")
       .selectAll<SVGCircleElement, SimNode>("circle")
@@ -368,11 +360,6 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
         .attr("x1", (d) => (d.source as SimNode).x).attr("y1", (d) => (d.source as SimNode).y)
         .attr("x2", (d) => (d.target as SimNode).x).attr("y2", (d) => (d.target as SimNode).y);
 
-      const lblEls = g.select(".link-labels").selectAll<SVGTextElement, SimLink>("text");
-      lblEls
-        .attr("x", (d) => ((d.source as SimNode).x + (d.target as SimNode).x) / 2)
-        .attr("y", (d) => ((d.source as SimNode).y + (d.target as SimNode).y) / 2 - 6);
-
       g.select(".nodes").selectAll<SVGCircleElement, SimNode>("circle")
         .attr("cx", (d) => d.x).attr("cy", (d) => d.y);
 
@@ -396,11 +383,9 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
     const appearedSet = new Set(appearedAgents);
     const visibleEdgeKeys = new Set(visibleEdges.map((e) => `${e.from}→${e.to}→${e.type}`));
-    const activeAgents = new Set(roundActions.map((a) => a.agent));
-
     // ノード表示切り替え
     g.select(".nodes").selectAll<SVGCircleElement, SimNode>("circle")
-      .attr("opacity", (d) => appearedSet.has(d.id) ? (activeAgents.has(d.id) ? 0.9 : 0.5) : 0);
+      .attr("opacity", (d) => appearedSet.has(d.id) ? 1 : 0);
 
     g.select(".node-labels").selectAll<SVGTextElement, SimNode>("text")
       .attr("opacity", (d) => appearedSet.has(d.id) ? 1 : 0);
@@ -414,13 +399,6 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
         return visibleEdgeKeys.has(key) ? 0.6 : 0;
       });
 
-    g.select(".link-labels").selectAll<SVGTextElement, SimLink>("text")
-      .attr("opacity", (d) => {
-        const s = typeof d.source === "object" ? d.source.id : d.source;
-        const t = typeof d.target === "object" ? d.target.id : d.target;
-        const key = `${s}→${t}→${d.type}`;
-        return visibleEdgeKeys.has(key) ? 1 : 0;
-      });
   }, [appearedAgents, visibleEdges, roundActions]);
 
   // 選択エージェントの情報

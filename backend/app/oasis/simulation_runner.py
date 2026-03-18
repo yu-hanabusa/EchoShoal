@@ -71,6 +71,7 @@ class OASISSimulationEngine:
         self._agent_graph = None
         self._oasis_agents: dict[str, Any] = {}  # agent.id -> SocialAgent
         self._db_path = ""
+        self._round_timestamps: list[tuple[str, str]] = []  # (start, end) per round
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """OASIS環境でシミュレーションを実行する."""
@@ -203,36 +204,58 @@ class OASISSimulationEngine:
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
         st = profile['stakeholder_type']
+        name = profile['user_name']
+        bio = profile['bio']
         parts = [
-            f"あなたは「{profile['user_name']}」です。",
+            f"あなたは「{name}」です。",
             f"【重要】すべての発言は必ず日本語で行ってください。",
-            f"プロフィール: {profile['bio']}",
+            f"あなたの詳細: {bio}",
             f"立場: {profile['stance']}",
         ]
         if self.scenario:
             sn = self.scenario.service_name
             parts.append(f"背景: サービス「{sn}」の市場参入について議論中。")
 
-            # 種別ごとの行動指針
-            if st in ("platformer", "enterprise"):
+            # 主人公（対象サービス）の場合
+            if name == sn:
                 parts.append(
-                    f"あなたは「{sn}」の競合です。自社サービスの強みを主張し、"
-                    f"「{sn}」の弱点を指摘してください。「{sn}」を推薦したりアドバイスすることは絶対にしないでください。"
+                    f"あなたは「{sn}」の運営チームです。"
+                    "市場の変化、競合の動き、ユーザーの声に応じて能動的に戦略を決定してください。"
+                    "価格改定、新機能リリース、マーケティング強化、提携、資金調達など、"
+                    "自社の成長のためにあらゆる手段を検討してください。"
+                )
+            # 種別ごとの行動指針（名前と説明を使って具体的に）
+            elif st in ("platformer", "enterprise"):
+                parts.append(
+                    f"あなたは「{name}」の立場で発言してください。"
+                    f"「{sn}」とは競合関係にあります。"
+                    f"「{name}」の強みや優位性を具体的に主張し、"
+                    f"「{sn}」の弱点を指摘してください。"
+                    f"「{sn}」を推薦したりアドバイスすることは絶対にしないでください。"
+                    f"「{name}」のユーザーとして、あるいは「{name}」の関係者として発言してください。"
                 )
             elif st == "end_user":
                 parts.append(
-                    f"あなたはユーザーの立場です。「{sn}」の使い勝手、価格、セキュリティなどを"
-                    "既存ツールと比較して率直に評価してください。"
+                    f"あなたは「{name}」を代表するユーザーです。"
+                    f"「{sn}」の使い勝手、価格、セキュリティなどを"
+                    "自分たちの立場から率直に評価してください。"
+                    "既存ツールとの比較、乗り換えコスト、不満や期待を具体的に述べてください。"
                 )
             elif st == "investor":
                 parts.append(
-                    f"あなたは投資家です。「{sn}」の収益性、市場規模、成長性を"
-                    "冷静に分析してください。リスクも指摘してください。"
+                    f"あなたは投資家「{name}」です。"
+                    f"「{sn}」の収益性、市場規模、成長性、競合優位性を"
+                    "冷静に分析してください。投資リスクも指摘してください。"
                 )
             elif st == "government":
                 parts.append(
-                    "あなたは行政の立場です。規制適合性、セキュリティ基準、"
-                    "公共調達の観点からコメントしてください。"
+                    f"あなたは「{name}」の立場です。"
+                    "規制適合性、セキュリティ基準、公共調達の観点からコメントしてください。"
+                )
+            elif st == "community":
+                parts.append(
+                    f"あなたは「{name}」のメンバーです。"
+                    "業界全体の動向、技術トレンド、コミュニティの意見を共有してください。"
                 )
         return "\n".join(parts)
 
@@ -273,6 +296,9 @@ class OASISSimulationEngine:
 
     async def _run_oasis_round(self, round_number: int) -> RoundResult:
         """1ラウンドのOASISシミュレーションを実行する."""
+        from datetime import datetime, timezone
+        round_start = datetime.now(timezone.utc).isoformat()
+
         self.market.round_number = round_number
         all_actions: list[dict[str, Any]] = []
         events: list[str] = []
@@ -302,7 +328,7 @@ class OASISSimulationEngine:
 
             except Exception:
                 logger.exception("OASISステップ実行失敗: round=%d", round_number)
-                events.append(f"Round {round_number}: OASIS step failed")
+                events.append(f"{round_number}ヶ月目: OASISステップ実行失敗")
 
         # SQLiteからこのラウンドのアクションを取得
         round_actions = self._extract_round_actions(round_number)
@@ -326,6 +352,10 @@ class OASISSimulationEngine:
                 round_number, all_actions, events
             )
 
+        # ラウンドのタイムスタンプ範囲を記録
+        round_end = datetime.now(timezone.utc).isoformat()
+        self._round_timestamps.append((round_start, round_end))
+
         return RoundResult(
             round_number=round_number,
             market_state=self.market.model_copy(deep=True),
@@ -333,6 +363,19 @@ class OASISSimulationEngine:
             events=events,
             summary=narrative,
         )
+
+    def _timestamp_to_round(self, timestamp: str) -> int | None:
+        """タイムスタンプからラウンド番号を推定する."""
+        if not self._round_timestamps or not timestamp:
+            return None
+        for i, (start, end) in enumerate(self._round_timestamps):
+            if start <= timestamp <= end:
+                return i + 1
+        # シード投稿（ラウンド0）
+        if self._round_timestamps and timestamp < self._round_timestamps[0][0]:
+            return 0
+        # 最終ラウンド以降
+        return len(self._round_timestamps)
 
     def _select_active_oasis_agents(self) -> list:
         """Time Engine: アクティブエージェントを確率的に選択する."""
@@ -695,6 +738,10 @@ class OASISSimulationEngine:
         # OASISのインタラクション統計を追加
         stats = self._get_interaction_stats()
 
+        # OASISのSNSインタラクションから関係エッジを構築
+        oasis_relationships = self._extract_oasis_relationships()
+        all_relationships = self._initial_relationships + oasis_relationships
+
         return {
             "total_rounds": len(self.results),
             "final_market": self.market.model_dump(),
@@ -702,8 +749,46 @@ class OASISSimulationEngine:
             "llm_calls": self._llm_call_count,
             "oasis_stats": stats,
             "engine": "oasis",
-            "initial_relationships": self._initial_relationships,
+            "initial_relationships": all_relationships,
         }
+
+    def _extract_oasis_relationships(self) -> list[dict[str, Any]]:
+        """OASISのSQLiteからエージェント間インタラクションを関係エッジとして抽出する."""
+        if not self._db_path:
+            return []
+
+        from app.oasis.graph_sync import extract_interactions
+        try:
+            edges = extract_interactions(self._db_path)
+        except Exception:
+            return []
+
+        # OASIS user_id → EchoShoal agent名のマッピング
+        id_to_name: dict[int, str] = {}
+        for i, agent in enumerate(self.agents):
+            id_to_name[i] = agent.name
+
+        relationships: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+
+        for edge in edges:
+            src_name = id_to_name.get(edge.source_id)
+            tgt_name = id_to_name.get(edge.target_id)
+            if not src_name or not tgt_name or src_name == tgt_name:
+                continue
+            if (src_name, tgt_name) in seen:
+                continue
+
+            relationships.append({
+                "from": src_name,
+                "to": tgt_name,
+                "type": edge.relation_type,
+                "round": 1,  # OASISインタラクションはラウンド情報なし
+                "weight": edge.weight,
+            })
+            seen.add((src_name, tgt_name))
+
+        return relationships
 
     def get_social_feed(self, limit: int = 50) -> list[dict[str, Any]]:
         """OASISのSNS投稿をフィード形式で取得する."""
@@ -728,12 +813,17 @@ class OASISSimulationEngine:
                 (limit,),
             )
             for row in cursor.fetchall():
+                # タイムスタンプからラウンド番号を推定
+                post_time = row["created_at"]
+                round_num = self._timestamp_to_round(post_time)
+
                 post = {
                     "id": f"post_{row['post_id']}",
                     "type": "post",
                     "author": row["author"] or "Unknown",
                     "content": row["content"],
                     "created_at": row["created_at"],
+                    "round": round_num,
                     "likes": row["num_likes"],
                     "dislikes": row["num_dislikes"],
                     "shares": row["num_shares"],

@@ -123,6 +123,11 @@ export default function SocialFeed({ feed, agents }: Props) {
                     {STAKEHOLDER_LABELS[agentTypeMap.get(post.author)!] || agentTypeMap.get(post.author)}
                   </span>
                 )}
+                {post.round != null && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                    {post.round === 0 ? "開始前" : `${post.round}ヶ月目`}
+                  </span>
+                )}
               </div>
 
               {/* Post content */}

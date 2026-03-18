@@ -149,6 +149,7 @@ class AgentGenerator:
     ) -> list[BaseAgent]:
         """エンティティからエージェントを生成する.
 
+        0. 対象サービスを主人公エージェントとして生成（能動的に意思決定）
         1. 文書エンティティの企業・組織をそれぞれエージェント化
         2. シナリオからユーザー層のアーキタイプを生成
         3. 不足しているステークホルダーをLLMが補完
@@ -157,10 +158,16 @@ class AgentGenerator:
         entities = document_entities or {}
         orgs = entities.get("organizations", [])
 
+        # Step 0: 対象サービスを主人公エージェントとして生成
+        if scenario.service_name:
+            protagonist = await self._create_protagonist(scenario)
+            if protagonist:
+                agents.append(protagonist)
+
         # Step 1: 文書から抽出された組織をエージェント化
         if orgs:
             orgs = _filter_entities(orgs)
-            # 対象サービス自体をエージェントにしない
+            # 対象サービスは既にStep 0で生成済みなので重複排除
             service_name = scenario.service_name.lower() if scenario.service_name else ""
             if service_name:
                 orgs = [o for o in orgs if o.lower() != service_name]
@@ -182,10 +189,59 @@ class AgentGenerator:
                         len(complement_agents))
             return agents
 
-        # フォールバック
-        from app.simulation.factory import create_default_agents
-        logger.info("エージェント生成失敗、デフォルトを使用")
+        if not agents:
+            # フォールバック
+            from app.simulation.factory import create_default_agents
+            logger.info("エージェント生成失敗、デフォルトを使用")
         return create_default_agents(self.llm)
+
+    async def _create_protagonist(self, scenario: ScenarioInput) -> BaseAgent | None:
+        """対象サービスを主人公エージェントとして生成する.
+
+        主人公は市場の変化に応じて能動的に意思決定する:
+        - 競合の動きに対する対抗策
+        - ユーザーフィードバックへの対応
+        - 価格改定、機能追加、マーケティング等
+        """
+        service = scenario.service_name
+        if not service:
+            return None
+
+        prompt = (
+            f"サービス「{service}」を運営する企業/チームのプロフィールを推定してください。\n"
+            f"概要: {scenario.description[:300]}\n\n"
+            '{"name":"サービス名","stakeholder_type":"enterprise",'
+            '"description":"このサービスの立場・戦略・強みを日本語で",'
+            '"headcount":推定従業員数,'
+            '"revenue":推定月間売上(万円),'
+            '"personality":{"conservatism":0.0-1.0,"bandwagon":0.0-1.0,'
+            '"overconfidence":0.0-1.0,"sunk_cost_bias":0.0-1.0,'
+            '"info_sensitivity":0.0-1.0,"noise":0.05-0.15,'
+            '"description":"意思決定の特徴を日本語で"}}'
+        )
+
+        try:
+            response = await self.llm.generate_json(
+                task_type=TaskType.PERSONA_GENERATION,
+                prompt=prompt,
+                system_prompt="対象サービスの運営者のプロフィールをJSON形式で返答。",
+            )
+            response["name"] = service  # 名前はサービス名で固定
+            response["stakeholder_type"] = "enterprise"
+            agent = self._create_agent(response)
+            if agent:
+                logger.info("主人公エージェント生成: %s (headcount=%d)",
+                            service, agent.state.headcount)
+            return agent
+        except Exception:
+            logger.warning("主人公エージェント生成失敗、デフォルトで作成")
+            return self._create_agent({
+                "name": service,
+                "stakeholder_type": "enterprise",
+                "description": f"シミュレーション対象サービス「{service}」の運営チーム",
+                "headcount": 50,
+                "revenue": 100,
+            })
 
     async def _entities_to_agents(
         self,
@@ -201,9 +257,24 @@ class AgentGenerator:
             f"サービス: {scenario.service_name or '不明'}\n"
             f"概要: {scenario.description[:300]}\n"
             f"組織一覧: {names_text}\n\n"
-            "各組織の役割を判定しJSON返却:\n"
-            '{"agents":[{"name":"組織名","stakeholder_type":"enterprise","description":"日本語で役割説明"}]}\n'
-            "stakeholder_type: enterprise/end_user/government/investor/platformer/community/freelancer/indie_developer"
+            "各組織について以下を判定しJSON返却してください:\n"
+            "- stakeholder_type: この市場における役割\n"
+            "- description: 日本語で組織の立場と対象サービスへの態度を具体的に\n"
+            "- headcount: 組織の従業員数（実際の規模に近い値）\n"
+            "- revenue: 月間売上（万円）\n"
+            "- personality: 組織の意思決定傾向\n\n"
+            '{"agents":[{"name":"組織名","stakeholder_type":"enterprise",'
+            '"description":"日本語で役割・態度・立場を説明",'
+            '"headcount":5000,"revenue":10000,'
+            '"personality":{"conservatism":0.7,"bandwagon":0.3,"overconfidence":0.5,'
+            '"sunk_cost_bias":0.6,"info_sensitivity":0.5,"noise":0.1,'
+            '"description":"大企業のため保守的で既存製品への愛着が強い"}}]}\n\n'
+            "stakeholder_type: enterprise/end_user/government/investor/platformer/community\n"
+            "conservatism: 高い=変化を恐れる/低い=新しいものに積極的\n"
+            "bandwagon: 高い=トレンドに流される/低い=独自路線\n"
+            "overconfidence: 高い=リスクを過小評価/低い=慎重\n"
+            "sunk_cost_bias: 高い=過去の投資にこだわる/低い=柔軟に方向転換\n"
+            "info_sensitivity: 高い=市場情報に敏感/低い=鈍感"
         )
 
         try:
@@ -245,16 +316,22 @@ class AgentGenerator:
             f"サービス: {service}\n"
             f"概要: {scenario.description[:300]}\n"
             f"既存エージェント: {existing_list}\n\n"
-            "不足しているエージェントを追加:\n"
+            "不足しているエージェントを追加してください:\n"
             f"- エンドユーザー層（'{service}の潜在ユーザー層', '競合サービスの既存ユーザー層'等、"
-            "集団を表す名前にする。個人名ではなくセグメントを表す）\n"
+            "集団を表す名前にする）\n"
             "- 具体的な競合（実名のサービス/企業名）\n"
             "- 行政、投資家、コミュニティ\n\n"
-            f"注意: '{service}'自体はシミュレーション対象なのでエージェントにしないでください。\n"
-            f"注意: エンドユーザーのheadcountはそのセグメントの想定規模（例: 1000〜10000）にしてください。\n\n"
-            '{"agents":[{"name":"名前","stakeholder_type":"enterprise",'
-            '"description":"日本語で役割説明","headcount":1000}]}\n'
-            "stakeholder_type: enterprise/end_user/government/investor/platformer/community"
+            f"注意: '{service}'自体はシミュレーション対象なのでエージェントにしないでください。\n\n"
+            "各エージェントにheadcount（組織規模）とpersonality（意思決定傾向）を設定:\n"
+            '{"agents":[{"name":"名前","stakeholder_type":"end_user",'
+            '"description":"日本語で役割・態度・立場を具体的に説明",'
+            '"headcount":5000,'
+            '"personality":{"conservatism":0.5,"bandwagon":0.5,"overconfidence":0.5,'
+            '"sunk_cost_bias":0.5,"info_sensitivity":0.5,"noise":0.1,'
+            '"description":"このセグメントの特徴を日本語で"}}]}\n\n'
+            "stakeholder_type: enterprise/end_user/government/investor/platformer/community\n"
+            "headcount目安: エンドユーザー層=1000-10000, 大企業=5000-100000, "
+            "スタートアップ=10-100, 行政=500, 投資家=30, コミュニティ=200"
         )
 
         try:

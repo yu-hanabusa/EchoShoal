@@ -143,7 +143,7 @@ class TestBaseAgent:
             service_name="TestService",
         )
         prompt = agent._build_decision_prompt(market)
-        assert "ラウンド 5" in prompt
+        assert "5ヶ月目" in prompt
         assert "TestService" in prompt
 
     def test_improve_capability(self):

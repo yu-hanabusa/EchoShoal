@@ -73,7 +73,6 @@ class SimulationEngine:
         self._enriched_scenario = enriched_scenario
         self._scenario_summary = enriched_scenario.context_summary if enriched_scenario else ""
         self._initial_relationships: list[dict[str, str]] = []
-        self._total_rounds: int = 0
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """Run the full simulation."""
@@ -183,7 +182,7 @@ class SimulationEngine:
                     rag_context += intra_round
 
                 # LLM意思決定（性格バイアス + ノイズ注入済み）
-                actions = await agent.decide_actions(self.market, rag_context=rag_context, total_rounds=self._total_rounds)
+                actions = await agent.decide_actions(self.market, rag_context=rag_context)
                 self._llm_call_count += 1
 
                 # 行動を適用

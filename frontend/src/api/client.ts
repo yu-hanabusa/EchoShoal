@@ -3,6 +3,7 @@
 import type {
   DocumentInfo,
   JobInfo,
+  PaginatedResponse,
   PredictionResult,
   ProcessResult,
   SimulationReport,
@@ -22,9 +23,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** シミュレーション一覧を取得 */
-export async function listSimulations(): Promise<JobInfo[]> {
-  return request("/simulations/");
+/** シミュレーション一覧を取得（ページネーション対応） */
+export async function listSimulations(
+  skip = 0,
+  limit = 20,
+): Promise<PaginatedResponse<JobInfo>> {
+  return request(`/simulations/?skip=${skip}&limit=${limit}`);
 }
 
 /** このシミュレーション用の追加文書をアップロード */

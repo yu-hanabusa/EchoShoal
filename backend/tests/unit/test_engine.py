@@ -15,7 +15,7 @@ class StubAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["adopt_service", "upskill"]
 
-    async def decide_actions(self, market: ServiceMarketState, rag_context: str = "", total_rounds: int = 0) -> list[AgentAction]:
+    async def decide_actions(self, market: ServiceMarketState, rag_context: str = "") -> list[AgentAction]:
         return [
             AgentAction(
                 agent_id=self.id,

@@ -17,6 +17,15 @@ class ParsedDocument(BaseModel):
     source: str = Field(default="", description="ユーザーが指定するソース名（例: IPA白書2024）")
 
 
+class ExtractedRelationship(BaseModel):
+    """文書から抽出されたエンティティ間の関係."""
+
+    source: str
+    target: str
+    relation_type: str
+    confidence: float = 1.0
+
+
 class ProcessResult(BaseModel):
     """文書処理結果のサマリー."""
 
@@ -28,6 +37,8 @@ class ProcessResult(BaseModel):
     policies: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     new_nodes_created: int = 0
+    relationships: list[ExtractedRelationship] = Field(default_factory=list)
+    relationships_stored: int = 0
 
 
 class DocumentInfo(BaseModel):
