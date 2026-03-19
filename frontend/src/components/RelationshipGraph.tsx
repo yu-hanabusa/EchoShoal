@@ -3,7 +3,24 @@ import { forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, f
 import { select } from "d3-selection";
 import { drag as d3Drag } from "d3-drag";
 import { zoom as d3Zoom } from "d3-zoom";
-import type { RoundResult, AgentSummary, Relationship } from "../api/types";
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  ResponsiveContainer,
+} from "recharts";
+import type { RoundResult, AgentSummary, Relationship, AgentPersonality, SocialPost } from "../api/types";
+import SocialFeed from "./SocialFeed";
+
+const PERSONALITY_LABELS: Record<string, string> = {
+  conservatism: "保守性",
+  bandwagon: "同調性",
+  overconfidence: "過信度",
+  sunk_cost_bias: "サンクコスト",
+  info_sensitivity: "情報感度",
+  noise: "ノイズ",
+};
 
 /** アクションタイプを日本語に変換 */
 const ACTION_LABELS: Record<string, string> = {
@@ -25,7 +42,6 @@ const ACTION_LABELS: Record<string, string> = {
   dislike: "低評価",
 };
 
-/** 投稿内容をクリーンアップ */
 /** 内部アクション（ユーザーに見せる必要がないもの） */
 const HIDDEN_ACTIONS = new Set([
   "refresh", "sign_up", "login", "logout", "update_profile",
@@ -34,59 +50,119 @@ const HIDDEN_ACTIONS = new Set([
 /** 投稿内容をクリーンアップ */
 function cleanDescription(raw: string): string {
   let s = raw;
-  // タグ類
   s = s.replace(/\(Impact:\s*[^)]*\)/gi, "");
   s = s.replace(/\[MARKET EVENT\][^\n]*/gi, "");
   s = s.replace(/\[COMMENT\]/gi, "");
   s = s.replace(/\[SEED\]/gi, "");
-  // 英語テンプレート
   s = s.replace(/New service alert:[^\n]*/gi, "");
-  // JSON文字列全体 {"key": ...} (ネストなし)
   s = s.replace(/\{[^{}]*\}/g, "");
-  // Unicodeエスケープ
   s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
-  // rawアクション名の行
   s = s.replace(/^(sign_up|refresh|login|logout|create_post|like|dislike|follow|unfollow|market_research|post_opinion|comment)\s*$/gm, "");
-  // 残った空行
   s = s.replace(/\n{2,}/g, "\n").trim();
   return s;
 }
 
-const AGENT_COLORS = [
-  "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1",
-  "#14b8a6", "#e879f9", "#78716c", "#fb923c", "#a3e635",
-];
+/*
+ * 関係タイプを4カテゴリに集約
+ * 色はデザインシステムの意味的カラーに準拠:
+ *   cooperative → positive (協力・成長)
+ *   competitive → negative (競争・脅威)
+ *   regulatory  → caution  (規制・注意)
+ *   neutral     → neutral  (観察・中立)
+ */
+type RelationCategory = "cooperative" | "competitive" | "regulatory" | "neutral";
 
-const RELATION_COLORS: Record<string, string> = {
-  competitor: "#ef4444", partner: "#10b981", investor: "#f59e0b",
-  regulator: "#6366f1", acquirer: "#ec4899", user: "#3b82f6",
-  advocate: "#34d399", critic: "#f97316", former_user: "#9ca3af",
-  interaction: "#d1d5db",
-  interest: "#60a5fa", discussion: "#a78bfa", amplification: "#fbbf24",
-  support: "#34d399", opposition: "#ef4444", reference: "#06b6d4",
+const CATEGORY_COLORS: Record<RelationCategory, string> = {
+  cooperative: "#059669", // --positive
+  competitive: "#e11d48", // --negative
+  regulatory:  "#d97706", // --caution
+  neutral:     "#64748b", // --neutral
 };
 
-const RELATION_LABELS: Record<string, string> = {
-  competitor: "競合", partner: "提携", investor: "投資",
-  regulator: "規制", acquirer: "買収", user: "利用",
-  advocate: "推薦", critic: "批判", former_user: "離脱",
-  interaction: "影響",
-  interest: "関心", discussion: "議論", amplification: "拡散",
-  support: "支持", opposition: "反対", reference: "引用",
+const CATEGORY_LABELS: Record<RelationCategory, string> = {
+  cooperative: "協力",
+  competitive: "競争",
+  regulatory:  "規制",
+  neutral:     "観察",
 };
+
+const RELATION_TO_CATEGORY: Record<string, RelationCategory> = {
+  partner: "cooperative", investor: "cooperative", advocate: "cooperative",
+  support: "cooperative", amplification: "cooperative",
+  competitor: "competitive", acquirer: "competitive", opposition: "competitive",
+  critic: "competitive",
+  regulator: "regulatory",
+  user: "neutral", former_user: "neutral", interaction: "neutral",
+  interest: "neutral", discussion: "neutral", reference: "neutral",
+};
+
+function getCategory(type: string): RelationCategory {
+  return RELATION_TO_CATEGORY[type] || "neutral";
+}
+
+function PersonaAccordion({ agent }: { agent: AgentSummary }) {
+  const [open, setOpen] = useState(false);
+  const personality = agent.personality;
+  if (!personality) return null;
+
+  const radarData = Object.entries(PERSONALITY_LABELS).map(([key, label]) => ({
+    axis: label,
+    value: personality[key as keyof AgentPersonality] as number,
+  }));
+
+  return (
+    <div className="pt-2 border-t border-border">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[10px] font-medium text-text-tertiary hover:text-text-secondary w-full text-left py-1"
+      >
+        <span className="transition-transform" style={{ display: "inline-block", transform: open ? "rotate(90deg)" : "none" }}>▸</span>
+        ペルソナ詳細
+      </button>
+      {open && (
+        <div className="mt-1">
+          <div className="w-full" style={{ height: 180 }}>
+            <ResponsiveContainer>
+              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
+                <PolarGrid stroke="#e2e8f0" />
+                <PolarAngleAxis dataKey="axis" tick={{ fontSize: 9, fill: "#64748b" }} />
+                <Radar
+                  dataKey="value"
+                  stroke="#4f46e5"
+                  fill="#4f46e5"
+                  fillOpacity={0.2}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          {personality.description && (
+            <p className="text-[10px] text-text-secondary leading-relaxed mt-1 mb-2">
+              {personality.description}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-text-tertiary">
+            <div>組織規模: <span className="text-text-secondary font-medium">{agent.headcount > 0 ? `${agent.headcount.toLocaleString()}名` : "—"}</span></div>
+            <div>収益: <span className="text-text-secondary font-medium">{agent.revenue > 0 ? `${Math.round(agent.revenue).toLocaleString()}万円/月` : "—"}</span></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   rounds: RoundResult[];
   agents: AgentSummary[];
   serviceName?: string;
   initialRelationships?: Relationship[];
+  socialFeed?: SocialPost[];
 }
 
 interface Edge {
   from: string;
   to: string;
   type: string;
+  category: RelationCategory;
   round: number;
   weight: number;
 }
@@ -99,33 +175,27 @@ interface SimNode {
   vy?: number;
   fx?: number | null;
   fy?: number | null;
-  color: string;
   isTarget: boolean;
-  hasAction: boolean;
 }
 
 interface SimLink {
   source: string | SimNode;
   target: string | SimNode;
   type: string;
+  category: RelationCategory;
   weight: number;
 }
 
 const WIDTH = 700;
 const HEIGHT = 500;
 
-export default function RelationshipGraph({ rounds, agents, serviceName, initialRelationships }: Props) {
+export default function RelationshipGraph({ rounds, agents, serviceName, initialRelationships, socialFeed }: Props) {
   const totalRounds = rounds.length;
   const [selectedRound, setSelectedRound] = useState(totalRounds);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [feedOpen, setFeedOpen] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<ReturnType<typeof forceSimulation<SimNode>> | null>(null);
-
-  const agentColorMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    agents.forEach((a, i) => { map[a.name] = AGENT_COLORS[i % AGENT_COLORS.length]; });
-    return map;
-  }, [agents]);
 
   const TYPE_MAP: Record<string, string> = useMemo(() => ({
     build_competitor: "competitor", launch_competing_product: "competitor",
@@ -146,15 +216,13 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
   const allEdges = useMemo(() => {
     const edgeMap = new Map<string, Edge>();
 
-    // 1. 初期関係（round 0）
     if (initialRelationships) {
       for (const r of initialRelationships) {
         const key = `${r.from}→${r.to}→${r.type}`;
-        edgeMap.set(key, { from: r.from, to: r.to, type: r.type, round: 0, weight: r.weight || 1 });
+        edgeMap.set(key, { from: r.from, to: r.to, type: r.type, category: getCategory(r.type), round: 0, weight: r.weight || 1 });
       }
     }
 
-    // 2. アクションベースのエッジ（reacting_to）
     for (const r of rounds) {
       for (const a of r.actions_taken) {
         if (a.reacting_to) {
@@ -165,13 +233,12 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
             existing.weight += 1;
             existing.round = Math.max(existing.round, r.round_number);
           } else {
-            edgeMap.set(key, { from: a.agent, to: a.reacting_to, type: relType, round: r.round_number, weight: 1 });
+            edgeMap.set(key, { from: a.agent, to: a.reacting_to, type: relType, category: getCategory(relType), round: r.round_number, weight: 1 });
           }
         }
       }
     }
 
-    // 3. 間接エッジ（同一ラウンドで複数エージェントが同じ対象に反応）
     for (const r of rounds) {
       const targetGroups = new Map<string, string[]>();
       for (const a of r.actions_taken) {
@@ -187,7 +254,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
           for (let j = i + 1; j < reactors.length; j++) {
             const key = `${reactors[i]}→${reactors[j]}→discussion`;
             if (!edgeMap.has(key) && !edgeMap.has(`${reactors[j]}→${reactors[i]}→discussion`)) {
-              edgeMap.set(key, { from: reactors[i], to: reactors[j], type: "discussion", round: r.round_number, weight: 1 });
+              edgeMap.set(key, { from: reactors[i], to: reactors[j], type: "discussion", category: "neutral", round: r.round_number, weight: 1 });
             }
           }
         }
@@ -197,23 +264,20 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     return Array.from(edgeMap.values());
   }, [rounds, TYPE_MAP, initialRelationships]);
 
-  // 選択ラウンドまでの登場エージェント（対象サービスは常に最初から表示）
+  // 選択ラウンドまでの登場エージェント
   const appearedAgents = useMemo(() => {
     const appeared = new Set<string>();
-    // 対象サービスは常に表示
     const sn = (serviceName || "").toLowerCase();
     if (sn) {
       const target = agents.find((a) => a.name.toLowerCase() === sn);
       if (target) appeared.add(target.name);
     }
-    // 初期関係のエージェントも表示
     if (initialRelationships) {
       for (const r of initialRelationships) {
         appeared.add(r.from);
         appeared.add(r.to);
       }
     }
-    // アクションベースの登場
     for (const r of rounds) {
       if (r.round_number > selectedRound) break;
       for (const a of r.actions_taken) {
@@ -237,15 +301,23 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     return rounds.find((r) => r.round_number === selectedRound)?.actions_taken || [];
   }, [rounds, selectedRound]);
 
-  const roundNarrative = rounds.find((r) => r.round_number === selectedRound)?.summary || "";
+  // 今月アクティブなエージェント
+  const activeAgentsThisRound = useMemo(() => {
+    const active = new Set<string>();
+    for (const a of roundActions) {
+      if (!HIDDEN_ACTIONS.has(a.type)) active.add(a.agent);
+    }
+    return active;
+  }, [roundActions]);
 
-  // 全エージェント名（simulation全体で登場する）
+  const roundNarrative = (rounds.find((r) => r.round_number === selectedRound)?.summary || "")
+    .replace(/ラウンド\s*(\d+)/g, "$1ヶ月目")
+    .replace(/[Rr]ound\s*(\d+)/g, "$1ヶ月目");
+
+  // 全エージェント名
   const allAgentNames = useMemo(() => {
     const names = new Set<string>();
-    // 対象サービスを常にセンターノードとして追加
-    if (serviceName) {
-      names.add(serviceName);
-    }
+    if (serviceName) names.add(serviceName);
     if (initialRelationships) {
       for (const r of initialRelationships) { names.add(r.from); names.add(r.to); }
     }
@@ -256,9 +328,9 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       }
     }
     return Array.from(names);
-  }, [rounds, serviceName, agents, initialRelationships]);
+  }, [rounds, serviceName, initialRelationships]);
 
-  // D3 force simulation — 初回のみ生成、全ノード/全エッジを含む
+  // D3 force simulation
   const initGraph = useCallback(() => {
     if (!svgRef.current) return;
 
@@ -266,40 +338,39 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     svg.selectAll("*").remove();
 
     const sn = (serviceName || "").toLowerCase();
+    const nodeCount = allAgentNames.length;
 
-    // 全ノード
     const nodes: SimNode[] = allAgentNames.map((name) => ({
       id: name,
       x: WIDTH / 2 + (Math.random() - 0.5) * 300,
       y: HEIGHT / 2 + (Math.random() - 0.5) * 300,
-      color: agentColorMap[name] || "#94a3b8",
       isTarget: sn ? name.toLowerCase() === sn : false,
-      hasAction: false,
     }));
 
-    // 全エッジ
     const nodeIds = new Set(nodes.map((n) => n.id));
     const links: SimLink[] = allEdges
       .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
-      .map((e) => ({ source: e.from, target: e.to, type: e.type, weight: e.weight }));
+      .map((e) => ({ source: e.from, target: e.to, type: e.type, category: e.category, weight: e.weight }));
 
     if (nodes.length === 0) {
       svg.append("text")
         .attr("x", WIDTH / 2).attr("y", HEIGHT / 2)
         .attr("text-anchor", "middle").attr("font-size", 13).attr("fill", "#94a3b8")
-        .text("データがありません");
+        .text("シミュレーションデータがありません");
       return;
     }
 
-    // Force simulation
+    // ノード数に応じた反発力
+    const chargeStrength = nodeCount > 15 ? -250 : nodeCount > 8 ? -350 : -450;
+
     const simulation = forceSimulation<SimNode>(nodes)
       .force("link", forceLink<SimNode, SimLink>(links)
         .id((d) => d.id)
-        .distance((d) => 120 + ((d as SimLink).weight - 1) * 30)
+        .distance(120)
       )
-      .force("charge", forceManyBody<SimNode>().strength(-350))
+      .force("charge", forceManyBody<SimNode>().strength(chargeStrength))
       .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
-      .force("collide", forceCollide<SimNode>(40))
+      .force("collide", forceCollide<SimNode>(35))
       .force("x", forceX<SimNode>(WIDTH / 2).strength(0.04))
       .force("y", forceY<SimNode>(HEIGHT / 2).strength(0.04));
 
@@ -313,21 +384,22 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
       .scaleExtent([0.3, 3])
       .on("zoom", (event) => { g.attr("transform", event.transform); }));
 
-    // エッジ
+    // エッジ — 全て同一色。関係の種類は詳細パネルで表示
     g.append("g").attr("class", "links").selectAll("line")
       .data(links).join("line")
-      .attr("stroke", (d) => RELATION_COLORS[d.type] || "#d1d5db")
-      .attr("stroke-width", (d) => Math.min(d.weight + 1, 5))
-      .attr("stroke-opacity", 0);
+      .attr("stroke", "#94a3b8")
+      .attr("stroke-width", 1)
+      .attr("stroke-opacity", 0)
+      .attr("stroke-dasharray", "3 3");
 
     // ノード
     const nodeEls = g.append("g").attr("class", "nodes")
       .selectAll<SVGCircleElement, SimNode>("circle")
       .data(nodes).join("circle")
-      .attr("r", (d) => d.isTarget ? 28 : 18)
-      .attr("fill", (d) => d.color)
-      .attr("stroke", (d) => d.isTarget ? "#1e293b" : "#fff")
-      .attr("stroke-width", (d) => d.isTarget ? 3 : 2)
+      .attr("r", (d) => d.isTarget ? 24 : 14)
+      .attr("fill", (d) => d.isTarget ? "#4f46e5" : "#475569")
+      .attr("stroke", (d) => d.isTarget ? "#312e81" : "#e2e8f0")
+      .attr("stroke-width", (d) => d.isTarget ? 2.5 : 1.5)
       .attr("opacity", 0)
       .style("cursor", "pointer")
       .on("click", (_event, d) => { setSelectedAgent((prev) => prev === d.id ? null : d.id); });
@@ -344,19 +416,19 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
         if (!d.isTarget) { d.fx = null; d.fy = null; }
       }));
 
-    // ラベル
+    // ラベル — 対象サービスのみ常時表示、他はupdateVisibilityで制御
     g.append("g").attr("class", "node-labels").selectAll("text")
       .data(nodes).join("text")
       .attr("text-anchor", "middle")
-      .attr("font-size", (d) => d.isTarget ? 11 : 10)
+      .attr("font-size", (d) => d.isTarget ? 11 : 9)
       .attr("font-weight", (d) => d.isTarget ? 700 : 500)
-      .attr("fill", "#334155").attr("opacity", 0)
-      .text((d) => d.id.length > 12 ? d.id.slice(0, 12) + ".." : d.id);
+      .attr("fill", "#334155")
+      .attr("opacity", 0)
+      .text((d) => d.id.length > 14 ? d.id.slice(0, 14) + ".." : d.id);
 
     // Tick
     simulation.on("tick", () => {
-      const linkEls = g.select(".links").selectAll<SVGLineElement, SimLink>("line");
-      linkEls
+      g.select(".links").selectAll<SVGLineElement, SimLink>("line")
         .attr("x1", (d) => (d.source as SimNode).x).attr("y1", (d) => (d.source as SimNode).y)
         .attr("x2", (d) => (d.target as SimNode).x).attr("y2", (d) => (d.target as SimNode).y);
 
@@ -364,9 +436,9 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
         .attr("cx", (d) => d.x).attr("cy", (d) => d.y);
 
       g.select(".node-labels").selectAll<SVGTextElement, SimNode>("text")
-        .attr("x", (d) => d.x).attr("y", (d) => d.y + (d.isTarget ? 38 : 28));
+        .attr("x", (d) => d.x).attr("y", (d) => d.y + (d.isTarget ? 34 : 24));
     });
-  }, [allAgentNames, allEdges, agentColorMap, serviceName]);
+  }, [allAgentNames, allEdges, serviceName]);
 
   // 初回のみsimulation生成
   useEffect(() => {
@@ -374,7 +446,7 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
     return () => { simulationRef.current?.stop(); };
   }, [initGraph]);
 
-  // ラウンド変更時: ノード/エッジの表示/非表示だけ切り替え（simulationは維持）
+  // ラウンド/選択変更時: ノード/エッジの表示を更新
   useEffect(() => {
     if (!svgRef.current) return;
     const svg = select(svgRef.current);
@@ -383,142 +455,267 @@ export default function RelationshipGraph({ rounds, agents, serviceName, initial
 
     const appearedSet = new Set(appearedAgents);
     const visibleEdgeKeys = new Set(visibleEdges.map((e) => `${e.from}→${e.to}→${e.type}`));
-    // ノード表示切り替え
+    const hasSelection = !!selectedAgent;
+    const relatedToSelected = new Set<string>();
+    if (hasSelection) {
+      for (const e of visibleEdges) {
+        if (e.from === selectedAgent || e.to === selectedAgent) {
+          relatedToSelected.add(e.from);
+          relatedToSelected.add(e.to);
+        }
+      }
+    }
+
+    // ノード表示
     g.select(".nodes").selectAll<SVGCircleElement, SimNode>("circle")
-      .attr("opacity", (d) => appearedSet.has(d.id) ? 1 : 0);
+      .attr("opacity", (d) => {
+        if (!appearedSet.has(d.id)) return 0;
+        if (d.isTarget) return 1;
+        if (hasSelection) {
+          if (d.id === selectedAgent) return 1;
+          if (relatedToSelected.has(d.id)) return 0.8;
+          return 0.15;
+        }
+        // アクティブ/非アクティブの区別
+        return activeAgentsThisRound.has(d.id) ? 1 : 0.4;
+      })
+      .attr("r", (d) => {
+        if (d.isTarget) return 24;
+        if (hasSelection && d.id === selectedAgent) return 18;
+        return activeAgentsThisRound.has(d.id) ? 14 : 10;
+      })
+      .attr("fill", (d) => {
+        if (d.isTarget) return "#4f46e5"; // --interactive
+        if (hasSelection && d.id === selectedAgent) return "#0f172a"; // --text-primary
+        return activeAgentsThisRound.has(d.id) ? "#475569" : "#94a3b8";
+      })
+      .attr("stroke", (d) => {
+        if (d.isTarget) return "#312e81";
+        if (hasSelection && d.id === selectedAgent) return "#4f46e5";
+        return "#e2e8f0";
+      })
+      .attr("stroke-width", (d) => {
+        if (d.isTarget) return 2.5;
+        if (hasSelection && d.id === selectedAgent) return 2;
+        return 1.5;
+      });
 
+    // ラベル表示 — 対象サービスと選択エージェントは常時、他は選択時の関連ノードのみ
     g.select(".node-labels").selectAll<SVGTextElement, SimNode>("text")
-      .attr("opacity", (d) => appearedSet.has(d.id) ? 1 : 0);
+      .attr("opacity", (d) => {
+        if (!appearedSet.has(d.id)) return 0;
+        if (d.isTarget) return 1;
+        if (hasSelection) {
+          if (d.id === selectedAgent) return 1;
+          if (relatedToSelected.has(d.id)) return 0.8;
+          return 0;
+        }
+        return activeAgentsThisRound.has(d.id) ? 0.9 : 0;
+      });
 
-    // エッジ表示切り替え
+    // エッジ表示 — デフォルト点線薄、選択時関連は実線強調
     g.select(".links").selectAll<SVGLineElement, SimLink>("line")
-      .attr("stroke-opacity", (d) => {
+      .each(function (d) {
+        const el = select(this);
         const s = typeof d.source === "object" ? d.source.id : d.source;
         const t = typeof d.target === "object" ? d.target.id : d.target;
         const key = `${s}→${t}→${d.type}`;
-        return visibleEdgeKeys.has(key) ? 0.6 : 0;
+        const isVisible = visibleEdgeKeys.has(key);
+
+        if (!isVisible) {
+          el.attr("stroke-opacity", 0);
+          return;
+        }
+
+        const isRelated = hasSelection && (s === selectedAgent || t === selectedAgent);
+
+        if (isRelated) {
+          // 選択エージェントの関連エッジ: 実線、強調（色はカテゴリ別）
+          el.attr("stroke", CATEGORY_COLORS[d.category])
+            .attr("stroke-opacity", 0.6)
+            .attr("stroke-width", 1.5)
+            .attr("stroke-dasharray", null);
+        } else if (hasSelection) {
+          // 選択中だが無関係: さらに薄く
+          el.attr("stroke", "#94a3b8")
+            .attr("stroke-opacity", 0.08)
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "3 3");
+        } else {
+          // デフォルト: ニュートラル点線、薄い
+          el.attr("stroke", "#94a3b8")
+            .attr("stroke-opacity", 0.2)
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "3 3");
+        }
       });
 
-  }, [appearedAgents, visibleEdges, roundActions]);
+  }, [appearedAgents, visibleEdges, roundActions, selectedAgent, activeAgentsThisRound]);
 
   // 選択エージェントの情報
   const selectedAgentInfo = agents.find((a) => a.name === selectedAgent);
   const selectedAgentActions = roundActions.filter((a) => a.agent === selectedAgent);
 
+  // 選択エージェントの関係一覧
+  const selectedRelations = useMemo(() => {
+    if (!selectedAgent) return [];
+    return visibleEdges.filter((e) => e.from === selectedAgent || e.to === selectedAgent);
+  }, [visibleEdges, selectedAgent]);
+
+  const showSlider = totalRounds > 1;
+
   return (
     <div className="bg-surface-0 rounded-lg border border-border p-5">
+      {/* ヘッダー */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-text-primary">ステークホルダー関係図</h3>
         <span className="text-xs text-text-tertiary">
-          {selectedRound}ヶ月目 / {totalRounds}ヶ月 — {appearedAgents.length}ステークホルダー登場
+          {selectedRound}ヶ月目 / {totalRounds}ヶ月
         </span>
       </div>
 
       {/* タイムスライダー */}
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          onClick={() => { setSelectedRound(Math.max(1, selectedRound - 1)); setSelectedAgent(null); }}
-          className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border"
-        >◀</button>
-        <input
-          type="range" min={1} max={totalRounds} value={selectedRound}
-          onChange={(e) => { setSelectedRound(Number(e.target.value)); setSelectedAgent(null); }}
-          className="flex-1"
-        />
-        <button
-          onClick={() => { setSelectedRound(Math.min(totalRounds, selectedRound + 1)); setSelectedAgent(null); }}
-          className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border"
-        >▶</button>
-      </div>
-
-      {/* D3 Force Directed Graph */}
-      <div className="rounded-lg border border-border overflow-hidden bg-surface-1">
-        <svg ref={svgRef} width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} />
-      </div>
-
-      {/* 凡例 */}
-      <div className="flex flex-wrap gap-3 mt-3">
-        {Object.entries(RELATION_LABELS)
-          .filter(([k]) => visibleEdges.some((e) => e.type === k))
-          .map(([type, label]) => (
-            <div key={type} className="flex items-center gap-1 text-xs text-text-secondary">
-              <span className="inline-block w-3 h-0.5" style={{ backgroundColor: RELATION_COLORS[type] }} />
-              {label}
-            </div>
-          ))}
-      </div>
-
-      {/* ラウンドナラティブ */}
-      {roundNarrative && (
-        <p className="text-sm text-text-secondary mt-3 italic border-l-2 border-interactive pl-3">
-          {roundNarrative}
-        </p>
+      {showSlider && (
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setSelectedRound(Math.max(1, selectedRound - 1))}
+            disabled={selectedRound <= 1}
+            className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border disabled:opacity-30 disabled:cursor-default"
+          >◀</button>
+          <input
+            type="range" min={1} max={totalRounds} value={selectedRound}
+            onChange={(e) => setSelectedRound(Number(e.target.value))}
+            className="flex-1"
+          />
+          <button
+            onClick={() => setSelectedRound(Math.min(totalRounds, selectedRound + 1))}
+            disabled={selectedRound >= totalRounds}
+            className="text-xs px-2 py-1 rounded bg-surface-2 text-text-secondary hover:bg-border disabled:opacity-30 disabled:cursor-default"
+          >▶</button>
+        </div>
       )}
 
-      {/* 選択エージェントの詳細パネル */}
-      {selectedAgent && (
-        <div className="mt-4 bg-surface-1 rounded-lg p-4 border border-border">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-3 h-3 rounded-full"
-                style={{ backgroundColor: agentColorMap[selectedAgent] || "#94a3b8" }} />
-              <h4 className="text-sm font-semibold text-text-primary">{selectedAgent}</h4>
-            </div>
-            <button onClick={() => setSelectedAgent(null)}
-              className="text-xs text-text-tertiary hover:text-text-secondary">閉じる</button>
+      {/* メインエリア: グラフ + 詳細パネル横並び */}
+      <div className="flex gap-4">
+        {/* 左: グラフ (2/3) */}
+        <div className="flex-[2] min-w-0">
+          <div className="rounded-lg border border-border overflow-hidden bg-surface-1 relative">
+            <svg ref={svgRef} width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} />
           </div>
 
-          {selectedAgentInfo?.description && (
-            <p className="text-xs text-text-secondary mb-3">{selectedAgentInfo.description}</p>
+          {/* ナラティブ */}
+          {roundNarrative && (
+            <p className="text-xs text-text-tertiary mt-2 pl-3 border-l-2 border-border leading-relaxed">
+              {roundNarrative}
+            </p>
           )}
+        </div>
 
-          {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).length > 0 ? (
-            <div>
-              <p className="text-xs font-medium text-text-tertiary mb-1">{selectedRound}ヶ月目の行動:</p>
-              {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).map((a, i) => {
-                const desc = cleanDescription(a.description);
-                if (!desc) return null;
-                return (
-                <div key={i} className="flex items-start gap-2 text-sm py-1">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary shrink-0">
-                    {ACTION_LABELS[a.type] || a.type}
-                  </span>
-                  <span className="text-text-secondary">{desc}</span>
-                  {a.reacting_to && (
-                    <span className="text-xs text-interactive ml-1 shrink-0">
-                      ← {a.reacting_to}への反応
-                    </span>
-                  )}
+        {/* 右: 詳細パネル (1/3) */}
+        <div className="flex-1 min-w-[200px] max-w-[280px]">
+          {selectedAgent ? (
+            <div className="bg-surface-1 rounded-lg p-3 border border-border h-full overflow-y-auto max-h-[520px]">
+              {/* エージェント名 */}
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-text-primary truncate pr-2">{selectedAgent}</h4>
+                <button onClick={() => setSelectedAgent(null)}
+                  className="text-[10px] text-text-tertiary hover:text-text-secondary shrink-0">✕</button>
+              </div>
+
+              {/* タイプ表示 */}
+              {selectedAgentInfo?.stakeholder_type && (
+                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-tertiary mb-2">
+                  {selectedAgentInfo.stakeholder_type}
+                </span>
+              )}
+
+              {/* 説明 */}
+              {selectedAgentInfo?.description && (
+                <p className="text-xs text-text-secondary mb-3 leading-relaxed">{selectedAgentInfo.description}</p>
+              )}
+
+              {/* 今月の行動 */}
+              {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).length > 0 ? (
+                <div className="mb-3">
+                  <p className="text-[10px] font-medium text-text-tertiary mb-1">{selectedRound}ヶ月目の行動</p>
+                  <div className="space-y-1.5">
+                    {selectedAgentActions.filter((a) => !HIDDEN_ACTIONS.has(a.type)).map((a, i) => {
+                      const desc = cleanDescription(a.description);
+                      if (!desc) return null;
+                      return (
+                        <div key={i} className="text-xs">
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-surface-2 text-text-tertiary mr-1">
+                            {ACTION_LABELS[a.type] || a.type}
+                          </span>
+                          <span className="text-text-secondary">{desc}</span>
+                          {a.reacting_to && (
+                            <span className="text-[10px] text-interactive ml-1">← {a.reacting_to}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                );
-              })}
+              ) : (
+                <p className="text-[10px] text-text-tertiary mb-3">{selectedRound}ヶ月目は行動なし</p>
+              )}
+
+              {/* 関係 */}
+              {selectedRelations.length > 0 && (
+                <div className="pt-2 border-t border-border">
+                  <p className="text-[10px] font-medium text-text-tertiary mb-1">関係</p>
+                  <div className="space-y-0.5">
+                    {selectedRelations.map((rel, i) => {
+                      const other = rel.from === selectedAgent ? rel.to : rel.from;
+                      const direction = rel.from === selectedAgent ? "→" : "←";
+                      return (
+                        <div key={i} className="flex items-center gap-1.5 text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: CATEGORY_COLORS[rel.category] }} />
+                          <span className="text-text-secondary truncate">
+                            {direction} {other}
+                          </span>
+                          <span className="text-[10px] text-text-tertiary shrink-0">
+                            {CATEGORY_LABELS[rel.category]}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ペルソナ詳細（アコーディオン） */}
+              {selectedAgentInfo?.personality && (
+                <PersonaAccordion agent={selectedAgentInfo} />
+              )}
             </div>
           ) : (
-            <p className="text-xs text-text-tertiary">{selectedRound}ヶ月目は行動なし</p>
+            <div className="bg-surface-1 rounded-lg p-4 border border-border h-full flex items-center justify-center">
+              <p className="text-xs text-text-tertiary text-center">
+                ノードをクリックして<br />詳細を表示
+              </p>
+            </div>
           )}
+        </div>
+      </div>
 
-          {(() => {
-            const relations = visibleEdges.filter((e) => e.from === selectedAgent || e.to === selectedAgent);
-            if (relations.length === 0) return null;
-            return (
-              <div className="mt-3 pt-3 border-t border-border">
-                <p className="text-xs font-medium text-text-tertiary mb-1">関係:</p>
-                {relations.map((rel, i) => {
-                  const other = rel.from === selectedAgent ? rel.to : rel.from;
-                  const direction = rel.from === selectedAgent ? "→" : "←";
-                  return (
-                    <div key={i} className="flex items-center gap-2 text-xs py-0.5">
-                      <span className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: RELATION_COLORS[rel.type] }} />
-                      <span className="text-text-secondary">
-                        {direction} {other}（{RELATION_LABELS[rel.type]}）
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+      {/* ステークホルダーの議論（アコーディオン） */}
+      {socialFeed && socialFeed.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-border">
+          <button
+            onClick={() => setFeedOpen(!feedOpen)}
+            className="flex items-center gap-1.5 text-xs font-medium text-text-tertiary hover:text-text-secondary w-full text-left py-1"
+          >
+            <span className="transition-transform" style={{ display: "inline-block", transform: feedOpen ? "rotate(90deg)" : "none" }}>▸</span>
+            ステークホルダーの議論
+            <span className="text-[10px] text-text-tertiary ml-1">{socialFeed.length}件</span>
+          </button>
+          {feedOpen && (
+            <div className="mt-2">
+              <SocialFeed feed={socialFeed} agents={agents} />
+            </div>
+          )}
         </div>
       )}
     </div>

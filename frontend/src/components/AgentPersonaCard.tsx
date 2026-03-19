@@ -3,7 +3,6 @@ import {
   RadarChart,
   PolarGrid,
   PolarAngleAxis,
-  PolarRadiusAxis,
   ResponsiveContainer,
 } from "recharts";
 import type { AgentPersonality, AgentSummary } from "../api/types";
@@ -33,101 +32,59 @@ export default function AgentPersonaCard({ agent, onClose }: Props) {
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-      }}
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div
-        style={{
-          backgroundColor: "white",
-          borderRadius: "8px",
-          padding: "2rem",
-          maxWidth: "500px",
-          width: "90%",
-          maxHeight: "90vh",
-          overflowY: "auto",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-        }}
+        className="bg-surface-0 rounded-lg p-5 max-w-md w-[90%] max-h-[90vh] overflow-y-auto shadow-lg border border-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+        {/* ヘッダー */}
+        <div className="flex items-start justify-between mb-3">
           <div>
-            <h3 style={{ margin: 0, fontSize: "1.25rem" }}>{agent.name}</h3>
-            <span style={{
-              display: "inline-block",
-              padding: "0.125rem 0.5rem",
-              borderRadius: "9999px",
-              fontSize: "0.75rem",
-              backgroundColor: "#e0e7ff",
-              color: "#4338ca",
-              marginTop: "0.25rem",
-            }}>
-              {agent.type}
+            <h3 className="text-base font-bold text-text-primary">{agent.name}</h3>
+            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-tertiary mt-1">
+              {agent.stakeholder_type}
             </span>
           </div>
           <button
             onClick={onClose}
-            style={{
-              border: "none",
-              background: "none",
-              fontSize: "1.5rem",
-              cursor: "pointer",
-              color: "#9ca3af",
-              lineHeight: 1,
-            }}
-          >
-            x
-          </button>
+            className="text-text-tertiary hover:text-text-secondary text-lg leading-none"
+          >✕</button>
         </div>
 
+        {/* 説明 */}
         {agent.description && (
-          <p style={{ color: "#6b7280", fontSize: "0.875rem", margin: "0 0 1rem" }}>
-            {agent.description}
-          </p>
+          <p className="text-xs text-text-secondary leading-relaxed mb-3">{agent.description}</p>
         )}
 
-        <div style={{ width: "100%", height: "280px" }}>
+        {/* レーダーチャート */}
+        <div className="w-full" style={{ height: 220 }}>
           <ResponsiveContainer>
-            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-              <PolarGrid />
-              <PolarAngleAxis dataKey="axis" tick={{ fontSize: 12 }} />
-              <PolarRadiusAxis domain={[0, 1]} tick={{ fontSize: 10 }} />
+            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
+              <PolarGrid stroke="#e2e8f0" />
+              <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#64748b" }} />
               <Radar
                 dataKey="value"
                 stroke="#4f46e5"
                 fill="#4f46e5"
-                fillOpacity={0.3}
+                fillOpacity={0.2}
               />
             </RadarChart>
           </ResponsiveContainer>
         </div>
 
+        {/* パーソナリティ説明 */}
         {personality.description && (
-          <div style={{
-            marginTop: "1rem",
-            padding: "0.75rem",
-            backgroundColor: "#f8fafc",
-            borderRadius: "4px",
-            fontSize: "0.875rem",
-            color: "#475569",
-            lineHeight: 1.6,
-          }}>
+          <p className="text-xs text-text-secondary leading-relaxed mt-1 mb-3">
             {personality.description}
-          </div>
+          </p>
         )}
 
-        <div style={{ marginTop: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.8rem" }}>
-          <div>Revenue: <strong>{agent.revenue.toFixed(0)}</strong> /month</div>
-          <div>Headcount: <strong>{agent.headcount}</strong></div>
-          <div>Satisfaction: <strong>{(agent.satisfaction * 100).toFixed(0)}%</strong></div>
-          <div>Reputation: <strong>{(agent.reputation * 100).toFixed(0)}%</strong></div>
+        {/* 基本情報 */}
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-text-tertiary">
+          <div>組織規模: <span className="text-text-secondary font-medium">{agent.headcount > 0 ? `${agent.headcount.toLocaleString()}名` : "—"}</span></div>
+          <div>収益: <span className="text-text-secondary font-medium">{agent.revenue > 0 ? `${Math.round(agent.revenue).toLocaleString()}万円/月` : "—"}</span></div>
         </div>
       </div>
     </div>

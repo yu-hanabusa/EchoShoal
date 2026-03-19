@@ -426,3 +426,17 @@ class TestOASISEngineInterface:
         assert _map_oasis_action("do_nothing") == "observe"
         # Unknown actions pass through
         assert _map_oasis_action("unknown_action") == "unknown_action"
+
+    def test_truncate_at_sentence(self):
+        from app.oasis.simulation_runner import _truncate_at_sentence
+
+        # 短い文はそのまま
+        assert _truncate_at_sentence("短い文。", 500) == "短い文。"
+        # 文末で切る
+        text = "最初の文。次の文。最後の文。"
+        result = _truncate_at_sentence(text, 7)
+        assert result == "最初の文。"
+        # 文末記号がない場合はmax_lenで切る
+        assert _truncate_at_sentence("あ" * 600, 500) == "あ" * 500
+        # ！や？でも切れる
+        assert _truncate_at_sentence("質問ですか？回答です。", 8) == "質問ですか？"

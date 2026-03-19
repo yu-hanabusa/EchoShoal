@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SocialPost, AgentSummary } from "../api/types";
+import AgentPersonaCard from "./AgentPersonaCard";
 
 const STAKEHOLDER_LABELS: Record<string, string> = {
   enterprise: "企業", platformer: "プラットフォーマー", end_user: "ユーザー",
@@ -48,11 +49,16 @@ function getAgentColor(name: string): string {
 
 export default function SocialFeed({ feed, agents }: Props) {
   const agentTypeMap = new Map<string, string>();
+  const agentMap = new Map<string, AgentSummary>();
   if (agents) {
-    for (const a of agents) agentTypeMap.set(a.name, a.stakeholder_type);
+    for (const a of agents) {
+      agentTypeMap.set(a.name, a.stakeholder_type);
+      agentMap.set(a.name, a);
+    }
   }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
 
   if (!feed || feed.length === 0) {
     return null;
@@ -109,15 +115,21 @@ export default function SocialFeed({ feed, agents }: Props) {
             >
               {/* Post header */}
               <div className="flex items-center gap-2 mb-2">
-                <span
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                  style={{ backgroundColor: color }}
+                <button
+                  onClick={() => { const a = agentMap.get(post.author); if (a) setSelectedAgent(a); }}
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  title="ペルソナ詳細を表示"
                 >
-                  {post.author.charAt(0)}
-                </span>
-                <span className="text-sm font-medium text-text-primary">
-                  {post.author}
-                </span>
+                  <span
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                    style={{ backgroundColor: color }}
+                  >
+                    {post.author.charAt(0)}
+                  </span>
+                  <span className="text-sm font-medium text-text-primary">
+                    {post.author}
+                  </span>
+                </button>
                 {agentTypeMap.has(post.author) && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-tertiary">
                     {STAKEHOLDER_LABELS[agentTypeMap.get(post.author)!] || agentTypeMap.get(post.author)}
@@ -164,15 +176,21 @@ export default function SocialFeed({ feed, agents }: Props) {
                     return (
                       <div key={i} className="text-xs">
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span
-                            className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
-                            style={{ backgroundColor: commentColor }}
+                          <button
+                            onClick={() => { const a = agentMap.get(comment.author); if (a) setSelectedAgent(a); }}
+                            className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                            title="ペルソナ詳細を表示"
                           >
-                            {comment.author.charAt(0)}
-                          </span>
-                          <span className="font-medium text-text-primary">
-                            {comment.author}
-                          </span>
+                            <span
+                              className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
+                              style={{ backgroundColor: commentColor }}
+                            >
+                              {comment.author.charAt(0)}
+                            </span>
+                            <span className="font-medium text-text-primary">
+                              {comment.author}
+                            </span>
+                          </button>
                           {comment.likes > 0 && (
                             <span className="text-text-tertiary">
                               +{comment.likes}
@@ -191,6 +209,13 @@ export default function SocialFeed({ feed, agents }: Props) {
           );
         })}
       </div>
+
+      {selectedAgent && (
+        <AgentPersonaCard
+          agent={selectedAgent}
+          onClose={() => setSelectedAgent(null)}
+        />
+      )}
     </div>
   );
 }

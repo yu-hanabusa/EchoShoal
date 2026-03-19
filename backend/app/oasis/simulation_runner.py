@@ -29,6 +29,24 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, int], Coroutine[Any, Any, None]]
 
+# OASIS エージェント会話のトークン使用量を収集するためのモジュールレベル参照
+# シミュレーション実行中にセットされ、_jp_perform_action から参照される
+_active_token_tracker: Any | None = None
+_active_oasis_agent_map: dict[int, str] = {}  # OASIS agent_id -> agent name
+_active_round_number: int = 0
+
+
+def _truncate_at_sentence(text: str, max_len: int = 500) -> str:
+    """文末（。！？!?）で区切って切り詰める。区切りがなければmax_lenで切る。"""
+    if len(text) <= max_len:
+        return text
+    # max_len以内で最後の文末記号を探す
+    for i in range(max_len - 1, -1, -1):
+        if text[i] in "。！？!?\n":
+            return text[: i + 1]
+    # 文末記号が見つからなければmax_lenで切る
+    return text[:max_len]
+
 
 class OASISSimulationEngine:
     """OASISベースのシミュレーションエンジン.
@@ -69,14 +87,22 @@ class OASISSimulationEngine:
         self._agent_graph = None
         self._oasis_agents: dict[str, Any] = {}  # agent.id -> SocialAgent
         self._db_path = ""
-        self._round_timestamps: list[tuple[str, str]] = []  # (start, end) per round
+        self._round_post_ranges: list[tuple[int, int]] = []  # (first_post_id, last_post_id) per round
+        self._last_known_post_id: int = 0
+        self._last_known_trace_count: int = 0  # traceテーブルの既知件数（ラウンド区切り用）
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """OASIS環境でシミュレーションを実行する."""
+        global _active_token_tracker, _active_oasis_agent_map, _active_round_number
+
         rounds = num_rounds or (self.scenario.num_rounds if self.scenario else settings.default_rounds)
         rounds = min(rounds, settings.max_rounds)
 
         logger.info("OASISシミュレーション開始: %dラウンド, %dエージェント", rounds, len(self.agents))
+
+        # トークントラッカーをモジュールレベルにセット（OASIS会話のトラッキング用）
+        _active_token_tracker = self.llm.token_tracker
+        _active_oasis_agent_map = {}
 
         # 市場初期状態をLLMで推定
         if self._enriched_scenario:
@@ -88,8 +114,15 @@ class OASISSimulationEngine:
         # OASIS環境セットアップ
         await self._setup_oasis_environment()
 
+        # OASIS agent_id → エージェント名マッピングを構築
+        for es_id, oasis_agent in self._oasis_agents.items():
+            agent = next((a for a in self.agents if a.id == es_id), None)
+            if agent:
+                _active_oasis_agent_map[oasis_agent.agent_id] = agent.name
+
         try:
             for round_num in range(1, rounds + 1):
+                _active_round_number = round_num
                 result = await self._run_oasis_round(round_num)
                 self.results.append(result)
 
@@ -98,6 +131,10 @@ class OASISSimulationEngine:
 
         finally:
             await self._cleanup_oasis()
+            # モジュールレベル参照をクリア
+            _active_token_tracker = None
+            _active_oasis_agent_map = {}
+            _active_round_number = 0
 
         return self.results
 
@@ -108,6 +145,9 @@ class OASISSimulationEngine:
         from oasis.social_agent.agent import UserInfo
 
         from app.oasis.config import create_oasis_model, get_database_path
+
+        # --- OASISライブラリの英語プロンプトを日本語に上書き ---
+        self._patch_oasis_japanese()
         from app.oasis.profile_generator import agents_to_oasis_profiles, build_agent_graph
 
         # モデル作成
@@ -201,6 +241,10 @@ class OASISSimulationEngine:
         # シナリオのシード投稿を注入
         await self._inject_seed_posts()
 
+        # シード投稿後の境界を記録（ラウンド0）
+        self._last_known_post_id = self._get_max_post_id()
+        self._last_known_trace_count = self._get_trace_count()
+
         logger.info("OASIS環境セットアップ完了: %dエージェント", len(self._oasis_agents))
 
     @staticmethod
@@ -222,6 +266,103 @@ class OASISSimulationEngine:
             window_size=settings.oasis_message_window_size,
             agent_id=agent.agent_id,
         )
+
+    @staticmethod
+    def _patch_oasis_japanese() -> None:
+        """OASISライブラリの英語テンプレートを日本語に上書きする."""
+        from string import Template as StdTemplate
+
+        from oasis.social_agent.agent_environment import SocialEnvironment
+
+        SocialEnvironment.followers_env_template = StdTemplate(
+            "フォロワー数: $num_followers人"
+        )
+        SocialEnvironment.follows_env_template = StdTemplate(
+            "フォロー数: $num_follows人"
+        )
+        SocialEnvironment.posts_env_template = StdTemplate(
+            "タイムラインに以下の投稿があります: $posts"
+        )
+        SocialEnvironment.groups_env_template = StdTemplate(
+            "グループチャンネル一覧: $all_groups\n"
+            "参加済みグループ: $joined_groups\n"
+            "受信メッセージ: $messages\n"
+            "参加済みのグループにのみメッセージを送信できます。"
+        )
+        SocialEnvironment.env_template = StdTemplate(
+            "$groups_env\n"
+            "$posts_env\n"
+            "あなたのプロフィールと投稿内容に基づいて、"
+            "最も適切なアクションを選んでください。"
+            "「いいね」だけでなく、投稿やコメントも積極的に行ってください。"
+            "【重要】すべての発言は必ず日本語で行ってください。"
+        )
+
+        # perform_action_by_llm のユーザーメッセージを日本語化
+        import oasis.social_agent.agent as agent_module
+        from camel.messages import BaseMessage
+
+        async def _jp_perform_action(self: Any) -> Any:  # type: ignore[override]
+            from oasis.social_agent.agent import ALL_SOCIAL_ACTIONS, agent_log
+
+            env_prompt = await self.env.to_text_prompt()
+            user_msg = BaseMessage.make_user_message(
+                role_name="User",
+                content=(
+                    f"SNSの環境を観察して、適切なアクションを実行してください。"
+                    f"「いいね」だけでなく、投稿・コメント・リポストなど"
+                    f"多様なアクションを行ってください。"
+                    f"【重要】すべての発言は必ず日本語で行ってください。"
+                    f"\n\n現在のSNS環境:\n{env_prompt}"
+                ),
+            )
+            try:
+                agent_log.info(
+                    f"Agent {self.social_agent_id} observing environment: "
+                    f"{env_prompt}"
+                )
+                response = await self.astep(user_msg)
+
+                # トークン使用量をトラッカーに記録
+                if _active_token_tracker is not None:
+                    usage_dict = response.info.get("usage") or {}
+                    if usage_dict:
+                        from app.core.llm.token_tracker import TokenUsage
+                        from app.config import settings as _settings
+                        agent_name = _active_oasis_agent_map.get(
+                            self.social_agent_id, f"oasis_agent_{self.social_agent_id}"
+                        )
+                        usage = TokenUsage(
+                            input_tokens=usage_dict.get("prompt_tokens", 0),
+                            output_tokens=usage_dict.get("completion_tokens", 0),
+                            provider="ollama",
+                            model=_settings.ollama_model,
+                        )
+                        _active_token_tracker.record(
+                            usage=usage,
+                            task_type="oasis_conversation",
+                            round_number=_active_round_number,
+                            agent_name=agent_name,
+                        )
+
+                for tool_call in response.info["tool_calls"]:
+                    action_name = tool_call.tool_name
+                    args = tool_call.args
+                    agent_log.info(
+                        f"Agent {self.social_agent_id} performed "
+                        f"action: {action_name} with args: {args}"
+                    )
+                    if action_name not in ALL_SOCIAL_ACTIONS:
+                        agent_log.info(
+                            f"Agent {self.social_agent_id} get the result: "
+                            f"{tool_call.result}"
+                        )
+                    return response
+            except Exception as e:
+                agent_log.error(f"Agent {self.social_agent_id} error: {e}")
+                return e
+
+        agent_module.SocialAgent.perform_action_by_llm = _jp_perform_action  # type: ignore[assignment]
 
     def _build_agent_description(self, profile: dict[str, Any]) -> str:
         """OASISエージェントの説明文を構築する."""
@@ -295,7 +436,7 @@ class OASISSimulationEngine:
 
         seed_topics = [
             f"【新サービス情報】「{self.scenario.service_name}」が市場に参入します。"
-            f"概要: {self.scenario.description[:300]}",
+            f"概要: {_truncate_at_sentence(self.scenario.description, 500)}",
             f"【市場分析】「{self.scenario.service_name}」が業界にどのような影響を与えるか議論しましょう。"
             "各ステークホルダーの視点からご意見をお願いします。",
             f"「{self.scenario.service_name}」について調べています。"
@@ -319,9 +460,6 @@ class OASISSimulationEngine:
 
     async def _run_oasis_round(self, round_number: int) -> RoundResult:
         """1ラウンドのOASISシミュレーションを実行する."""
-        from datetime import datetime, timezone
-        round_start = datetime.now(timezone.utc).isoformat()
-
         self.market.round_number = round_number
         all_actions: list[dict[str, Any]] = []
         events: list[str] = []
@@ -353,8 +491,11 @@ class OASISSimulationEngine:
                 logger.exception("OASISステップ実行失敗: round=%d", round_number)
                 events.append(f"{round_number}ヶ月目: OASISステップ実行失敗")
 
-        # SQLiteからこのラウンドのアクションを取得
-        round_actions = self._extract_round_actions(round_number)
+        # SQLiteからこのラウンドのアクションを取得（traceオフセットで現ラウンド分のみ）
+        new_trace_count = self._get_trace_count()
+        round_trace_count = new_trace_count - self._last_known_trace_count
+        round_actions = self._extract_round_actions(round_number, round_trace_count)
+        self._last_known_trace_count = new_trace_count
         all_actions.extend(round_actions)
 
         # アクションログから市場ディメンションを更新
@@ -368,16 +509,17 @@ class OASISSimulationEngine:
             )
             events.extend(event_effects)
 
+        # ラウンドのpost_id範囲を記録
+        new_max = self._get_max_post_id()
+        self._round_post_ranges.append((self._last_known_post_id + 1, new_max))
+        self._last_known_post_id = new_max
+
         # ナラティブ生成
         narrative = ""
         if len(all_actions) >= 2 or events:
             narrative = await self._generate_round_narrative(
                 round_number, all_actions, events
             )
-
-        # ラウンドのタイムスタンプ範囲を記録
-        round_end = datetime.now(timezone.utc).isoformat()
-        self._round_timestamps.append((round_start, round_end))
 
         return RoundResult(
             round_number=round_number,
@@ -387,18 +529,64 @@ class OASISSimulationEngine:
             summary=narrative,
         )
 
-    def _timestamp_to_round(self, timestamp: str) -> int | None:
-        """タイムスタンプからラウンド番号を推定する."""
-        if not self._round_timestamps or not timestamp:
+    def _get_max_post_id(self) -> int:
+        """OASISのSQLiteから最大post_idを取得する."""
+        if not self._db_path:
+            return 0
+        try:
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(post_id) FROM post")
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] or 0
+        except Exception:
+            return 0
+
+    def _get_trace_count(self) -> int:
+        """OASISのSQLiteからtrace件数を取得する."""
+        if not self._db_path:
+            return 0
+        try:
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM trace")
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] or 0
+        except Exception:
+            return 0
+
+    def _post_id_to_round(self, post_id: int) -> int | None:
+        """post_idからラウンド番号を推定する."""
+        if not self._round_post_ranges:
             return None
-        for i, (start, end) in enumerate(self._round_timestamps):
-            if start <= timestamp <= end:
+        for i, (start, end) in enumerate(self._round_post_ranges):
+            if start <= post_id <= end:
                 return i + 1
-        # シード投稿（ラウンド0）
-        if self._round_timestamps and timestamp < self._round_timestamps[0][0]:
+        # シード投稿（ラウンド0 = セットアップ時の投稿）
+        if self._round_post_ranges and post_id < self._round_post_ranges[0][0]:
             return 0
         # 最終ラウンド以降
-        return len(self._round_timestamps)
+        return len(self._round_post_ranges)
+
+    @staticmethod
+    def _apply_soft_boundary_delta(current: float, raw_delta: float, max_abs_delta: float) -> float:
+        """ソフトバウンダリ付きdelta適用.
+
+        delta × 境界までの距離 で自然に減衰する。
+        恣意的な係数ではなく、「残り距離の比率だけ動く」幾何学的制約。
+        0.9にいるとき+0.1 → effective = 0.1 × 0.1 = 0.01（ほぼ動かない）
+        0.5にいるとき+0.1 → effective = 0.1 × 0.5 = 0.05（中程度）
+        """
+        clamped = max(-max_abs_delta, min(max_abs_delta, float(raw_delta)))
+        if clamped > 0:
+            effective = clamped * (1.0 - current)
+        elif clamped < 0:
+            effective = clamped * current
+        else:
+            return current
+        return max(0.0, min(1.0, current + effective))
 
     def _select_active_oasis_agents(self) -> list:
         """Time Engine: アクティブエージェントを確率的に選択する."""
@@ -439,14 +627,29 @@ class OASISSimulationEngine:
 
         return event_msgs
 
-    def _extract_round_actions(self, round_number: int) -> list[dict[str, Any]]:
+    # 市場に直接影響するコンテンツ系アクション
+    _CONTENT_ACTIONS: frozenset[str] = frozenset({
+        "create_post", "CREATE_POST",
+        "create_comment", "CREATE_COMMENT",
+        "like_post", "LIKE_POST",
+        "dislike_post", "DISLIKE_POST",
+        "repost", "REPOST",
+        "quote_post", "QUOTE_POST",
+        "follow", "FOLLOW",
+        "unfollow", "UNFOLLOW",
+    })
+
+    def _extract_round_actions(self, round_number: int, trace_limit: int = 0) -> list[dict[str, Any]]:
         """OASISのSQLiteからこのラウンドのアクションを抽出する.
 
-        traceテーブルから最新のアクションを取得し、
-        EchoShoalのアクション形式に変換する。
+        trace_limit: このラウンドで追加されたtrace件数。
+        0の場合はフォールバックとしてエージェント数×3件を取得。
+        refresh/search_posts/trend等の非コンテンツアクションは除外する。
         """
         if not self._db_path:
             return []
+
+        limit = trace_limit if trace_limit > 0 else len(self._oasis_agents) * 3
 
         actions = []
         try:
@@ -454,15 +657,14 @@ class OASISSimulationEngine:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # traceテーブルから最新のアクションを取得
-            # ラウンドごとのオフセットは、各ラウンドのアクション数から推定
+            # traceテーブルから最新N件（このラウンド分）を取得
             cursor.execute(
                 "SELECT t.user_id, t.action, t.info, t.created_at, u.name "
                 "FROM trace t "
                 "LEFT JOIN user u ON t.user_id = u.user_id "
                 "ORDER BY t.created_at DESC "
                 "LIMIT ?",
-                (len(self._oasis_agents) * 3,),  # 最大3アクション/エージェント
+                (limit,),
             )
 
             # エージェントIDマッピング（OASIS agent_id -> EchoShoal agent_id）
@@ -472,33 +674,46 @@ class OASISSimulationEngine:
 
             for row in cursor.fetchall():
                 oasis_action = row["action"]
+
+                # 非コンテンツアクション（refresh, search, trend等）を除外
+                if oasis_action not in self._CONTENT_ACTIONS:
+                    continue
+
                 agent_name = row["name"] or f"Agent_{row['user_id']}"
                 es_agent_id = id_map.get(row["user_id"], "")
 
-                # OASISアクション → EchoShoalアクション形式に変換
                 action_record = {
                     "agent": agent_name,
                     "agent_id": es_agent_id,
                     "type": _map_oasis_action(oasis_action),
-                    "description": str(row["info"])[:200] if row["info"] else "",
+                    "description": "",
                     "oasis_action": oasis_action,
                     "visibility": "public",
                     "round_number": round_number,
-                    "reputation": 0.5,
                 }
 
-                # 投稿/コメント内容を取得
+                # 投稿/コメント内容を取得（現ラウンドのpost_id以降のみ）
+                min_post_id = self._last_known_post_id + 1
                 if oasis_action in ("create_post", "CREATE_POST"):
-                    content = self._get_latest_post_content(conn, row["user_id"])
+                    content = self._get_latest_post_content(conn, row["user_id"], min_post_id)
                     if content:
-                        action_record["description"] = content[:200]
+                        action_record["description"] = _truncate_at_sentence(content, 500)
 
                 elif oasis_action in ("create_comment", "CREATE_COMMENT"):
-                    content = self._get_latest_comment_content(conn, row["user_id"])
+                    content = self._get_latest_comment_content(conn, row["user_id"], min_post_id)
                     if content:
-                        action_record["description"] = content[:200]
+                        action_record["description"] = _truncate_at_sentence(content, 500)
 
-                # 空のdescriptionを除外（refresh, sign_up等の内部アクション）
+                elif oasis_action in ("like_post", "LIKE_POST", "dislike_post", "DISLIKE_POST"):
+                    action_record["description"] = _truncate_at_sentence(str(row["info"]), 200) if row["info"] else "post"
+
+                elif oasis_action in ("follow", "FOLLOW", "unfollow", "UNFOLLOW"):
+                    action_record["description"] = _truncate_at_sentence(str(row["info"]), 200) if row["info"] else "user"
+
+                elif oasis_action in ("repost", "REPOST", "quote_post", "QUOTE_POST"):
+                    action_record["description"] = _truncate_at_sentence(str(row["info"]), 500) if row["info"] else "post"
+
+                # 空のdescriptionを除外
                 if not action_record["description"].strip():
                     continue
                 actions.append(action_record)
@@ -511,24 +726,45 @@ class OASISSimulationEngine:
         return actions
 
     @staticmethod
-    def _get_latest_post_content(conn: sqlite3.Connection, user_id: int) -> str:
-        """ユーザーの最新投稿内容を取得する."""
+    def _get_latest_post_content(conn: sqlite3.Connection, user_id: int, min_post_id: int = 0) -> str:
+        """ユーザーの最新投稿内容を取得する.
+
+        min_post_id > 0 の場合、そのID以降の投稿のみ対象（ラウンド絞り込み）。
+        """
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT content FROM post WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-            (user_id,),
-        )
+        if min_post_id > 0:
+            cursor.execute(
+                "SELECT content FROM post WHERE user_id = ? AND post_id >= ? ORDER BY created_at DESC LIMIT 1",
+                (user_id, min_post_id),
+            )
+        else:
+            cursor.execute(
+                "SELECT content FROM post WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+                (user_id,),
+            )
         row = cursor.fetchone()
         return row["content"] if row else ""
 
     @staticmethod
-    def _get_latest_comment_content(conn: sqlite3.Connection, user_id: int) -> str:
-        """ユーザーの最新コメント内容を取得する."""
+    def _get_latest_comment_content(conn: sqlite3.Connection, user_id: int, min_post_id: int = 0) -> str:
+        """ユーザーの最新コメント内容を取得する.
+
+        min_post_id > 0 の場合、そのID以降の投稿へのコメントのみ対象（ラウンド絞り込み）。
+        """
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT content FROM comment WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-            (user_id,),
-        )
+        if min_post_id > 0:
+            cursor.execute(
+                "SELECT c.content FROM comment c "
+                "JOIN post p ON c.post_id = p.post_id "
+                "WHERE c.user_id = ? AND p.post_id >= ? "
+                "ORDER BY c.created_at DESC LIMIT 1",
+                (user_id, min_post_id),
+            )
+        else:
+            cursor.execute(
+                "SELECT content FROM comment WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+                (user_id,),
+            )
         row = cursor.fetchone()
         return row["content"] if row else ""
 
@@ -568,18 +804,30 @@ class OASISSimulationEngine:
 
         current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
 
+        # 境界に近いディメンションをLLMに明示
+        near_boundary = []
+        for dim_name, val in current_dims.items():
+            if val >= 0.85:
+                near_boundary.append(f"  {dim_name}={val} (上限に近い — 大きなイベントなしでは上昇困難)")
+            elif val <= 0.15:
+                near_boundary.append(f"  {dim_name}={val} (下限に近い — 大きなイベントなしでは下降困難)")
+        boundary_text = "\n".join(near_boundary) if near_boundary else "  なし"
+
         prompt = (
             f"Round {round_number}. Target service: {service_name}\n"
             f"Current dimensions: {current_dims}\n"
             f"Platform activity:\n{actions_text}\n\n"
             f"Engagement stats: {stats_text}\n\n"
+            f"Boundary awareness (極端な値のディメンション):\n{boundary_text}\n\n"
             "Rules for interpreting actions:\n"
             f"- [対象サービス] = posts by '{service_name}' team. Their proactive actions "
             "(marketing, new features, partnerships) should POSITIVELY affect "
             "user_adoption, market_awareness, ecosystem_health.\n"
             "- [外部] = posts by competitors, users, investors, etc. "
             "Competitor criticism = higher competitive_pressure. "
-            "User complaints = lower user_adoption. Positive reviews = higher user_adoption.\n\n"
+            "User complaints = lower user_adoption. Positive reviews = higher user_adoption.\n"
+            "- Dimensions near 0.0 or 1.0 are at practical limits. "
+            "Return delta close to 0.0 for these unless an extraordinary event occurred.\n\n"
             "Return EXACTLY this JSON with delta values (-0.1 to +0.1):\n"
             '{"dimension_deltas": {'
             '"user_adoption": 0.0, "revenue_potential": 0.0, "tech_maturity": 0.0, '
@@ -598,29 +846,32 @@ class OASISSimulationEngine:
                     "あなたはSNS上の議論パターンからサービスの市場影響を分析するアナリストです。"
                     "投稿・コメント・いいね数の傾向から市場ディメンションの変化を推定してください。"
                 ),
+                round_number=round_number,
+                agent_name="market_analyzer",
             )
             self._llm_call_count += 1
 
-            # ディメンションdelta適用
+            # ディメンションdelta適用（ソフトバウンダリ）
             raw_dims = response.get("dimension_deltas", {})
             for dim_key, delta in raw_dims.items():
                 try:
                     dim = MarketDimension(dim_key)
-                    clamped_delta = max(-0.1, min(0.1, float(delta)))
-                    self.market.dimensions[dim] = max(
-                        0.0, min(1.0, self.market.dimensions[dim] + clamped_delta)
+                    self.market.dimensions[dim] = self._apply_soft_boundary_delta(
+                        self.market.dimensions[dim], float(delta), 0.1,
                     )
                 except (ValueError, TypeError):
                     pass
 
-            # マクロdelta適用
+            # マクロdelta適用（ソフトバウンダリ）
             raw_macros = response.get("macro_deltas", {})
             for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"):
                 if key in raw_macros:
                     try:
-                        delta = max(-0.05, min(0.05, float(raw_macros[key])))
                         current = getattr(self.market, key)
-                        setattr(self.market, key, max(0.0, min(1.0, current + delta)))
+                        new_val = self._apply_soft_boundary_delta(
+                            current, float(raw_macros[key]), 0.05,
+                        )
+                        setattr(self.market, key, new_val)
                     except (ValueError, TypeError):
                         pass
 
@@ -671,6 +922,8 @@ class OASISSimulationEngine:
                     "あなたはサービスビジネスの市場アナリストです。"
                     "シナリオの内容から、シミュレーション開始時点の市場状態を客観的に推定してください。"
                 ),
+                round_number=0,
+                agent_name="market_initializer",
             )
             self._llm_call_count += 1
 
@@ -720,6 +973,8 @@ class OASISSimulationEngine:
                 prompt=prompt,
                 system_prompt="シミュレーションの各ラウンドを簡潔なナラティブにまとめてください。",
                 temperature=0.7,
+                round_number=round_number,
+                agent_name="narrator",
             )
         except Exception:
             return ""
@@ -783,6 +1038,7 @@ class OASISSimulationEngine:
             "oasis_stats": stats,
             "engine": "oasis",
             "initial_relationships": all_relationships,
+            "token_usage": self.llm.token_tracker.get_summary(),
         }
 
     def _extract_oasis_relationships(self) -> list[dict[str, Any]]:
@@ -823,7 +1079,7 @@ class OASISSimulationEngine:
 
         return relationships
 
-    def get_social_feed(self, limit: int = 50) -> list[dict[str, Any]]:
+    def get_social_feed(self, limit: int = 0) -> list[dict[str, Any]]:
         """OASISのSNS投稿をフィード形式で取得する."""
         if not self._db_path:
             return []
@@ -834,21 +1090,23 @@ class OASISSimulationEngine:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # 投稿取得
-            cursor.execute(
+            # 投稿取得（limit=0 で全件）
+            query = (
                 "SELECT p.post_id, p.content, p.created_at, p.num_likes, "
                 "       p.num_dislikes, p.num_shares, u.name AS author "
                 "FROM post p "
                 "LEFT JOIN user u ON p.user_id = u.user_id "
                 "WHERE p.content IS NOT NULL AND p.content != '' "
-                "ORDER BY p.created_at DESC "
-                "LIMIT ?",
-                (limit,),
+                "ORDER BY p.created_at ASC"
             )
+            if limit > 0:
+                query += " LIMIT ?"
+                cursor.execute(query, (limit,))
+            else:
+                cursor.execute(query)
             for row in cursor.fetchall():
-                # タイムスタンプからラウンド番号を推定
-                post_time = row["created_at"]
-                round_num = self._timestamp_to_round(post_time)
+                # post_idからラウンド番号を推定
+                round_num = self._post_id_to_round(row["post_id"])
 
                 post = {
                     "id": f"post_{row['post_id']}",

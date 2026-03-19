@@ -18,7 +18,7 @@ from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.config import settings
 from app.core.documents.models import DocumentInfo, ParsedDocument, ProcessResult
@@ -260,6 +260,45 @@ async def list_simulation_documents(job_id: str) -> list[DocumentInfo]:
         await graph_client.close()
 
 
+@router.get("/{job_id}/documents/{doc_id}")
+async def get_simulation_document_detail(job_id: str, doc_id: str) -> dict:
+    """文書の詳細（要約テキスト含む）を取得する."""
+    graph_client = await _get_graph_client()
+    if not graph_client:
+        raise HTTPException(status_code=503, detail="Graph DB not available")
+    try:
+        processor = DocumentProcessor(graph_client, simulation_id=job_id)
+        detail = await processor.get_document_detail(doc_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return detail
+    finally:
+        await graph_client.close()
+
+
+@router.get("/{job_id}/documents/{doc_id}/download")
+async def download_document(job_id: str, doc_id: str) -> Response:
+    """文書の全文テキストをダウンロードする."""
+    graph_client = await _get_graph_client()
+    if not graph_client:
+        raise HTTPException(status_code=503, detail="Graph DB not available")
+    try:
+        processor = DocumentProcessor(graph_client, simulation_id=job_id)
+        full_text = await processor.get_document_full_text(doc_id)
+        if full_text is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        # ファイル名を取得
+        detail = await processor.get_document_detail(doc_id)
+        filename = detail["filename"] if detail else f"{doc_id}.txt"
+        return Response(
+            content=full_text.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    finally:
+        await graph_client.close()
+
+
 # ─── 再シミュレーション ───
 
 @router.post("/{job_id}/rerun")
@@ -451,7 +490,7 @@ async def _run_simulation_task(
         # OASISエンジンの場合: ソーシャルフィードとグラフ同期
         if oasis_engine is not None:
             try:
-                result_data["social_feed"] = oasis_engine.get_social_feed(limit=50)
+                result_data["social_feed"] = oasis_engine.get_social_feed()
             except Exception:
                 logger.warning("OASISソーシャルフィード取得失敗: job=%s", job_id)
 

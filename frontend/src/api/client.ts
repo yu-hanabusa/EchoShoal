@@ -1,7 +1,10 @@
 /** APIクライアント — すべてのAPIはシミュレーション(job_id)スコープ */
 
 import type {
+  BenchmarkInfo,
+  DocumentDetail,
   DocumentInfo,
+  EvaluationJobResult,
   JobInfo,
   MarketResearchResult,
   PaginatedResponse,
@@ -104,6 +107,11 @@ export async function getSimulationDocuments(jobId: string): Promise<DocumentInf
   return request(`/simulations/${jobId}/documents`);
 }
 
+/** 文書の詳細（要約テキスト含む）を取得 */
+export async function getDocumentDetail(jobId: string, docId: string): Promise<DocumentDetail> {
+  return request(`/simulations/${jobId}/documents/${docId}`);
+}
+
 /** このシミュレーションの知識グラフ可視化データを取得 */
 export async function getSimulationGraph(jobId: string): Promise<{
   elements: Array<{ data: Record<string, string> }>;
@@ -133,6 +141,30 @@ export async function updateSimulation(
 /** シミュレーションを削除 */
 export async function deleteSimulation(jobId: string): Promise<void> {
   await request(`/simulations/${jobId}`, { method: "DELETE" });
+}
+
+/** ベンチマーク一覧を取得 */
+export async function listBenchmarks(): Promise<BenchmarkInfo[]> {
+  return request("/evaluation/benchmarks");
+}
+
+/** 一連ベンチマーク（市場調査+シミュレーション+評価）を実行 */
+export async function runFullBenchmark(
+  benchmarkId: string,
+): Promise<{ job_id: string; status: string; benchmark_id: string; benchmark_name: string }> {
+  return request(`/evaluation/run/${benchmarkId}/full`, { method: "POST" });
+}
+
+/** 単一ベンチマークを実行 */
+export async function runSingleBenchmark(
+  benchmarkId: string,
+): Promise<{ job_id: string; status: string; benchmark_id: string; benchmark_name: string }> {
+  return request(`/evaluation/run/${benchmarkId}`, { method: "POST" });
+}
+
+/** 評価ジョブの結果を取得 */
+export async function getEvaluationResult(jobId: string): Promise<EvaluationJobResult> {
+  return request(`/evaluation/${jobId}/result`);
 }
 
 /** ヘルスチェック */

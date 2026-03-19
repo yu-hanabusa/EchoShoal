@@ -75,8 +75,6 @@ export interface AgentSummary {
   description?: string;
   headcount: number;
   revenue: number;
-  satisfaction: number;
-  reputation: number;
   personality?: AgentPersonality;
 }
 
@@ -208,6 +206,18 @@ export interface DocumentInfo {
   uploaded_at: string;
 }
 
+/** 文書詳細（要約テキスト含む） */
+export interface DocumentDetail {
+  doc_id: string;
+  filename: string;
+  source: string;
+  text_length: number;
+  entity_count: number;
+  text_summary: string | null;
+  uploaded_at: string;
+  mentions: Array<{ type: string; name: string }>;
+}
+
 /** 市場調査リクエスト */
 export interface MarketResearchRequest {
   service_name: string;
@@ -226,6 +236,86 @@ export interface MarketResearchResult {
     finance_data: Array<{ company_name: string; ticker: string; market_cap: number | null; revenue: number | null; stock_price: number | null; sector: string }>;
     sources_used: string[];
     errors: string[];
+  };
+}
+
+/** ベンチマーク情報 */
+export interface BenchmarkInfo {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  expected_trend_count: number;
+  num_rounds: number;
+}
+
+/** トレンド結果 */
+export interface TrendResult {
+  metric: string;
+  expected_direction: "up" | "down" | "stable";
+  actual_direction: "up" | "down" | "stable";
+  actual_change_rate: number;
+  direction_correct: boolean;
+}
+
+/** ディメンション推移 */
+export interface DimensionTimeline {
+  dimension: string;
+  values: number[];
+}
+
+/** エージェント記録 */
+export interface AgentRecord {
+  name: string;
+  stakeholder_type: string;
+  actions: string[];
+}
+
+/** 評価結果 */
+export interface EvaluationResult {
+  benchmark_id: string;
+  benchmark_name: string;
+  trend_results: TrendResult[];
+  direction_accuracy: number;
+  simulation_rounds: number;
+  execution_time_seconds: number;
+  dimension_timelines: DimensionTimeline[];
+  agents: AgentRecord[];
+}
+
+/** 市場調査データ */
+export interface ResearchData {
+  market_report: string;
+  user_behavior: string;
+  stakeholders: string;
+  sources_used: string[];
+  errors: string[];
+  trends_count: number;
+  github_repos_count: number;
+  finance_data_count: number;
+}
+
+/** 一連ベンチマーク結果（市場調査+シミュレーション+評価） */
+export interface FullBenchmarkResult {
+  benchmark_id: string;
+  benchmark_name: string;
+  research: ResearchData;
+  evaluation: EvaluationResult;
+  research_time_seconds: number;
+  total_time_seconds: number;
+}
+
+/** 評価ジョブの結果 */
+export interface EvaluationJobResult {
+  job_id: string;
+  status: JobStatus;
+  progress?: { current_round?: number; total_rounds?: number; percentage?: number; phase?: string };
+  error?: string;
+  result?: {
+    type: string;
+    benchmark_id?: string;
+    full_result?: FullBenchmarkResult;
+    evaluation?: EvaluationResult;
   };
 }
 

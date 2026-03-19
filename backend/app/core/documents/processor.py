@@ -158,6 +158,7 @@ class DocumentProcessor:
             "    d.source = $source, "
             "    d.text_length = $text_length, "
             "    d.text_summary = $text_summary, "
+            "    d.full_text = $full_text, "
             "    d.page_count = $page_count, "
             "    d.entity_count = $entity_count, "
             "    d.simulation_id = $simulation_id, "
@@ -168,6 +169,7 @@ class DocumentProcessor:
                 "source": doc.source,
                 "text_length": len(doc.text),
                 "text_summary": self._extract_summary(doc.text),
+                "full_text": doc.text,
                 "page_count": doc.page_count,
                 "entity_count": len(analysis.entities),
                 "simulation_id": self.simulation_id,
@@ -505,6 +507,7 @@ class DocumentProcessor:
             "RETURN d.doc_id AS doc_id, d.filename AS filename, "
             "       d.source AS source, d.text_length AS text_length, "
             "       d.page_count AS page_count, d.entity_count AS entity_count, "
+            "       d.text_summary AS text_summary, "
             "       toString(d.uploaded_at) AS uploaded_at",
             {"doc_id": doc_id},
         )
@@ -522,3 +525,14 @@ class DocumentProcessor:
             **doc[0],
             "mentions": mentions,
         }
+
+    async def get_document_full_text(self, doc_id: str) -> str | None:
+        """文書の全文テキストを取得する."""
+        result = await self.graph.execute_read(
+            "MATCH (d:Document {doc_id: $doc_id, simulation_id: $simulation_id}) "
+            "RETURN d.full_text AS full_text",
+            {"doc_id": doc_id, "simulation_id": self.simulation_id},
+        )
+        if not result:
+            return None
+        return result[0].get("full_text")

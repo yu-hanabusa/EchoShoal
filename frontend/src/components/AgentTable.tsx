@@ -7,18 +7,7 @@ interface Props {
   serviceName?: string;
 }
 
-function LevelBadge({ value }: { value: number }) {
-  const level = value >= 0.7 ? "高" : value >= 0.4 ? "中" : "低";
-  const color =
-    value >= 0.6 ? "text-positive bg-positive-light"
-      : value >= 0.3 ? "text-caution bg-caution-light"
-        : "text-negative bg-negative-light";
-  return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${color}`}>
-      {level}
-    </span>
-  );
-}
+
 
 export default function AgentTable({ agents, serviceName }: Props) {
   const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
@@ -57,9 +46,7 @@ export default function AgentTable({ agents, serviceName }: Props) {
           <tr className="border-b border-border text-left text-text-tertiary">
             <th className="py-2 pr-3 font-medium">ステークホルダー</th>
             <th className="py-2 px-3 font-medium">種別</th>
-            <th className="py-2 px-3 font-medium text-right" title="このステークホルダーの組織内の従業員・メンバー数">組織規模</th>
-            <th className="py-2 px-3 font-medium text-right" title="このステークホルダーの市場での信頼度・影響力（LLM推定）">市場影響力</th>
-            <th className="py-2 pl-3 font-medium text-right" title="このステークホルダーの現状への納得度（LLM推定）">現状納得度</th>
+            <th className="py-2 pl-3 font-medium text-right" title="このステークホルダーの組織内の従業員・メンバー数">組織規模</th>
           </tr>
         </thead>
         <tbody className="text-text-primary">
@@ -84,14 +71,8 @@ export default function AgentTable({ agents, serviceName }: Props) {
                   {agent.type}
                 </span>
               </td>
-              <td className="py-2.5 px-3 text-right tabular-nums">
+              <td className="py-2.5 pl-3 text-right tabular-nums">
                 {agent.headcount > 0 ? `${agent.headcount.toLocaleString()}名` : "\u2014"}
-              </td>
-              <td className="py-2.5 px-3 text-right">
-                <LevelBadge value={agent.reputation} />
-              </td>
-              <td className="py-2.5 pl-3 text-right">
-                <LevelBadge value={agent.satisfaction} />
               </td>
             </tr>
           ))}

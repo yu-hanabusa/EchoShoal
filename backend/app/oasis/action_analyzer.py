@@ -13,6 +13,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.oasis.simulation_runner import _truncate_at_sentence
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +84,7 @@ def extract_round_activity(
             activity.posts.append({
                 "post_id": row["post_id"],
                 "author": row["author"] or "Unknown",
-                "content": row["content"][:300],
+                "content": _truncate_at_sentence(row["content"], 500),
                 "likes": row["num_likes"],
                 "dislikes": row["num_dislikes"],
                 "shares": row["num_shares"],
@@ -100,7 +102,7 @@ def extract_round_activity(
         for row in cursor.fetchall():
             activity.comments.append({
                 "author": row["author"] or "Unknown",
-                "content": row["content"][:200] if row["content"] else "",
+                "content": _truncate_at_sentence(row["content"], 500) if row["content"] else "",
                 "likes": row["num_likes"],
             })
 
