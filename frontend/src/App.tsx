@@ -5,6 +5,8 @@ import HomePage from "./pages/HomePage";
 import NewSimulationPage from "./pages/NewSimulationPage";
 import SimulationPage from "./pages/SimulationPage";
 import ReportPage from "./pages/ReportPage";
+import BenchmarkListPage from "./pages/BenchmarkListPage";
+import BenchmarkResultPage from "./pages/BenchmarkResultPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +27,8 @@ function App() {
           <Route path="/new" element={<NewSimulationPage />} />
           <Route path="/simulation/:jobId" element={<SimulationPage />} />
           <Route path="/simulation/:jobId/report" element={<ReportPage />} />
+          <Route path="/benchmarks" element={<BenchmarkListPage />} />
+          <Route path="/benchmark/:jobId" element={<BenchmarkResultPage />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

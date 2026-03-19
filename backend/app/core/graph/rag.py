@@ -179,17 +179,11 @@ class GraphRAGRetriever:
             if snap and prev_snap:
                 rev_d = snap["revenue"] - prev_snap["revenue"]
                 hc_d = snap["headcount"] - prev_snap["headcount"]
-                sat_d = snap["satisfaction"] - prev_snap["satisfaction"]
-                rep_d = snap["reputation"] - prev_snap["reputation"]
                 changes = []
                 if rev_d != 0:
                     changes.append(f"売上{rev_d:+.0f}万円")
                 if hc_d != 0:
                     changes.append(f"人員{hc_d:+d}名")
-                if abs(sat_d) >= 0.01:
-                    changes.append(f"満足度{sat_d:+.2f}")
-                if abs(rep_d) >= 0.01:
-                    changes.append(f"評判{rep_d:+.2f}")
                 change_str = ", ".join(changes) if changes else "変化なし"
                 lines.append(f"  {r}ヶ月目: {act_str} → 結果: {change_str}")
             elif snap:

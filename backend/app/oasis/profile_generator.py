@@ -76,8 +76,6 @@ def agent_to_oasis_profile(agent: BaseAgent) -> dict[str, Any]:
             "revenue": agent.state.revenue,
             "cost": agent.state.cost,
             "headcount": agent.state.headcount,
-            "reputation": agent.state.reputation,
-            "satisfaction": agent.state.satisfaction,
         },
         # OASISのRedditプロファイルに必須のフィールド
         "gender": "Non-binary",

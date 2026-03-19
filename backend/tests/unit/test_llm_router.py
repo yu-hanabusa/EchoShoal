@@ -6,14 +6,20 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.llm.router import LLMRouter, TaskType, LIGHT_TASKS, HEAVY_TASKS
+from app.core.llm.token_tracker import TokenUsage
 from app.core.llm.ollama_client import OllamaClient
 from app.core.llm.claude_client import ClaudeClient
+
+
+def _make_usage(provider: str = "") -> TokenUsage:
+    return TokenUsage(input_tokens=10, output_tokens=5, provider=provider, model="test")
 
 
 @pytest.fixture
 def mock_ollama():
     client = AsyncMock(spec=OllamaClient)
     client.generate = AsyncMock(return_value="ollama response")
+    client.generate_with_usage = AsyncMock(return_value=("ollama response", _make_usage("ollama")))
     return client
 
 
@@ -21,6 +27,7 @@ def mock_ollama():
 def mock_claude():
     client = AsyncMock(spec=ClaudeClient)
     client.generate = AsyncMock(return_value="claude response")
+    client.generate_with_usage = AsyncMock(return_value=("claude response", _make_usage("claude")))
     return client
 
 
@@ -71,13 +78,13 @@ class TestLLMRouting:
     async def test_light_task_routes_to_ollama(self, router, mock_ollama):
         result = await router.generate(TaskType.AGENT_DECISION, "test prompt")
         assert result == "ollama response"
-        mock_ollama.generate.assert_called_once()
+        mock_ollama.generate_with_usage.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_heavy_task_routes_to_claude(self, router, mock_claude):
         result = await router.generate(TaskType.REPORT_GENERATION, "test prompt")
         assert result == "claude response"
-        mock_claude.generate.assert_called_once()
+        mock_claude.generate_with_usage.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_generate_passes_parameters(self, router, mock_ollama):
@@ -88,7 +95,7 @@ class TestLLMRouting:
             json_mode=True,
             temperature=0.3,
         )
-        mock_ollama.generate.assert_called_once_with(
+        mock_ollama.generate_with_usage.assert_called_once_with(
             prompt="choose action",
             system_prompt="you are an agent",
             json_mode=True,
@@ -97,23 +104,27 @@ class TestLLMRouting:
 
     @pytest.mark.asyncio
     async def test_generate_json_returns_parsed_dict(self, router, mock_ollama):
-        mock_ollama.generate = AsyncMock(
-            return_value='{"action": "HIRE", "count": 3}'
+        mock_ollama.generate_with_usage = AsyncMock(
+            return_value=('{"action": "HIRE", "count": 3}', _make_usage("ollama"))
         )
         result = await router.generate_json(TaskType.AGENT_DECISION, "choose action")
         assert result == {"action": "HIRE", "count": 3}
 
     @pytest.mark.asyncio
     async def test_generate_json_uses_low_temperature(self, router, mock_ollama):
-        mock_ollama.generate = AsyncMock(return_value='{"ok": true}')
+        mock_ollama.generate_with_usage = AsyncMock(
+            return_value=('{"ok": true}', _make_usage("ollama"))
+        )
         await router.generate_json(TaskType.AGENT_DECISION, "test")
-        call_kwargs = mock_ollama.generate.call_args[1]
+        call_kwargs = mock_ollama.generate_with_usage.call_args[1]
         assert call_kwargs["temperature"] == 0.3
         assert call_kwargs["json_mode"] is True
 
     @pytest.mark.asyncio
     async def test_generate_json_raises_on_invalid_json(self, router, mock_ollama):
-        mock_ollama.generate = AsyncMock(return_value="not json")
+        mock_ollama.generate_with_usage = AsyncMock(
+            return_value=("not json", _make_usage("ollama"))
+        )
         with pytest.raises(ValueError, match="JSON parse failed"):
             await router.generate_json(TaskType.AGENT_DECISION, "test")
 
@@ -124,7 +135,9 @@ class TestHeavyProviderSwitch:
     @pytest.mark.asyncio
     async def test_openai_as_heavy_provider(self, mock_ollama):
         mock_openai = AsyncMock()
-        mock_openai.generate = AsyncMock(return_value="openai response")
+        mock_openai.generate_with_usage = AsyncMock(
+            return_value=("openai response", _make_usage("openai"))
+        )
         router = LLMRouter(
             ollama_client=mock_ollama,
             openai_client=mock_openai,
@@ -132,4 +145,4 @@ class TestHeavyProviderSwitch:
         )
         result = await router.generate(TaskType.REPORT_GENERATION, "test")
         assert result == "openai response"
-        mock_openai.generate.assert_called_once()
+        mock_openai.generate_with_usage.assert_called_once()

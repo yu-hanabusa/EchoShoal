@@ -233,15 +233,35 @@ class ReportGenerator:
         dims = final_market.get("dimensions", {})
         actions = data.get("action_summary", {})
 
+        # ディメンションの推移データ（トレンド）を構築
+        dim_timeline = data.get("dimension_timeline", {})
+        trend_lines = []
+        for dim_key, values in dim_timeline.items():
+            if values and len(values) >= 2:
+                start_val = values[0]
+                end_val = values[-1]
+                change = end_val - start_val
+                direction = "↑上昇" if change > 0.02 else "↓下降" if change < -0.02 else "→横ばい"
+                trend_lines.append(
+                    f"  {dim_key}: {start_val:.3f}→{end_val:.3f} ({change:+.3f}, {direction})"
+                )
+        trend_text = "\n".join(trend_lines) if trend_lines else "  推移データなし"
+
         prompt = (
             "以下のシミュレーション結果を分析し、対象サービスの成功可能性を0-100のスコアで評価してください。\n\n"
             f"シナリオ: {data.get('scenario_description', '')}\n"
             f"シミュレーション期間: {data.get('total_rounds', 0)}ヶ月\n\n"
             f"最終ディメンション値:\n{json.dumps(dims, ensure_ascii=False, indent=2)}\n\n"
+            f"ディメンション推移（開始→終了）:\n{trend_text}\n\n"
             f"マクロ指標: 経済センチメント={final_market.get('economic_sentiment', 0.5):.2f}, "
             f"技術ハイプ={final_market.get('tech_hype_level', 0.5):.2f}, "
             f"規制圧力={final_market.get('regulatory_pressure', 0.3):.2f}\n\n"
             f"主要アクション: {json.dumps(dict(list(actions.items())[:8]), ensure_ascii=False)}\n\n"
+            "評価の指針:\n"
+            "- 絶対値だけでなく推移（トレンド）を重視してください\n"
+            "- user_adoptionやmarket_awarenessが上昇傾向なら、まだ低い値でもポジティブ評価\n"
+            "- competitive_pressureが高くても、user_adoptionも高ければ健全な競争\n"
+            "- 新サービスの初期段階では低い値が自然。成長トレンドを重視\n\n"
             "以下のJSON形式で回答してください:\n"
             "{\n"
             '  "score": <0-100の整数。70以上=成功見込み、40-69=要注意、39以下=困難>,\n'

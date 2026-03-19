@@ -6,6 +6,7 @@ from typing import Any
 from app.core.llm.ollama_client import OllamaClient
 from app.core.llm.claude_client import ClaudeClient
 from app.core.llm.openai_client import OpenAIClient
+from app.core.llm.token_tracker import TokenTracker
 from app.config import settings
 
 
@@ -44,11 +45,13 @@ class LLMRouter:
         claude_client: ClaudeClient | None = None,
         openai_client: OpenAIClient | None = None,
         heavy_provider: str | None = None,
+        token_tracker: TokenTracker | None = None,
     ):
         self._ollama = ollama_client
         self._claude = claude_client
         self._openai = openai_client
         self._heavy_provider = heavy_provider or settings.default_heavy_provider
+        self.token_tracker = token_tracker or TokenTracker()
 
     @property
     def ollama(self) -> OllamaClient:
@@ -89,15 +92,24 @@ class LLMRouter:
         system_prompt: str | None = None,
         json_mode: bool = False,
         temperature: float = 0.7,
+        round_number: int = 0,
+        agent_name: str = "",
     ) -> str:
         """Generate a response using the appropriate LLM for the task type."""
         client = self._select_client(task_type)
-        return await client.generate(
+        text, usage = await client.generate_with_usage(
             prompt=prompt,
             system_prompt=system_prompt,
             json_mode=json_mode,
             temperature=temperature,
         )
+        self.token_tracker.record(
+            usage=usage,
+            task_type=task_type.value,
+            round_number=round_number,
+            agent_name=agent_name,
+        )
+        return text
 
     async def generate_json(
         self,
@@ -106,6 +118,8 @@ class LLMRouter:
         system_prompt: str | None = None,
         temperature: float = 0.3,
         max_retries: int = 2,
+        round_number: int = 0,
+        agent_name: str = "",
     ) -> dict[str, Any]:
         """Generate a JSON response with retry on parse failure."""
         import json
@@ -123,6 +137,8 @@ class LLMRouter:
                     system_prompt=enhanced_system,
                     json_mode=True,
                     temperature=max(0.1, temperature - attempt * 0.1),
+                    round_number=round_number,
+                    agent_name=agent_name,
                 )
                 # JSON内を抽出（前後にテキストがある場合に対応）
                 text = response.strip()

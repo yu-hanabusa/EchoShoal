@@ -130,7 +130,6 @@ class AgentMemoryStore:
             "CREATE (s:AgentSnapshot {"
             "  agent_id: $agent_id, simulation_id: $sim_id, round: $round, "
             "  revenue: $revenue, cost: $cost, headcount: $headcount, "
-            "  satisfaction: $satisfaction, reputation: $reputation, "
             "  active_contracts: $active_contracts"
             "}) "
             "CREATE (a)-[:STATE_AT {round: $round}]->(s)",
@@ -141,8 +140,6 @@ class AgentMemoryStore:
                 "revenue": state.get("revenue", 0.0),
                 "cost": state.get("cost", 0.0),
                 "headcount": state.get("headcount", 0),
-                "satisfaction": state.get("satisfaction", 0.5),
-                "reputation": state.get("reputation", 0.5),
                 "active_contracts": state.get("active_contracts", 0),
             },
         )
@@ -267,8 +264,7 @@ class AgentMemoryStore:
             "MATCH (:Agent {agent_id: $agent_id, simulation_id: $sim_id})"
             "-[:STATE_AT]->(s:AgentSnapshot) "
             "RETURN s.round AS round, s.revenue AS revenue, s.cost AS cost, "
-            "       s.headcount AS headcount, s.satisfaction AS satisfaction, "
-            "       s.reputation AS reputation "
+            "       s.headcount AS headcount "
             "ORDER BY s.round DESC "
             "LIMIT $limit",
             {"agent_id": agent_id, "sim_id": self.simulation_id, "limit": last_n_rounds},

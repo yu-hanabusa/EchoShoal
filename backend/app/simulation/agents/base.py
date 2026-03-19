@@ -60,8 +60,6 @@ class AgentState(BaseModel):
     revenue: float = 0.0        # 売上 (万円/月)
     cost: float = 0.0           # コスト (万円/月)
     headcount: int = 0          # 人数
-    satisfaction: float = 0.5   # 満足度 0-1
-    reputation: float = 0.5    # 市場での評判 0-1
     active_contracts: int = 0
     risk_tolerance: float = 0.5  # リスク許容度 0-1
 
@@ -169,35 +167,6 @@ class BaseAgent(ABC):
             description="直感的判断（合理的根拠なし）",
         )]
 
-    async def apply_actions(
-        self, actions: list[AgentAction], market: ServiceMarketState
-    ) -> None:
-        """Apply decided actions to update agent state."""
-        for action in actions:
-            self._execute_action(action, market)
-            self._action_history.append(action)
-
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        """LLMが決めたself_impactに基づいてエージェント状態を更新する.
-
-        固定値は使用しない。LLMが行動選択時にself_impactも返すため、
-        それをそのまま適用する。
-        """
-        si = action.self_impact
-        if si:
-            self.state.cost += si.get("cost_delta", 0.0)
-            self.state.revenue += si.get("revenue_delta", 0.0)
-            self.state.reputation += si.get("reputation_delta", 0.0)
-            self.state.satisfaction += si.get("satisfaction_delta", 0.0)
-            self.state.headcount += int(si.get("headcount_delta", 0))
-            self.state.active_contracts += int(si.get("contracts_delta", 0))
-        self._clamp_state()
-
-    def _clamp_state(self) -> None:
-        """reputation と satisfaction を [0, 1] の範囲に制限する。"""
-        self.state.reputation = max(0.0, min(1.0, self.state.reputation))
-        self.state.satisfaction = max(0.0, min(1.0, self.state.satisfaction))
-
     def _improve_capability(self, raw_dimension: str | None, delta: float) -> bool:
         """ディメンション影響力を delta 分だけ変更する。成功時 True を返す。"""
         dim = _parse_dimension(raw_dimension)
@@ -227,8 +196,8 @@ class BaseAgent(ABC):
             '"description": "reason for this action", '
             '"reacting_to": "", '
             '"parameters": {}, '
-            '"self_impact": {"cost_delta": 10, "revenue_delta": 5, "reputation_delta": 0.02, '
-            '"satisfaction_delta": 0.01, "headcount_delta": 0, "contracts_delta": 0}}]}'
+            '"self_impact": {"cost_delta": 10, "revenue_delta": 5, '
+            '"headcount_delta": 0, "contracts_delta": 0}}]}'
         )
 
     def _build_personality_prompt(self) -> str:
@@ -288,7 +257,6 @@ class BaseAgent(ABC):
             f"対象サービス: {market.service_name}\n"
             f"自社状況: 売上{self.state.revenue}万円, コスト{self.state.cost}万円, "
             f"人員{self.state.headcount}名, 契約{self.state.active_contracts}件\n"
-            f"満足度: {self.state.satisfaction:.2f}, 評判: {self.state.reputation:.2f}\n"
             f"影響力: {dict(self.state.capabilities)}\n\n"
             f"市場状況:\n"
             f"  注目ディメンション: {dim_str}\n"
@@ -342,8 +310,6 @@ class BaseAgent(ABC):
             "description": self.profile.description,
             "headcount": self.state.headcount,
             "revenue": self.state.revenue,
-            "satisfaction": self.state.satisfaction,
-            "reputation": self.state.reputation,
             "action_types": action_types,
             "personality": {
                 "conservatism": self.personality.conservatism,

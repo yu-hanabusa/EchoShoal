@@ -12,7 +12,12 @@ from fastapi.responses import JSONResponse
 from app.core.job_manager import JobManager, JobStatus
 from app.core.redis_client import RedisClient
 from app.evaluation.benchmarks import get_benchmark, list_benchmarks
-from app.evaluation.runner import run_all_benchmarks, run_benchmark, run_benchmark_multi
+from app.evaluation.runner import (
+    run_all_benchmarks,
+    run_benchmark,
+    run_benchmark_multi,
+    run_benchmark_with_research,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +155,58 @@ async def run_benchmark_statistical(
             "benchmark_id": benchmark_id,
             "benchmark_name": benchmark.name,
             "num_runs": num_runs,
+        },
+    )
+
+
+# ─── 市場調査 + シミュレーション + 評価（一連ベンチマーク） ───
+
+
+@router.post("/run/{benchmark_id}/full")
+async def run_full_benchmark(benchmark_id: str) -> JSONResponse:
+    """市場調査 → シミュレーション → 評価の一連フローを実行する.
+
+    1. 市場調査パイプラインでデータ収集 + 3レポート生成
+    2. 調査結果をドキュメントとしてシミュレーションに渡す
+    3. シミュレーション実行 + 期待トレンド比較
+    """
+    benchmark = get_benchmark(benchmark_id)
+    if benchmark is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ベンチマーク '{benchmark_id}' が見つかりません",
+        )
+
+    job_manager = _get_job_manager()
+    job_id = await job_manager.create_job(
+        scenario_description=f"[市場調査+評価] {benchmark.name}",
+    )
+
+    async def _task() -> None:
+        try:
+            await job_manager.set_running(job_id)
+            result = await run_benchmark_with_research(
+                benchmark_id, job_manager, parent_job_id=job_id,
+            )
+            await job_manager.set_completed(job_id, {
+                "type": "evaluation_full",
+                "benchmark_id": benchmark_id,
+                "full_result": result.model_dump(),
+            })
+        except Exception as exc:
+            logger.exception("一連ベンチマーク実行失敗: %s", benchmark_id)
+            await job_manager.set_failed(job_id, str(exc))
+
+    asyncio.create_task(_task())
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": job_id,
+            "status": "queued",
+            "benchmark_id": benchmark_id,
+            "benchmark_name": benchmark.name,
+            "type": "full",
         },
     )
 

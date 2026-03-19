@@ -14,10 +14,6 @@ class ConcreteAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["action_a", "action_b"]
 
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        if action.action_type == "action_a":
-            self.state.revenue += 10
-
 
 def make_agent(llm=None) -> ConcreteAgent:
     profile = AgentProfile(
@@ -52,8 +48,6 @@ class TestAgentProfile:
 class TestAgentState:
     def test_defaults(self):
         state = AgentState()
-        assert state.satisfaction == 0.5
-        assert state.reputation == 0.5
         assert state.risk_tolerance == 0.5
         assert state.capabilities == {}
 
@@ -115,18 +109,6 @@ class TestBaseAgent:
 
         actions = await agent.decide_actions(ServiceMarketState())
         assert len(actions) == 2
-
-    @pytest.mark.asyncio
-    async def test_apply_actions_updates_state(self):
-        agent = make_agent()
-        action = AgentAction(
-            agent_id=agent.id,
-            action_type="action_a",
-            description="テスト",
-        )
-        original_revenue = agent.state.revenue
-        await agent.apply_actions([action], ServiceMarketState())
-        assert agent.state.revenue == original_revenue + 10
 
     def test_to_summary(self):
         agent = make_agent()

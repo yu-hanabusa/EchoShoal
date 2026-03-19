@@ -20,9 +20,6 @@ class PersonalityTestAgent(BaseAgent):
     def available_actions(self) -> list[str]:
         return ["action_a", "action_b", "action_c"]
 
-    def _execute_action(self, action: AgentAction, market: ServiceMarketState) -> None:
-        pass
-
 
 def make_test_agent(personality: AgentPersonality | None = None, llm=None):
     profile = AgentProfile(name="テスト", agent_type="test", stakeholder_type=StakeholderType.ENTERPRISE)

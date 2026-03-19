@@ -11,8 +11,15 @@ export default function NavBar() {
           EchoShoal
         </Link>
         <span className="text-xs text-text-tertiary">
-          IT Labor Market Simulator
+          Service Business Impact Simulator
         </span>
+        <div className="flex-1" />
+        <Link
+          to="/benchmarks"
+          className="text-xs text-text-secondary hover:text-interactive transition-colors"
+        >
+          Benchmarks
+        </Link>
       </div>
     </nav>
   );

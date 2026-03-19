@@ -94,45 +94,6 @@ class TestScenarioToEngine:
         assert len(events) == 0
 
 
-# --- Enterprise adopt_service テスト ---
-
-class TestEnterpriseAdoptService:
-    def test_adopt_service_applies_self_impact(self):
-        """adopt_service with self_impact updates agent state."""
-        profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
-        state = AgentState(headcount=50)
-        agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
-
-        action = AgentAction(
-            agent_id=agent.id,
-            action_type="adopt_service",
-            description="サービス採用",
-            self_impact={"cost_delta": 20, "satisfaction_delta": 0.05},
-        )
-        agent._execute_action(action, ServiceMarketState())
-
-        assert agent.state.cost == 20
-        assert agent.state.satisfaction == pytest.approx(0.55)
-
-    def test_partner_applies_self_impact(self):
-        """partner with self_impact updates agent state."""
-        profile = AgentProfile(name="Enterprise", agent_type="大手企業", stakeholder_type=StakeholderType.ENTERPRISE)
-        state = AgentState(headcount=50)
-        agent = EnterpriseAgent(profile=profile, state=state, llm=MagicMock())
-
-        action = AgentAction(
-            agent_id=agent.id,
-            action_type="partner",
-            description="提携",
-            self_impact={"reputation_delta": 0.08},
-        )
-        agent._execute_action(action, ServiceMarketState())
-
-        assert agent.state.reputation == pytest.approx(0.58)
-
-
-# --- レートリミットテスト ---
-
 class TestRateLimit:
     def test_check_rate_limit_import(self):
         """レートリミット関数がインポート可能."""

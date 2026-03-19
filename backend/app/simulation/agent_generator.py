@@ -146,6 +146,7 @@ class AgentGenerator:
         scenario: ScenarioInput,
         enriched: EnrichedScenario,
         document_entities: dict[str, list[str]] | None = None,
+        collected_data: Any | None = None,
     ) -> list[BaseAgent]:
         """エンティティからエージェントを生成する.
 
@@ -153,10 +154,24 @@ class AgentGenerator:
         1. 文書エンティティの企業・組織をそれぞれエージェント化
         2. シナリオからユーザー層のアーキタイプを生成
         3. 不足しているステークホルダーをLLMが補完
+
+        collected_data: 市場調査で収集した構造化データ（FinanceData等）
         """
         agents: list[BaseAgent] = []
         entities = document_entities or {}
         orgs = entities.get("organizations", [])
+
+        # 市場調査データから企業名→財務データのルックアップ構築
+        self._finance_lookup: dict[str, dict[str, Any]] = {}
+        if collected_data and hasattr(collected_data, "finance_data"):
+            for fd in collected_data.finance_data:
+                self._finance_lookup[fd.company_name.lower()] = {
+                    "company_name": fd.company_name,
+                    "ticker": fd.ticker,
+                    "market_cap": fd.market_cap,
+                    "revenue": fd.revenue,
+                    "sector": fd.sector,
+                }
 
         # Step 0: 対象サービスを主人公エージェントとして生成
         if scenario.service_name:
@@ -243,6 +258,26 @@ class AgentGenerator:
                 "revenue": 100,
             })
 
+    def _build_org_info_text(self, org_names: list[str]) -> str:
+        """組織名リストに財務データを付加したテキストを構築する."""
+        lines = []
+        for name in org_names[:30]:
+            fd = self._finance_lookup.get(name.lower())
+            if fd:
+                parts = [name]
+                if fd["market_cap"]:
+                    cap_b = fd["market_cap"] / 1e9
+                    parts.append(f"時価総額: ${cap_b:.1f}B")
+                if fd["revenue"]:
+                    rev_b = fd["revenue"] / 1e9
+                    parts.append(f"年間売上: ${rev_b:.1f}B")
+                if fd["sector"]:
+                    parts.append(f"セクター: {fd['sector']}")
+                lines.append(" / ".join(parts))
+            else:
+                lines.append(name)
+        return "\n".join(f"- {line}" for line in lines)
+
     async def _entities_to_agents(
         self,
         org_names: list[str],
@@ -252,29 +287,27 @@ class AgentGenerator:
         if not org_names:
             return []
 
-        names_text = ", ".join(org_names[:30])
+        org_info_text = self._build_org_info_text(org_names)
         prompt = (
             f"サービス: {scenario.service_name or '不明'}\n"
-            f"概要: {scenario.description[:300]}\n"
-            f"組織一覧: {names_text}\n\n"
+            f"概要: {scenario.description[:300]}\n\n"
+            f"組織一覧（財務データがある場合は付記）:\n{org_info_text}\n\n"
             "各組織について以下を判定しJSON返却してください:\n"
             "- stakeholder_type: この市場における役割\n"
             "- description: 日本語で組織の立場と対象サービスへの態度を具体的に\n"
             "- headcount: 組織の従業員数（実際の規模に近い値）\n"
-            "- revenue: 月間売上（万円）\n"
-            "- personality: 組織の意思決定傾向\n\n"
+            "- revenue: 月間売上（万円）\n\n"
+            "【重要】企業とサービス/製品を区別してください:\n"
+            "- 「Google」「Microsoft」等の企業名 → 企業全体の従業員数\n"
+            "- 「Google Bard」「Azure」「Copilot」等のサービス名 → そのサービスの事業部門規模を推定\n"
+            "  （例: Azure事業部 ≒ 数千人, Copilot事業部 ≒ 数百人）\n"
+            "- 同一企業の複数サービスが一覧にある場合、それぞれ異なるheadcountにすること\n"
+            "- 重複する組織（例: Google と Alphabet）は1つにまとめ、もう片方は除外\n\n"
+            "有効なJSONのみを返してください。マークダウンやコードブロックは不要です。\n"
             '{"agents":[{"name":"組織名","stakeholder_type":"enterprise",'
             '"description":"日本語で役割・態度・立場を説明",'
-            '"headcount":5000,"revenue":10000,'
-            '"personality":{"conservatism":0.7,"bandwagon":0.3,"overconfidence":0.5,'
-            '"sunk_cost_bias":0.6,"info_sensitivity":0.5,"noise":0.1,'
-            '"description":"大企業のため保守的で既存製品への愛着が強い"}}]}\n\n'
-            "stakeholder_type: enterprise/end_user/government/investor/platformer/community\n"
-            "conservatism: 高い=変化を恐れる/低い=新しいものに積極的\n"
-            "bandwagon: 高い=トレンドに流される/低い=独自路線\n"
-            "overconfidence: 高い=リスクを過小評価/低い=慎重\n"
-            "sunk_cost_bias: 高い=過去の投資にこだわる/低い=柔軟に方向転換\n"
-            "info_sensitivity: 高い=市場情報に敏感/低い=鈍感"
+            '"headcount":5000,"revenue":10000}]}\n\n'
+            "stakeholder_type: enterprise/end_user/government/investor/platformer/community"
         )
 
         try:
@@ -285,14 +318,51 @@ class AgentGenerator:
             )
             return self._parse_agents(response)
         except Exception:
-            logger.warning("エンティティ→エージェント変換失敗、直接生成にフォールバック")
-            # LLM失敗時: 組織名から直接エージェントを作る
-            return self._entities_to_agents_fallback(org_names)
+            logger.warning("エンティティ→エージェント変換失敗、個別LLMフォールバック")
+            return await self._entities_to_agents_fallback(org_names, scenario)
 
-    def _entities_to_agents_fallback(self, org_names: list[str]) -> list[BaseAgent]:
-        """LLM不要のフォールバック: 組織名から直接エージェントを生成."""
+    async def _entities_to_agents_fallback(
+        self, org_names: list[str], scenario: ScenarioInput,
+    ) -> list[BaseAgent]:
+        """個別LLM呼び出しによるフォールバック: 財務データを活用して推定."""
         agents: list[BaseAgent] = []
         for name in org_names[:30]:
+            # 財務データコンテキストを構築
+            fd = self._finance_lookup.get(name.lower())
+            finance_ctx = ""
+            if fd:
+                parts = []
+                if fd["market_cap"]:
+                    parts.append(f"時価総額: ${fd['market_cap']/1e9:.1f}B")
+                if fd["revenue"]:
+                    parts.append(f"年間売上: ${fd['revenue']/1e9:.1f}B")
+                if fd["sector"]:
+                    parts.append(f"セクター: {fd['sector']}")
+                if parts:
+                    finance_ctx = f"\n財務データ: {', '.join(parts)}"
+
+            try:
+                prompt = (
+                    f"組織「{name}」について推定してください。{finance_ctx}\n"
+                    f"文脈: {scenario.description[:200]}\n\n"
+                    "有効なJSONのみを返してください:\n"
+                    '{"stakeholder_type":"enterprise","headcount":推定従業員数,'
+                    '"revenue":推定月間売上万円,"description":"この組織の概要を日本語で1文"}'
+                )
+                response = await self.llm.generate_json(
+                    task_type=TaskType.AGENT_DECISION,
+                    prompt=prompt,
+                    system_prompt="組織のプロフィールをJSON形式で返答。",
+                )
+                response["name"] = name
+                agent = self._create_agent(response)
+                if agent:
+                    agents.append(agent)
+                    continue
+            except Exception:
+                pass
+
+            # LLMも失敗: デフォルト値で作成
             agent = self._create_agent({
                 "name": name,
                 "stakeholder_type": "enterprise",
@@ -383,16 +453,17 @@ class AgentGenerator:
             except (ValueError, TypeError):
                 pass
 
-        # ペルソナ
+        # ペルソナ（LLM応答がなければ種別プリセットを使用）
         raw_persona = raw.get("personality", {})
+        preset = _get_personality_preset(stakeholder_str)
         personality = AgentPersonality(
-            conservatism=_clamp(raw_persona.get("conservatism", 0.5)),
-            bandwagon=_clamp(raw_persona.get("bandwagon", 0.5)),
-            overconfidence=_clamp(raw_persona.get("overconfidence", 0.5)),
-            sunk_cost_bias=_clamp(raw_persona.get("sunk_cost_bias", 0.5)),
-            info_sensitivity=_clamp(raw_persona.get("info_sensitivity", 0.5)),
-            noise=_clamp(raw_persona.get("noise", 0.1), 0.0, 0.3),
-            description=raw_persona.get("description", ""),
+            conservatism=_clamp(raw_persona.get("conservatism", preset["conservatism"])),
+            bandwagon=_clamp(raw_persona.get("bandwagon", preset["bandwagon"])),
+            overconfidence=_clamp(raw_persona.get("overconfidence", preset["overconfidence"])),
+            sunk_cost_bias=_clamp(raw_persona.get("sunk_cost_bias", preset["sunk_cost_bias"])),
+            info_sensitivity=_clamp(raw_persona.get("info_sensitivity", preset["info_sensitivity"])),
+            noise=_clamp(raw_persona.get("noise", preset["noise"]), 0.0, 0.3),
+            description=raw_persona.get("description", "") or str(preset["description"]),
         )
 
         profile = AgentProfile(
@@ -514,3 +585,53 @@ def _clamp(value: Any, low: float = 0.0, high: float = 1.0) -> float:
         return max(low, min(high, float(value)))
     except (ValueError, TypeError):
         return (low + high) / 2
+
+
+# ステークホルダー種別ごとの性格プリセット（LLM不要フォールバック用）
+_PERSONALITY_PRESETS: dict[str, dict[str, float | str]] = {
+    "platformer": {
+        "conservatism": 0.7, "bandwagon": 0.3, "overconfidence": 0.6,
+        "sunk_cost_bias": 0.7, "info_sensitivity": 0.7, "noise": 0.05,
+        "description": "大規模プラットフォーム。既存エコシステムの防衛意識が強く、競合の動きに敏感",
+    },
+    "enterprise": {
+        "conservatism": 0.6, "bandwagon": 0.4, "overconfidence": 0.4,
+        "sunk_cost_bias": 0.6, "info_sensitivity": 0.6, "noise": 0.08,
+        "description": "企業としての安定志向。実績と信頼性を重視する堅実な判断",
+    },
+    "government": {
+        "conservatism": 0.8, "bandwagon": 0.2, "overconfidence": 0.2,
+        "sunk_cost_bias": 0.4, "info_sensitivity": 0.8, "noise": 0.03,
+        "description": "規制と安全性を重視。データに基づく慎重な判断。イノベーションと規制のバランスを取る",
+    },
+    "investor": {
+        "conservatism": 0.3, "bandwagon": 0.5, "overconfidence": 0.5,
+        "sunk_cost_bias": 0.3, "info_sensitivity": 0.9, "noise": 0.1,
+        "description": "市場データに極めて敏感。成長性とリスクを冷静に分析。トレンドにも注目",
+    },
+    "community": {
+        "conservatism": 0.4, "bandwagon": 0.6, "overconfidence": 0.3,
+        "sunk_cost_bias": 0.3, "info_sensitivity": 0.7, "noise": 0.1,
+        "description": "業界全体の発展を重視。新技術・新サービスに対してオープンだが公平性も求める",
+    },
+    "freelancer": {
+        "conservatism": 0.3, "bandwagon": 0.5, "overconfidence": 0.4,
+        "sunk_cost_bias": 0.2, "info_sensitivity": 0.6, "noise": 0.12,
+        "description": "柔軟で新しいツールに積極的。コストパフォーマンスと生産性を最重視",
+    },
+    "indie_developer": {
+        "conservatism": 0.2, "bandwagon": 0.3, "overconfidence": 0.6,
+        "sunk_cost_bias": 0.2, "info_sensitivity": 0.5, "noise": 0.15,
+        "description": "独自路線の革新志向。技術的な面白さと市場機会を追求。リスクを恐れない",
+    },
+    "end_user": {
+        "conservatism": 0.5, "bandwagon": 0.6, "overconfidence": 0.3,
+        "sunk_cost_bias": 0.5, "info_sensitivity": 0.4, "noise": 0.1,
+        "description": "使い勝手と価格を重視。周囲の評判に影響されやすい。乗り換えコストに敏感",
+    },
+}
+
+
+def _get_personality_preset(stakeholder_type: str) -> dict[str, float | str]:
+    """ステークホルダー種別に応じた性格プリセットを返す."""
+    return _PERSONALITY_PRESETS.get(stakeholder_type, _PERSONALITY_PRESETS["enterprise"])

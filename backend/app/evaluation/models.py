@@ -81,6 +81,19 @@ class AgentRecord(BaseModel):
     actions: list[str] = Field(default_factory=list)  # 取った行動の種類
 
 
+class TokenUsageSummary(BaseModel):
+    """トークン使用量のサマリー（ベンチマークレポート用）."""
+
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    total_calls: int = 0
+    estimated_cost_usd: float = 0.0
+    by_task_type: dict[str, dict] = Field(default_factory=dict)
+    by_provider: dict[str, dict] = Field(default_factory=dict)
+    agent_conversations: list[dict] = Field(default_factory=list)
+
+
 class EvaluationResult(BaseModel):
     """1つのベンチマークの評価結果."""
 
@@ -92,6 +105,7 @@ class EvaluationResult(BaseModel):
     execution_time_seconds: float = 0.0
     dimension_timelines: list[DimensionTimeline] = Field(default_factory=list)
     agents: list[AgentRecord] = Field(default_factory=list)
+    token_usage: TokenUsageSummary | None = None
 
 
 class RunStatistics(BaseModel):
@@ -104,6 +118,30 @@ class RunStatistics(BaseModel):
     min_direction_accuracy: float
     max_direction_accuracy: float
     per_trend_hit_rates: dict[str, float]  # metric → N回中何回方向一致したか
+
+
+class ResearchData(BaseModel):
+    """ベンチマーク用市場調査データ."""
+
+    market_report: str = ""
+    user_behavior: str = ""
+    stakeholders: str = ""
+    sources_used: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    trends_count: int = 0
+    github_repos_count: int = 0
+    finance_data_count: int = 0
+
+
+class FullBenchmarkResult(BaseModel):
+    """市場調査 → シミュレーション → 評価の一連結果."""
+
+    benchmark_id: str
+    benchmark_name: str
+    research: ResearchData
+    evaluation: EvaluationResult
+    research_time_seconds: float = 0.0
+    total_time_seconds: float = 0.0
 
 
 class EvaluationSuiteResult(BaseModel):

@@ -28,7 +28,7 @@ def create_oasis_model():
         url=f"{settings.ollama_base_url}/v1",
         model_config_dict={
             "temperature": 0.7,
-            "max_tokens": 1024,
+            "max_tokens": settings.oasis_max_output_tokens,
         },
     )
     logger.info("OASISモデル作成: platform=Ollama, model=%s", settings.ollama_model)

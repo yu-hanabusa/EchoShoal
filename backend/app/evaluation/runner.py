@@ -28,7 +28,10 @@ from app.evaluation.models import (
     DimensionTimeline,
     EvaluationResult,
     EvaluationSuiteResult,
+    FullBenchmarkResult,
+    ResearchData,
     RunStatistics,
+    TokenUsageSummary,
 )
 from app.simulation.agent_generator import AgentGenerator
 from app.simulation.events.scheduler import EventScheduler
@@ -102,6 +105,24 @@ async def _process_scenario_documents(
 from dataclasses import dataclass, field as dc_field
 
 
+def _extract_token_usage(summary: dict) -> TokenUsageSummary | None:
+    """engine.get_summary() の token_usage を TokenUsageSummary に変換する."""
+    raw = summary.get("token_usage")
+    if not raw:
+        return None
+    total = raw.get("total", {})
+    return TokenUsageSummary(
+        total_input_tokens=total.get("input_tokens", 0),
+        total_output_tokens=total.get("output_tokens", 0),
+        total_tokens=total.get("total_tokens", 0),
+        total_calls=total.get("calls", 0),
+        estimated_cost_usd=total.get("estimated_cost_usd", 0.0),
+        by_task_type=raw.get("by_task_type", {}),
+        by_provider=raw.get("by_provider", {}),
+        agent_conversations=raw.get("agent_conversations", []),
+    )
+
+
 @dataclass
 class _SimulationOutput:
     """シミュレーション結果とメタデータ."""
@@ -120,6 +141,7 @@ async def run_simulation_for_benchmark(
     benchmark: BenchmarkScenario,
     job_id: str,
     job_manager: JobManager,
+    collected_data: object | None = None,
 ) -> _SimulationOutput:
     """ベンチマーク用にシミュレーションを実行し、結果を返す."""
     scenario = benchmark.scenario_input
@@ -161,7 +183,7 @@ async def run_simulation_for_benchmark(
         step += 1
         await job_manager.update_progress(job_id, step, total_steps, phase="エージェント生成中")
         generator = AgentGenerator(llm)
-        agents = await generator.generate(scenario, enriched, doc_entities)
+        agents = await generator.generate(scenario, enriched, doc_entities, collected_data)
 
         step += 1
         await job_manager.update_progress(job_id, step, total_steps, phase="イベントスケジュール生成中")
@@ -195,7 +217,7 @@ async def run_simulation_for_benchmark(
         # OASISソーシャルフィード取得 + グラフ同期
         if oasis_engine is not None:
             try:
-                social_feed = oasis_engine.get_social_feed(limit=50)
+                social_feed = oasis_engine.get_social_feed()
             except Exception:
                 logger.warning("OASISソーシャルフィード取得失敗")
 
@@ -296,6 +318,9 @@ async def run_benchmark(
                 actions=agent_sum.get("action_types", []),
             ))
 
+        # トークン使用量を記録
+        evaluation.token_usage = _extract_token_usage(output.summary)
+
         # 結果をRedisに保存（通常シミュレーションと同じ形式 + 評価情報）
         summary = output.summary
         result_data = {
@@ -390,6 +415,187 @@ async def run_benchmark_multi(
         min_direction_accuracy=round(min(accuracies), 4),
         max_direction_accuracy=round(max(accuracies), 4),
         per_trend_hit_rates=per_trend_hit_rates,
+    )
+
+
+async def run_benchmark_with_research(
+    benchmark_id: str,
+    job_manager: JobManager,
+    parent_job_id: str | None = None,
+) -> FullBenchmarkResult:
+    """市場調査 → シミュレーション → 評価の一連ベンチマークを実行する.
+
+    1. 市場調査パイプラインでデータ収集 + レポート生成
+    2. 調査結果をドキュメントとしてシミュレーションに渡す
+    3. シミュレーション実行 + 期待トレンド比較
+    """
+    benchmark = get_benchmark(benchmark_id)
+    if benchmark is None:
+        msg = f"ベンチマーク '{benchmark_id}' が見つかりません"
+        raise ValueError(msg)
+
+    scenario = benchmark.scenario_input
+    total_time_start = time.monotonic()
+
+    job_id = await job_manager.create_job(
+        scenario_description=f"[市場調査+評価] {benchmark.name}",
+    )
+    await job_manager.save_scenario(job_id, scenario.model_dump())
+
+    if parent_job_id:
+        await job_manager.update_progress(
+            parent_job_id, 1, 3, phase=f"市場調査中: {benchmark.name}",
+        )
+
+    # ── Phase 1: 市場調査 ──
+    research_start = time.monotonic()
+    research_data = ResearchData()
+    research_collected_data = None  # 構造化データ（エージェント生成に渡す）
+
+    try:
+        from app.core.market_research.pipeline import run_market_research
+        from app.simulation.scenario_analyzer import ScenarioAnalyzer
+
+        llm = LLMRouter()
+
+        # 競合推定
+        competitors: list[str] = []
+        try:
+            analyzer = ScenarioAnalyzer(llm=llm)
+            enriched = await analyzer.analyze_async(scenario)
+            if enriched.interpolated_info:
+                competitors = enriched.interpolated_info.competitors
+        except Exception:
+            logger.warning("競合推定失敗（市場調査は続行）: benchmark=%s", benchmark_id)
+
+        result = await run_market_research(
+            service_name=scenario.service_name,
+            description=scenario.description,
+            target_year=scenario.target_year,
+            competitors=competitors,
+            llm=llm,
+        )
+
+        research_collected_data = result.collected_data
+
+        research_data = ResearchData(
+            market_report=result.market_report,
+            user_behavior=result.user_behavior,
+            stakeholders=result.stakeholders,
+            sources_used=result.collected_data.sources_used,
+            errors=result.collected_data.errors,
+            trends_count=len(result.collected_data.trends),
+            github_repos_count=len(result.collected_data.github_repos),
+            finance_data_count=len(result.collected_data.finance_data),
+        )
+
+        # 市場調査結果をNeo4jドキュメントとして格納
+        from app.core.graph.client import GraphClient as _GC
+        try:
+            gc = _GC()
+            if await gc.is_available():
+                from app.core.documents.models import ParsedDocument
+                from app.core.documents.processor import DocumentProcessor
+                processor = DocumentProcessor(gc, simulation_id=job_id)
+                for fname, text in [
+                    ("market_report.txt", result.market_report),
+                    ("user_behavior.txt", result.user_behavior),
+                    ("stakeholders.txt", result.stakeholders),
+                ]:
+                    if text.strip():
+                        doc = ParsedDocument(
+                            text=text, filename=fname, source="market_research",
+                        )
+                        await processor.process(doc)
+                await gc.close()
+        except Exception:
+            logger.warning("市場調査ドキュメント格納失敗: benchmark=%s", benchmark_id)
+
+        logger.info(
+            "市場調査完了: benchmark=%s, sources=%s, errors=%d",
+            benchmark_id, research_data.sources_used, len(research_data.errors),
+        )
+    except Exception:
+        logger.exception("市場調査失敗: benchmark=%s", benchmark_id)
+
+    research_time = time.monotonic() - research_start
+
+    # ── Phase 2: シミュレーション + 評価 ──
+    if parent_job_id:
+        await job_manager.update_progress(
+            parent_job_id, 2, 3, phase=f"シミュレーション実行中: {benchmark.name}",
+        )
+
+    sim_start = time.monotonic()
+
+    try:
+        output = await run_simulation_for_benchmark(
+            benchmark, job_id, job_manager, collected_data=research_collected_data,
+        )
+        results = output.rounds
+
+        evaluation = evaluate_benchmark(benchmark, results)
+        evaluation.execution_time_seconds = round(time.monotonic() - sim_start, 2)
+
+        # ディメンション推移を記録
+        from app.simulation.models import MarketDimension
+        for dim in MarketDimension:
+            values = [
+                r.market_state.dimensions.get(dim, 0.0) for r in results
+            ]
+            evaluation.dimension_timelines.append(
+                DimensionTimeline(dimension=dim.value, values=values)
+            )
+
+        # エージェント情報を記録
+        for agent_sum in output.agent_summaries:
+            evaluation.agents.append(AgentRecord(
+                name=agent_sum.get("name", ""),
+                stakeholder_type=agent_sum.get("stakeholder_type", ""),
+                actions=agent_sum.get("action_types", []),
+            ))
+
+        # トークン使用量を記録
+        evaluation.token_usage = _extract_token_usage(output.summary)
+
+        # 結果をRedisに保存
+        result_data = {
+            "scenario": scenario.model_dump(),
+            "summary": output.summary,
+            "rounds": [r.model_dump() for r in results],
+            "report": output.report,
+            "evaluation": evaluation.model_dump(),
+            "research": research_data.model_dump(),
+            "benchmark_id": benchmark_id,
+        }
+        if output.social_feed:
+            result_data["social_feed"] = output.social_feed
+        await job_manager.set_completed(job_id, result_data)
+
+    except Exception as exc:
+        logger.exception("シミュレーション失敗: benchmark=%s", benchmark_id)
+        await job_manager.set_failed(job_id, str(exc))
+        raise
+
+    total_time = time.monotonic() - total_time_start
+
+    if parent_job_id:
+        await job_manager.update_progress(
+            parent_job_id, 3, 3, phase=f"完了: {benchmark.name}",
+        )
+
+    logger.info(
+        "一連ベンチマーク完了: %s — 方向精度=%.2f, 調査=%.1fs, 合計=%.1fs",
+        benchmark.name, evaluation.direction_accuracy, research_time, total_time,
+    )
+
+    return FullBenchmarkResult(
+        benchmark_id=benchmark_id,
+        benchmark_name=benchmark.name,
+        research=research_data,
+        evaluation=evaluation,
+        research_time_seconds=round(research_time, 2),
+        total_time_seconds=round(total_time, 2),
     )
 
 
