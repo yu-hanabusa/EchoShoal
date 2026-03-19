@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     oasis_platform: str = "reddit"  # "twitter" or "reddit"
     oasis_max_agents: int = 200
     oasis_rounds_per_step: int = 1
-    oasis_message_window_size: int = 10  # 直近N件のメッセージのみ保持（コンテキスト膨張防止）
-    oasis_context_token_limit: int = 4096  # コンテキストウィンドウのトークン上限
+    oasis_message_window_size: int = 20  # 直近N件のメッセージのみ保持
+    oasis_context_token_limit: int = 16384  # コンテキストウィンドウのトークン上限（qwen3:14b=32K対応）
     oasis_max_output_tokens: int = 512  # LLM出力トークン上限
 
     # Rate Limiting
