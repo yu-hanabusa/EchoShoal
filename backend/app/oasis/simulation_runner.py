@@ -430,17 +430,22 @@ class OASISSimulationEngine:
         if not self.scenario or not self._env:
             return
 
-        # 最初の3体のエージェントにシード投稿を作成させる
+        # 多様な視点のシード投稿（5件: 情報、ユーザー、投資、競合、技術）
+        sn = self.scenario.service_name
         oasis_agents = list(self._oasis_agents.values())
-        seed_agents = oasis_agents[:min(3, len(oasis_agents))]
+        seed_agents = oasis_agents[:min(5, len(oasis_agents))]
 
         seed_topics = [
-            f"【新サービス情報】「{self.scenario.service_name}」が市場に参入します。"
+            f"【新サービス情報】「{sn}」が市場に参入します。"
             f"概要: {_truncate_at_sentence(self.scenario.description, 500)}",
-            f"【市場分析】「{self.scenario.service_name}」が業界にどのような影響を与えるか議論しましょう。"
-            "各ステークホルダーの視点からご意見をお願いします。",
-            f"「{self.scenario.service_name}」について調べています。"
-            "導入の見込みや競合との比較について、皆さんの意見を聞かせてください。",
+            f"【ユーザー視点】「{sn}」を実際に使ってみた感想を共有しましょう。"
+            "使い勝手、価格、既存ツールとの比較、乗り換えコストなど率直な意見をお願いします。",
+            f"【投資・ビジネス視点】「{sn}」の収益モデルと成長性について議論しましょう。"
+            "市場規模、競合優位性、資金調達状況、収益化の見通しはどうでしょうか。",
+            f"【競合分析】「{sn}」と既存サービスを比較して、どちらが優れているか議論しましょう。"
+            "各サービスの強み・弱み、ユーザーにとっての選択基準は何でしょうか。",
+            f"【技術・エコシステム】「{sn}」の技術基盤やサードパーティ連携について議論しましょう。"
+            "API公開、プラグイン、他サービスとの統合性はどうでしょうか。",
         ]
 
         try:
@@ -498,9 +503,8 @@ class OASISSimulationEngine:
         self._last_known_trace_count = new_trace_count
         all_actions.extend(round_actions)
 
-        # アクションログから市場ディメンションを更新
-        if round_actions:
-            await self._update_market_from_actions(round_actions, round_number)
+        # SNS議論内容から市場ディメンションを更新（アクション0件でも投稿があれば実行）
+        await self._update_market_from_actions(round_actions, round_number)
 
         # 外部イベント効果を適用
         if self._event_scheduler:
@@ -768,30 +772,85 @@ class OASISSimulationEngine:
         row = cursor.fetchone()
         return row["content"] if row else ""
 
+    def _get_round_discussions(self, round_number: int) -> str:
+        """そのラウンドの投稿・コメントテキストをSQLiteから取得する.
+
+        post_idレンジを使って現ラウンドの投稿のみ取得し、
+        発言者名付きのテキストとして返す。
+        """
+        if not self._db_path:
+            return ""
+
+        # 現ラウンドのpost_idレンジ
+        min_post_id = self._last_known_post_id + 1
+        # ラウンドのpost_id範囲がすでに記録されている場合はそれを使う
+        if round_number <= len(self._round_post_ranges):
+            rng = self._round_post_ranges[round_number - 1]
+            min_post_id = rng[0]
+
+        lines: list[str] = []
+        try:
+            conn = sqlite3.connect(self._db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # このラウンド以降の投稿 + 全コメントを取得
+            cursor.execute(
+                "SELECT p.post_id, p.content, p.num_likes, p.num_dislikes, u.name "
+                "FROM post p "
+                "LEFT JOIN user u ON p.user_id = u.user_id "
+                "WHERE p.post_id >= ? AND p.content IS NOT NULL AND p.content != '' "
+                "ORDER BY p.post_id ASC LIMIT 20",
+                (min_post_id,),
+            )
+            for row in cursor.fetchall():
+                author = row["name"] or "Unknown"
+                content = _truncate_at_sentence(row["content"], 200)
+                likes_info = ""
+                if row["num_likes"] or row["num_dislikes"]:
+                    likes_info = f" [+{row['num_likes']}/-{row['num_dislikes']}]"
+                lines.append(f"[{author}]{likes_info}: {content}")
+
+                # この投稿へのコメント
+                cursor.execute(
+                    "SELECT c.content, c.num_likes, u.name "
+                    "FROM comment c "
+                    "LEFT JOIN user u ON c.user_id = u.user_id "
+                    "WHERE c.post_id = ? "
+                    "ORDER BY c.created_at ASC LIMIT 5",
+                    (row["post_id"],),
+                )
+                for comment in cursor.fetchall():
+                    c_author = comment["name"] or "Unknown"
+                    c_content = _truncate_at_sentence(comment["content"], 150)
+                    lines.append(f"  └ [{c_author}]: {c_content}")
+
+            conn.close()
+        except Exception:
+            logger.warning("ラウンド議論テキスト取得失敗: round=%d", round_number)
+
+        return "\n".join(lines)
+
     async def _update_market_from_actions(
         self, actions: list[dict[str, Any]], round_number: int
     ) -> None:
-        """OASISアクションログから市場ディメンションを更新する.
+        """SNS上の議論内容から市場ディメンションを更新する.
 
-        投稿内容・コメント・リポスト数からLLMが市場への影響を判断。
+        アクション記録に加え、そのラウンドの投稿・コメントテキストを
+        直接取得してLLMに渡す。全エージェントが同じ投稿を見ているため、
+        投稿内容が市場の「世論」を反映する。
         """
-        if not actions:
-            return
-
-        # 主人公エージェント名を特定
         service_name = self.market.service_name
-        protagonist_name = service_name.lower() if service_name else ""
 
-        # アクションサマリー構築（主人公の投稿にはマーカーを付与）
-        actions_summary = []
-        for a in actions[:15]:
-            agent_name = a.get('agent', '?')
-            marker = "[対象サービス]" if protagonist_name and agent_name.lower() == protagonist_name else "[外部]"
-            actions_summary.append(
-                f"- {marker} {agent_name}: [{a.get('oasis_action', a['type'])}] "
-                f"{a.get('description', '')[:80]}"
-            )
-        actions_text = "\n".join(actions_summary)
+        # そのラウンドの議論テキストを取得
+        discussions = self._get_round_discussions(round_number)
+
+        # アクション統計
+        action_types: dict[str, int] = {}
+        for a in actions:
+            t = a.get("oasis_action", a.get("type", "?"))
+            action_types[t] = action_types.get(t, 0) + 1
+        action_stats = ", ".join(f"{k}: {v}" for k, v in action_types.items()) if action_types else "なし"
 
         # インタラクション統計
         stats = self._get_interaction_stats()
@@ -804,6 +863,28 @@ class OASISSimulationEngine:
 
         current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
 
+        # 直近のトレンド情報を構築（前ラウンドまでの推移）
+        trend_lines = []
+        if len(self.results) >= 2:
+            prev_dims = {
+                d.value: round(v, 3)
+                for d, v in self.results[-1].market_state.dimensions.items()
+            }
+            first_dims = {
+                d.value: round(v, 3)
+                for d, v in self.results[0].market_state.dimensions.items()
+            }
+            for dim_name, current_val in current_dims.items():
+                first_val = first_dims.get(dim_name, current_val)
+                prev_val = prev_dims.get(dim_name, current_val)
+                total_change = current_val - first_val
+                recent_change = current_val - prev_val
+                arrow = "↑" if total_change > 0.02 else "↓" if total_change < -0.02 else "→"
+                trend_lines.append(
+                    f"  {dim_name}: {first_val}→{current_val} ({arrow}{total_change:+.3f}), 前回比{recent_change:+.3f}"
+                )
+        trend_text = "\n".join(trend_lines) if trend_lines else "  （初回ラウンド、トレンドデータなし）"
+
         # 境界に近いディメンションをLLMに明示
         near_boundary = []
         for dim_name, val in current_dims.items():
@@ -813,21 +894,25 @@ class OASISSimulationEngine:
                 near_boundary.append(f"  {dim_name}={val} (下限に近い — 大きなイベントなしでは下降困難)")
         boundary_text = "\n".join(near_boundary) if near_boundary else "  なし"
 
+        # 議論がなければスキップ
+        if not discussions and not actions:
+            return
+
         prompt = (
             f"Round {round_number}. Target service: {service_name}\n"
-            f"Current dimensions: {current_dims}\n"
-            f"Platform activity:\n{actions_text}\n\n"
+            f"Current dimensions: {current_dims}\n\n"
+            f"Trend (開始→現在, 全体変化, 前回比):\n{trend_text}\n\n"
+            f"=== SNS上の議論（このラウンドの投稿・コメント） ===\n"
+            f"{discussions or '（このラウンドの新規投稿なし）'}\n\n"
+            f"Action stats: {action_stats}\n"
             f"Engagement stats: {stats_text}\n\n"
             f"Boundary awareness (極端な値のディメンション):\n{boundary_text}\n\n"
-            "Rules for interpreting actions:\n"
-            f"- [対象サービス] = posts by '{service_name}' team. Their proactive actions "
-            "(marketing, new features, partnerships) should POSITIVELY affect "
-            "user_adoption, market_awareness, ecosystem_health.\n"
-            "- [外部] = posts by competitors, users, investors, etc. "
-            "Competitor criticism = higher competitive_pressure. "
-            "User complaints = lower user_adoption. Positive reviews = higher user_adoption.\n"
-            "- Dimensions near 0.0 or 1.0 are at practical limits. "
-            "Return delta close to 0.0 for these unless an extraordinary event occurred.\n\n"
+            "Rules:\n"
+            f"- '{service_name}'の投稿 = 対象サービスのアクション。積極的な施策はuser_adoption, market_awarenessにプラス。\n"
+            "- 競合の投稿 = competitive_pressureの上昇要因。批判的な意見はuser_adoptionにマイナス。\n"
+            "- ユーザーの肯定的投稿 = user_adoption, ecosystem_healthにプラス。否定的 = マイナス。\n"
+            "- 投資家の関心 = funding_climateにプラス。規制関連の議論 = regulatory_riskに影響。\n"
+            "- 0.0/1.0に近いディメンションは、重大なイベントがない限りdelta≒0.0を返すこと。\n\n"
             "Return EXACTLY this JSON with delta values (-0.1 to +0.1):\n"
             '{"dimension_deltas": {'
             '"user_adoption": 0.0, "revenue_potential": 0.0, "tech_maturity": 0.0, '

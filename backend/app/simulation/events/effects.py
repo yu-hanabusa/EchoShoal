@@ -10,6 +10,17 @@ from app.simulation.models import ServiceMarketState, MarketDimension
 logger = logging.getLogger(__name__)
 
 
+def _soft_boundary(current: float, delta: float) -> float:
+    """ソフトバウンダリ付きdelta適用（simulation_runnerと同じ幾何学的制約）."""
+    if delta > 0:
+        effective = delta * (1.0 - current)
+    elif delta < 0:
+        effective = delta * current
+    else:
+        return current
+    return max(0.0, min(1.0, current + effective))
+
+
 def apply_event(event: MarketEvent, market: ServiceMarketState) -> list[str]:
     """イベントの影響を ServiceMarketState に適用する.
 
@@ -18,31 +29,31 @@ def apply_event(event: MarketEvent, market: ServiceMarketState) -> list[str]:
     impact = event.impact
     messages: list[str] = []
 
-    # ディメンションへの影響
+    # ディメンションへの影響（ソフトバウンダリ）
     for dim_key, delta in impact.dimension_delta.items():
         try:
             dim = MarketDimension(dim_key)
         except ValueError:
             continue
         old = market.dimensions.get(dim, 0.0)
-        market.dimensions[dim] = max(0.0, min(1.0, old + delta))
+        market.dimensions[dim] = _soft_boundary(old, delta)
 
-    # マクロ指標
+    # マクロ指標（ソフトバウンダリ）
     if impact.economic_sentiment_delta != 0:
-        market.economic_sentiment = max(
-            0.0, min(1.0, market.economic_sentiment + impact.economic_sentiment_delta)
+        market.economic_sentiment = _soft_boundary(
+            market.economic_sentiment, impact.economic_sentiment_delta,
         )
     if impact.tech_hype_delta != 0:
-        market.tech_hype_level = max(
-            0.0, min(1.0, market.tech_hype_level + impact.tech_hype_delta)
+        market.tech_hype_level = _soft_boundary(
+            market.tech_hype_level, impact.tech_hype_delta,
         )
     if impact.regulatory_pressure_delta != 0:
-        market.regulatory_pressure = max(
-            0.0, min(1.0, market.regulatory_pressure + impact.regulatory_pressure_delta)
+        market.regulatory_pressure = _soft_boundary(
+            market.regulatory_pressure, impact.regulatory_pressure_delta,
         )
     if impact.ai_disruption_delta != 0:
-        market.ai_disruption_level = max(
-            0.0, min(1.0, market.ai_disruption_level + impact.ai_disruption_delta)
+        market.ai_disruption_level = _soft_boundary(
+            market.ai_disruption_level, impact.ai_disruption_delta,
         )
 
     messages.append(f"[イベント] {event.name}: {event.description}")

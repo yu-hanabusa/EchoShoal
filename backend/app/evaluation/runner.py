@@ -142,6 +142,7 @@ async def run_simulation_for_benchmark(
     job_id: str,
     job_manager: JobManager,
     collected_data: object | None = None,
+    stakeholder_report: str = "",
 ) -> _SimulationOutput:
     """ベンチマーク用にシミュレーションを実行し、結果を返す."""
     scenario = benchmark.scenario_input
@@ -183,7 +184,9 @@ async def run_simulation_for_benchmark(
         step += 1
         await job_manager.update_progress(job_id, step, total_steps, phase="エージェント生成中")
         generator = AgentGenerator(llm)
-        agents = await generator.generate(scenario, enriched, doc_entities, collected_data)
+        agents = await generator.generate(
+            scenario, enriched, doc_entities, collected_data, stakeholder_report,
+        )
 
         step += 1
         await job_manager.update_progress(job_id, step, total_steps, phase="イベントスケジュール生成中")
@@ -451,6 +454,7 @@ async def run_benchmark_with_research(
     research_start = time.monotonic()
     research_data = ResearchData()
     research_collected_data = None  # 構造化データ（エージェント生成に渡す）
+    research_stakeholder_report = ""  # ステークホルダーレポート（エージェント補完に渡す）
 
     try:
         from app.core.market_research.pipeline import run_market_research
@@ -477,6 +481,7 @@ async def run_benchmark_with_research(
         )
 
         research_collected_data = result.collected_data
+        research_stakeholder_report = result.stakeholders
 
         research_data = ResearchData(
             market_report=result.market_report,
@@ -530,7 +535,9 @@ async def run_benchmark_with_research(
 
     try:
         output = await run_simulation_for_benchmark(
-            benchmark, job_id, job_manager, collected_data=research_collected_data,
+            benchmark, job_id, job_manager,
+            collected_data=research_collected_data,
+            stakeholder_report=research_stakeholder_report,
         )
         results = output.rounds
 

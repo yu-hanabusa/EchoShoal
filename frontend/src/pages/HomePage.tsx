@@ -29,7 +29,13 @@ export default function HomePage() {
 
   const deleteMutation = useMutation({
     mutationFn: (jobId: string) => deleteSimulation(jobId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["simulations"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["simulations"] });
+      // 最終ページの最後のアイテムを削除した場合、前のページに戻る
+      if (page > 0 && simulations && simulations.length <= 1) {
+        setPage((p) => p - 1);
+      }
+    },
   });
 
   const renameMutation = useMutation({

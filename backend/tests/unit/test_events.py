@@ -64,14 +64,14 @@ class TestApplyEvent:
 
     def test_economic_sentiment_delta(self):
         market = ServiceMarketState(economic_sentiment=0.5)
-        original = market.economic_sentiment
         event = MarketEvent(
             name="景気後退", event_type=EventType.ECONOMIC_SHOCK,
             trigger_round=1,
             impact=EventImpact(economic_sentiment_delta=-0.1),
         )
         apply_event(event, market)
-        assert market.economic_sentiment == pytest.approx(original - 0.1)
+        # ソフトバウンダリ: -0.1 * 0.5 = -0.05 → 0.45
+        assert market.economic_sentiment == pytest.approx(0.45)
 
     def test_tech_hype_delta(self):
         market = ServiceMarketState()
@@ -106,7 +106,7 @@ class TestApplyEvent:
         apply_event(event, market)
         assert market.regulatory_pressure == pytest.approx(original + 0.1)
 
-    def test_clamps_to_bounds(self):
+    def test_soft_boundary_near_upper(self):
         market = ServiceMarketState()
         market.dimensions[MarketDimension.USER_ADOPTION] = 0.95
         event = MarketEvent(
@@ -115,7 +115,8 @@ class TestApplyEvent:
             impact=EventImpact(dimension_delta={"user_adoption": 0.2}),
         )
         apply_event(event, market)
-        assert market.dimensions[MarketDimension.USER_ADOPTION] == 1.0
+        # ソフトバウンダリ: 0.2 * (1.0 - 0.95) = 0.01 → 0.96
+        assert market.dimensions[MarketDimension.USER_ADOPTION] == pytest.approx(0.96)
 
     def test_returns_event_messages(self):
         market = ServiceMarketState()

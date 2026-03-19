@@ -147,6 +147,7 @@ class AgentGenerator:
         enriched: EnrichedScenario,
         document_entities: dict[str, list[str]] | None = None,
         collected_data: Any | None = None,
+        stakeholder_report: str = "",
     ) -> list[BaseAgent]:
         """エンティティからエージェントを生成する.
 
@@ -156,7 +157,9 @@ class AgentGenerator:
         3. 不足しているステークホルダーをLLMが補完
 
         collected_data: 市場調査で収集した構造化データ（FinanceData等）
+        stakeholder_report: 市場調査のステークホルダーレポート（テキスト）
         """
+        self._stakeholder_report = stakeholder_report
         agents: list[BaseAgent] = []
         entities = document_entities or {}
         orgs = entities.get("organizations", [])
@@ -174,6 +177,7 @@ class AgentGenerator:
                 }
 
         # Step 0: 対象サービスを主人公エージェントとして生成
+        self._protagonist_aliases: set[str] = set()
         if scenario.service_name:
             protagonist = await self._create_protagonist(scenario)
             if protagonist:
@@ -182,10 +186,8 @@ class AgentGenerator:
         # Step 1: 文書から抽出された組織をエージェント化
         if orgs:
             orgs = _filter_entities(orgs)
-            # 対象サービスは既にStep 0で生成済みなので重複排除
-            service_name = scenario.service_name.lower() if scenario.service_name else ""
-            if service_name:
-                orgs = [o for o in orgs if o.lower() != service_name]
+            # 対象サービスおよびその運営企業は既にStep 0で生成済みなので重複排除
+            orgs = [o for o in orgs if o.lower() not in self._protagonist_aliases]
         if orgs:
             logger.info("文書エンティティから%d組織をエージェント化", len(orgs))
             entity_agents = await self._entities_to_agents(orgs, scenario)
@@ -194,7 +196,7 @@ class AgentGenerator:
         # Step 2: シナリオからユーザー層・補完エージェントを生成
         existing_names = {a.name for a in agents}
         complement_agents = await self._generate_complement_agents(
-            scenario, enriched, existing_names,
+            scenario, enriched, existing_names, agents,
         )
         agents.extend(complement_agents)
 
@@ -226,6 +228,7 @@ class AgentGenerator:
             f"サービス「{service}」を運営する企業/チームのプロフィールを推定してください。\n"
             f"概要: {scenario.description[:300]}\n\n"
             '{"name":"サービス名","stakeholder_type":"enterprise",'
+            '"operator":"運営企業名（例: ChatGPT→OpenAI, Gmail→Google）",'
             '"description":"このサービスの立場・戦略・強みを日本語で",'
             '"headcount":推定従業員数,'
             '"revenue":推定月間売上(万円),'
@@ -243,6 +246,12 @@ class AgentGenerator:
             )
             response["name"] = service  # 名前はサービス名で固定
             response["stakeholder_type"] = "enterprise"
+            # 運営企業名を記録（競合エージェント生成時に除外するため）
+            operator = response.pop("operator", "")
+            self._protagonist_aliases.add(service.lower())
+            if operator:
+                self._protagonist_aliases.add(operator.lower())
+                logger.info("主人公の運営企業: %s（競合から除外）", operator)
             agent = self._create_agent(response)
             if agent:
                 logger.info("主人公エージェント生成: %s (headcount=%d)",
@@ -250,6 +259,7 @@ class AgentGenerator:
             return agent
         except Exception:
             logger.warning("主人公エージェント生成失敗、デフォルトで作成")
+            self._protagonist_aliases.add(service.lower())
             return self._create_agent({
                 "name": service,
                 "stakeholder_type": "enterprise",
@@ -377,28 +387,47 @@ class AgentGenerator:
         scenario: ScenarioInput,
         enriched: EnrichedScenario,
         existing_names: set[str],
+        existing_agents: list[BaseAgent] | None = None,
     ) -> list[BaseAgent]:
         """既存エージェントに不足しているステークホルダーを補完する."""
         existing_list = ", ".join(existing_names) if existing_names else "none"
+
+        # 現在の構成比を算出
+        type_counts: dict[str, int] = {}
+        if existing_agents:
+            for a in existing_agents:
+                st = a.profile.stakeholder_type.value
+                type_counts[st] = type_counts.get(st, 0) + 1
+        composition_text = ", ".join(f"{k}: {v}体" for k, v in type_counts.items()) if type_counts else "なし"
+
+        # ステークホルダーレポートの要約（あれば）
+        stakeholder_ctx = ""
+        if self._stakeholder_report:
+            stakeholder_ctx = (
+                f"\n【市場調査ステークホルダーレポート（抜粋）】\n"
+                f"{self._stakeholder_report[:500]}\n"
+            )
 
         service = scenario.service_name or "対象サービス"
         prompt = (
             f"サービス: {service}\n"
             f"概要: {scenario.description[:300]}\n"
-            f"既存エージェント: {existing_list}\n\n"
-            "不足しているエージェントを追加してください:\n"
-            f"- エンドユーザー層（'{service}の潜在ユーザー層', '競合サービスの既存ユーザー層'等、"
-            "集団を表す名前にする）\n"
-            "- 具体的な競合（実名のサービス/企業名）\n"
-            "- 行政、投資家、コミュニティ\n\n"
-            f"注意: '{service}'自体はシミュレーション対象なのでエージェントにしないでください。\n\n"
-            "各エージェントにheadcount（組織規模）とpersonality（意思決定傾向）を設定:\n"
+            f"既存エージェント: {existing_list}\n"
+            f"現在の構成: {composition_text}\n"
+            f"{stakeholder_ctx}\n"
+            "【重要】現在の構成はenterprise/platformerに偏っています。\n"
+            "シミュレーションの質を上げるため、以下の種別を重点的に補完してください:\n"
+            f"- end_user: 最低3セグメント（'{service}の潜在ユーザー層', '競合サービスの既存ユーザー層', "
+            "'テクノロジーに懐疑的な層'等、集団を表す名前にする）\n"
+            "- investor: 最低1体（VC、機関投資家等）\n"
+            "- community: 最低1体（業界団体、OSS/開発者コミュニティ等）\n"
+            "- government: 最低1体（規制当局）\n\n"
+            f"注意: '{service}'自体およびその運営企業（{', '.join(self._protagonist_aliases)}）は"
+            "シミュレーション対象なのでエージェントにしないでください。\n\n"
+            "有効なJSONのみを返してください:\n"
             '{"agents":[{"name":"名前","stakeholder_type":"end_user",'
             '"description":"日本語で役割・態度・立場を具体的に説明",'
-            '"headcount":5000,'
-            '"personality":{"conservatism":0.5,"bandwagon":0.5,"overconfidence":0.5,'
-            '"sunk_cost_bias":0.5,"info_sensitivity":0.5,"noise":0.1,'
-            '"description":"このセグメントの特徴を日本語で"}}]}\n\n'
+            '"headcount":5000}]}\n\n'
             "stakeholder_type: enterprise/end_user/government/investor/platformer/community\n"
             "headcount目安: エンドユーザー層=1000-10000, 大企業=5000-100000, "
             "スタートアップ=10-100, 行政=500, 投資家=30, コミュニティ=200"
@@ -411,7 +440,11 @@ class AgentGenerator:
                 system_prompt="JSON形式で返答。descriptionは日本語で。",
             )
             agents = self._parse_agents(response)
-            return [a for a in agents if a.name not in existing_names]
+            return [
+                a for a in agents
+                if a.name not in existing_names
+                and a.name.lower() not in self._protagonist_aliases
+            ]
         except Exception:
             logger.warning("補完エージェント生成失敗、シナリオベースフォールバック")
             return self._complement_fallback(scenario, existing_names)
@@ -428,6 +461,9 @@ class AgentGenerator:
                 name = raw.get("name", "")
                 if _is_non_market_player(name):
                     logger.info("非市場プレイヤーをスキップ: %s", name)
+                    continue
+                if hasattr(self, "_protagonist_aliases") and name.lower() in self._protagonist_aliases:
+                    logger.info("主人公/運営企業をスキップ: %s", name)
                     continue
                 agent = self._create_agent(raw)
                 if agent:
