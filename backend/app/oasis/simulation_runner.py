@@ -90,6 +90,7 @@ class OASISSimulationEngine:
         self._round_post_ranges: list[tuple[int, int]] = []  # (first_post_id, last_post_id) per round
         self._last_known_post_id: int = 0
         self._last_known_trace_count: int = 0  # traceテーブルの既知件数（ラウンド区切り用）
+        self._prev_engagement_stats: dict[str, int] | None = None  # 前ラウンドのエンゲージメント統計
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """OASIS環境でシミュレーションを実行する."""
@@ -794,7 +795,7 @@ class OASISSimulationEngine:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # このラウンド以降の投稿 + 全コメントを取得
+            # このラウンドの新規投稿を取得
             cursor.execute(
                 "SELECT p.post_id, p.content, p.num_likes, p.num_dislikes, u.name "
                 "FROM post p "
@@ -803,7 +804,22 @@ class OASISSimulationEngine:
                 "ORDER BY p.post_id ASC LIMIT 20",
                 (min_post_id,),
             )
-            for row in cursor.fetchall():
+            new_posts = cursor.fetchall()
+
+            # 新規投稿がない場合、直近の累積投稿（いいね数上位）を取得
+            if not new_posts:
+                cursor.execute(
+                    "SELECT p.post_id, p.content, p.num_likes, p.num_dislikes, u.name "
+                    "FROM post p "
+                    "LEFT JOIN user u ON p.user_id = u.user_id "
+                    "WHERE p.content IS NOT NULL AND p.content != '' "
+                    "ORDER BY p.num_likes DESC, p.post_id DESC LIMIT 10",
+                )
+                new_posts = cursor.fetchall()
+                if new_posts:
+                    lines.append("（このラウンドの新規投稿なし — 直近の注目投稿を参照）")
+
+            for row in new_posts:
                 author = row["name"] or "Unknown"
                 content = _truncate_at_sentence(row["content"], 200)
                 likes_info = ""
@@ -852,13 +868,25 @@ class OASISSimulationEngine:
             action_types[t] = action_types.get(t, 0) + 1
         action_stats = ", ".join(f"{k}: {v}" for k, v in action_types.items()) if action_types else "なし"
 
-        # インタラクション統計
+        # インタラクション統計 + 前ラウンドとの変化率
         stats = self._get_interaction_stats()
+        prev_stats = self._prev_engagement_stats or {}
+        engagement_changes = []
+        for key in ("posts", "comments", "likes", "follows"):
+            current_val = stats.get(key, 0)
+            prev_val = prev_stats.get(key, 0)
+            delta = current_val - prev_val
+            if delta != 0:
+                engagement_changes.append(f"{key} {delta:+d}")
+        engagement_delta_text = ", ".join(engagement_changes) if engagement_changes else "変化なし"
+        self._prev_engagement_stats = dict(stats)
+
         stats_text = (
             f"Total posts: {stats.get('posts', 0)}, "
             f"Comments: {stats.get('comments', 0)}, "
             f"Likes: {stats.get('likes', 0)}, "
-            f"Follows: {stats.get('follows', 0)}"
+            f"Follows: {stats.get('follows', 0)}\n"
+            f"Engagement change (前ラウンド比): {engagement_delta_text}"
         )
 
         current_dims = {d.value: round(v, 3) for d, v in self.market.dimensions.items()}
@@ -911,8 +939,14 @@ class OASISSimulationEngine:
             f"- '{service_name}'の投稿 = 対象サービスのアクション。積極的な施策はuser_adoption, market_awarenessにプラス。\n"
             "- 競合の投稿 = competitive_pressureの上昇要因。批判的な意見はuser_adoptionにマイナス。\n"
             "- ユーザーの肯定的投稿 = user_adoption, ecosystem_healthにプラス。否定的 = マイナス。\n"
-            "- 投資家の関心 = funding_climateにプラス。規制関連の議論 = regulatory_riskに影響。\n"
+            "- 投資家の関心 = funding_climateにプラス。\n"
             "- 0.0/1.0に近いディメンションは、重大なイベントがない限りdelta≒0.0を返すこと。\n\n"
+            "【重要】因果関係の注意:\n"
+            "- 規制議論の活発化 ≠ ユーザー離脱。規制はregulatory_riskに反映し、user_adoptionには直接影響させない。\n"
+            "  規制議論が盛んなのはむしろ市場が成長している証拠であることが多い。\n"
+            "- Engagement change（いいね・コメント・フォローの増加）はユーザー関心の代理指標。\n"
+            "  エンゲージメントが増加中ならuser_adoptionとmarket_awarenessにプラス。\n"
+            "- 議論のトーンがネガティブでも、議論量が増えていれば市場関心は高まっている。\n\n"
             "Return EXACTLY this JSON with delta values (-0.1 to +0.1):\n"
             '{"dimension_deltas": {'
             '"user_adoption": 0.0, "revenue_potential": 0.0, "tech_maturity": 0.0, '

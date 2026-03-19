@@ -307,7 +307,12 @@ class AgentGenerator:
             "- description: 日本語で組織の立場と対象サービスへの態度を具体的に\n"
             "- headcount: 組織の従業員数（実際の規模に近い値）\n"
             "- revenue: 月間売上（万円）\n\n"
-            "【重要】企業とサービス/製品を区別してください:\n"
+            "【重要1】対象サービスの市場に無関係な組織は除外してください:\n"
+            "- 情報ソース（Yahoo Finance, Bloomberg, TechCrunch, Google Trends等）\n"
+            "- 調査対象の市場と直接関係ない開発ツール・プラットフォーム（GitHub, GitLab等）\n"
+            "- リサーチ・コンサル会社（McKinsey, Gartner等）\n"
+            "→ 除外する組織は \"exclude\": true を付与してください\n\n"
+            "【重要2】企業とサービス/製品を区別してください:\n"
             "- 「Google」「Microsoft」等の企業名 → 企業全体の従業員数\n"
             "- 「Google Bard」「Azure」「Copilot」等のサービス名 → そのサービスの事業部門規模を推定\n"
             "  （例: Azure事業部 ≒ 数千人, Copilot事業部 ≒ 数百人）\n"
@@ -316,7 +321,7 @@ class AgentGenerator:
             "有効なJSONのみを返してください。マークダウンやコードブロックは不要です。\n"
             '{"agents":[{"name":"組織名","stakeholder_type":"enterprise",'
             '"description":"日本語で役割・態度・立場を説明",'
-            '"headcount":5000,"revenue":10000}]}\n\n'
+            '"headcount":5000,"revenue":10000,"exclude":false}]}\n\n'
             "stakeholder_type: enterprise/end_user/government/investor/platformer/community"
         )
 
@@ -354,10 +359,15 @@ class AgentGenerator:
             try:
                 prompt = (
                     f"組織「{name}」について推定してください。{finance_ctx}\n"
+                    f"サービス: {scenario.service_name or '不明'}\n"
                     f"文脈: {scenario.description[:200]}\n\n"
+                    "この組織が対象サービスの市場に直接関係するか判定してください。\n"
+                    "情報ソース（Yahoo Finance等）、開発ツール（GitHub等）、\n"
+                    "リサーチ会社など市場に無関係な組織は exclude: true としてください。\n\n"
                     "有効なJSONのみを返してください:\n"
                     '{"stakeholder_type":"enterprise","headcount":推定従業員数,'
-                    '"revenue":推定月間売上万円,"description":"この組織の概要を日本語で1文"}'
+                    '"revenue":推定月間売上万円,"description":"この組織の概要を日本語で1文",'
+                    '"exclude":false}'
                 )
                 response = await self.llm.generate_json(
                     task_type=TaskType.AGENT_DECISION,
@@ -365,6 +375,9 @@ class AgentGenerator:
                     system_prompt="組織のプロフィールをJSON形式で返答。",
                 )
                 response["name"] = name
+                if response.get("exclude"):
+                    logger.info("LLMが市場無関係と判定しスキップ: %s", name)
+                    continue
                 agent = self._create_agent(response)
                 if agent:
                     agents.append(agent)
@@ -459,6 +472,9 @@ class AgentGenerator:
         for raw in raw_agents:
             try:
                 name = raw.get("name", "")
+                if raw.get("exclude"):
+                    logger.info("LLMが市場無関係と判定しスキップ: %s", name)
+                    continue
                 if _is_non_market_player(name):
                     logger.info("非市場プレイヤーをスキップ: %s", name)
                     continue
