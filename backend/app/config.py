@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Simulation Defaults
     max_rounds: int = 36
     default_rounds: int = 24
-    agent_activation_rate: float = 0.4
+    agent_activation_rate: float = 0.7  # 各ラウンドでアクティブになるエージェントの割合
     max_actions_per_agent: int = 2
     max_llm_calls: int = 5000
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # OASIS Integration
     oasis_platform: str = "reddit"  # "twitter" or "reddit"
     oasis_max_agents: int = 200
-    oasis_rounds_per_step: int = 1
+    oasis_rounds_per_step: int = 2  # 1ラウンドあたりのLLMアクション機会（多いほど議論が活発）
     oasis_message_window_size: int = 20  # 直近N件のメッセージのみ保持
     oasis_context_token_limit: int = 16384  # コンテキストウィンドウのトークン上限（qwen3:14b=32K対応）
     oasis_max_output_tokens: int = 512  # LLM出力トークン上限
