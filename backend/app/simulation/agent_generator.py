@@ -421,18 +421,36 @@ class AgentGenerator:
                 f"{self._stakeholder_report[:500]}\n"
             )
 
+        # 財務データから市場規模コンテキストを構築
+        finance_ctx = ""
+        if self._finance_lookup:
+            companies_with_cap = [
+                (v["company_name"], v["market_cap"])
+                for v in self._finance_lookup.values()
+                if v.get("market_cap")
+            ]
+            if companies_with_cap:
+                total_cap = sum(c[1] for c in companies_with_cap)
+                finance_ctx = (
+                    f"\n【市場規模の参考データ】\n"
+                    f"関連上場企業{len(companies_with_cap)}社の時価総額合計: ${total_cap/1e9:.0f}B\n"
+                    f"→ この規模の市場には複数のVC・機関投資家が関与しているはず。\n"
+                    f"  レポートに登場する具体的な投資家名を使ってください。\n"
+                )
+
         service = scenario.service_name or "対象サービス"
         prompt = (
             f"サービス: {service}\n"
             f"概要: {scenario.description[:300]}\n"
             f"既存エージェント: {existing_list}\n"
             f"現在の構成: {composition_text}\n"
-            f"{stakeholder_ctx}\n"
+            f"{stakeholder_ctx}{finance_ctx}\n"
             "【重要】現在の構成はenterprise/platformerに偏っています。\n"
             "シミュレーションの質を上げるため、以下の種別を重点的に補完してください:\n"
             f"- end_user: 最低3セグメント（'{service}の潜在ユーザー層', '競合サービスの既存ユーザー層', "
             "'テクノロジーに懐疑的な層'等、集団を表す名前にする）\n"
-            "- investor: 最低1体（VC、機関投資家等）\n"
+            "- investor: 最低2体（ステークホルダーレポートや概要に登場する具体的なVC・投資家名を使う。"
+            "  例: Sequoia Capital, a16z, SoftBank Vision Fund等。この市場に実際に投資している/しそうな投資家）\n"
             "- community: 最低1体（業界団体、OSS/開発者コミュニティ等）\n"
             "- government: 最低1体（規制当局）\n\n"
             f"注意: '{service}'自体およびその運営企業（{', '.join(self._protagonist_aliases)}）は"

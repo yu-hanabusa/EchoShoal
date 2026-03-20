@@ -212,6 +212,22 @@ async def run_simulation_for_benchmark(
             enriched_scenario=enriched, simulation_id=job_id,
             rag=rag, agent_memory=agent_memory,
         )
+
+        # 市場調査の財務データをmarket_analyzer用に設定
+        if collected_data and hasattr(collected_data, "finance_data"):
+            finance_lines = []
+            for fd in collected_data.finance_data:
+                parts = [fd.company_name]
+                if fd.market_cap:
+                    parts.append(f"時価総額${fd.market_cap/1e9:.0f}B")
+                if fd.revenue:
+                    parts.append(f"売上${fd.revenue/1e9:.1f}B")
+                finance_lines.append(" / ".join(parts))
+            if finance_lines:
+                oasis_engine._finance_summary = (
+                    "関連企業の財務状況:\n" + "\n".join(f"  {l}" for l in finance_lines)
+                )
+
         engine = oasis_engine
 
         rounds = await engine.run()

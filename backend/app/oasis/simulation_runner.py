@@ -91,6 +91,7 @@ class OASISSimulationEngine:
         self._last_known_post_id: int = 0
         self._last_known_trace_count: int = 0  # traceテーブルの既知件数（ラウンド区切り用）
         self._prev_engagement_stats: dict[str, int] | None = None  # 前ラウンドのエンゲージメント統計
+        self._finance_summary: str = ""  # 市場調査の財務データ要約（market_analyzer用）
 
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """OASIS環境でシミュレーションを実行する."""
@@ -926,12 +927,16 @@ class OASISSimulationEngine:
         if not discussions and not actions:
             return
 
+        # 財務データ（funding_climate判断材料）
+        finance_text = self._finance_summary if self._finance_summary else ""
+
         prompt = (
             f"Round {round_number}. Target service: {service_name}\n"
             f"Current dimensions: {current_dims}\n\n"
             f"Trend (開始→現在, 全体変化, 前回比):\n{trend_text}\n\n"
             f"=== SNS上の議論（このラウンドの投稿・コメント） ===\n"
             f"{discussions or '（このラウンドの新規投稿なし）'}\n\n"
+            f"{finance_text}\n" if finance_text else ""
             f"Action stats: {action_stats}\n"
             f"Engagement stats: {stats_text}\n\n"
             f"Boundary awareness (極端な値のディメンション):\n{boundary_text}\n\n"
