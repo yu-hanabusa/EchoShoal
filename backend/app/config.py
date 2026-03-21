@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Simulation Defaults
     max_rounds: int = 36
-    default_rounds: int = 24
+    default_rounds: int = 12
     agent_activation_rate: float = 0.7  # 各ラウンドでアクティブになるエージェントの割合
     max_actions_per_agent: int = 2
     max_llm_calls: int = 5000

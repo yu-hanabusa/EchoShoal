@@ -175,7 +175,7 @@ EchoShoal/
 | `ECHOSHOAL_OLLAMA_MODEL` | ローカルLLMモデル名 | デフォルト: `qwen3:14b` |
 | `ECHOSHOAL_ESTAT_API_KEY` | e-Stat APIキー（政府統計データ） | 任意 |
 | `ECHOSHOAL_NEO4J_PASSWORD` | Neo4jパスワード | 必須 |
-| `ECHOSHOAL_DEFAULT_ROUNDS` | シミュレーションラウンド数 | デフォルト: `24` |
+| `ECHOSHOAL_DEFAULT_ROUNDS` | シミュレーションラウンド数 | デフォルト: `12` |
 
 ## 開発
 
@@ -196,6 +196,11 @@ cd frontend && pnpm build
 ## ベンチマーク評価
 
 過去のサービスリリース事例（成功5件・失敗4件）を使い、シミュレーターの予測精度を検証できます。フロントエンドの `/benchmarks` ページから実行するか、APIを直接呼び出します。
+
+**実行時間の目安**（Ollama qwen3:14b / RTX 4070 Ti SUPER環境）:
+- 1シナリオ（12ラウンド）: 約10〜15分
+- 市場調査付き: 約20〜25分
+- 全9シナリオ一括: 約2〜3時間
 
 ```bash
 # API経由で単発実行（例: Slack 2014）
