@@ -162,9 +162,20 @@ class OASISSimulationEngine:
         # エージェントグラフ構築
         self._agent_graph = AgentGraph()
 
-        # Redditデフォルトアクション
+        # Redditアクション（議論生成に不要なアクションを除外）
         from oasis.social_platform.typing import ActionType
-        available_actions = ActionType.get_default_reddit_actions()
+        _excluded = {
+            ActionType.REFRESH,       # タイムライン閲覧のみで議論を生まない
+            ActionType.DO_NOTHING,    # 何もしない
+            ActionType.SEARCH_POSTS,  # 検索のみで議論を生まない
+            ActionType.SEARCH_USER,   # ユーザー検索のみ
+            ActionType.TREND,         # トレンド閲覧のみ
+            ActionType.MUTE,          # エンゲージメント抑制
+        }
+        available_actions = [
+            a for a in ActionType.get_default_reddit_actions()
+            if a not in _excluded
+        ]
 
         # 日本語システムプロンプトテンプレート（OASISデフォルトの英語テンプレートを上書き）
         from camel.prompts import TextPrompt
@@ -294,10 +305,8 @@ class OASISSimulationEngine:
         SocialEnvironment.env_template = StdTemplate(
             "$groups_env\n"
             "$posts_env\n"
-            "あなたのプロフィールと投稿内容に基づいて、"
-            "最も適切なアクションを選んでください。"
-            "「いいね」だけでなく、投稿やコメントも積極的に行ってください。"
-            "【重要】すべての発言は必ず日本語で行ってください。"
+            "あなたの立場から、投稿（create_post）またはコメント（create_comment）で"
+            "意見を述べてください。必ず日本語で発言してください。"
         )
 
         # perform_action_by_llm のユーザーメッセージを日本語化
@@ -311,11 +320,13 @@ class OASISSimulationEngine:
             user_msg = BaseMessage.make_user_message(
                 role_name="User",
                 content=(
-                    f"SNSの環境を観察して、適切なアクションを実行してください。"
-                    f"「いいね」だけでなく、投稿・コメント・リポストなど"
-                    f"多様なアクションを行ってください。"
-                    f"【重要】すべての発言は必ず日本語で行ってください。"
-                    f"\n\n現在のSNS環境:\n{env_prompt}"
+                    f"以下のSNS環境を読み、あなたの立場から必ずアクションを実行してください。\n"
+                    f"【優先順位】\n"
+                    f"1. 既存の投稿にコメント（create_comment）— 議論に参加する\n"
+                    f"2. 新しい投稿を作成（create_post）— 自分の意見を発信する\n"
+                    f"3. いいね/フォロー — 他者の意見に反応する\n"
+                    f"必ず日本語で発言してください。\n\n"
+                    f"現在のSNS環境:\n{env_prompt}"
                 ),
             )
             try:
@@ -437,17 +448,20 @@ class OASISSimulationEngine:
         oasis_agents = list(self._oasis_agents.values())
         seed_agents = oasis_agents[:min(5, len(oasis_agents))]
 
+        desc = _truncate_at_sentence(self.scenario.description, 300)
         seed_topics = [
-            f"【新サービス情報】「{sn}」が市場に参入します。"
-            f"概要: {_truncate_at_sentence(self.scenario.description, 500)}",
-            f"【ユーザー視点】「{sn}」を実際に使ってみた感想を共有しましょう。"
-            "使い勝手、価格、既存ツールとの比較、乗り換えコストなど率直な意見をお願いします。",
-            f"【投資・ビジネス視点】「{sn}」の収益モデルと成長性について議論しましょう。"
-            "市場規模、競合優位性、資金調達状況、収益化の見通しはどうでしょうか。",
-            f"【競合分析】「{sn}」と既存サービスを比較して、どちらが優れているか議論しましょう。"
-            "各サービスの強み・弱み、ユーザーにとっての選択基準は何でしょうか。",
-            f"【技術・エコシステム】「{sn}」の技術基盤やサードパーティ連携について議論しましょう。"
-            "API公開、プラグイン、他サービスとの統合性はどうでしょうか。",
+            f"「{sn}」が市場に参入するそうです。{desc}\n"
+            f"正直なところ、既存サービスから乗り換える価値はあると思いますか？",
+            f"「{sn}」のユーザー体験について。"
+            f"使い勝手や価格は既存ツールと比べてどうですか？"
+            f"乗り換えコストに見合うメリットはありますか？",
+            f"「{sn}」に投資する価値はあるでしょうか？"
+            f"収益モデルの持続性、市場規模、競合との差別化について"
+            f"皆さんの見解を聞かせてください。",
+            f"「{sn}」vs 既存サービス、どちらを選びますか？"
+            f"それぞれの強み・弱みを具体的に挙げてみてください。",
+            f"「{sn}」の技術基盤は信頼できますか？"
+            f"API連携やエコシステムの成熟度はどの程度でしょうか？",
         ]
 
         try:

@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # OASIS Integration
     oasis_platform: str = "reddit"  # "twitter" or "reddit"
     oasis_max_agents: int = 200
-    oasis_rounds_per_step: int = 2  # 1ラウンドあたりのLLMアクション機会（多いほど議論が活発）
+    oasis_rounds_per_step: int = 1  # 1ラウンドあたりのLLMアクション機会
     oasis_message_window_size: int = 20  # 直近N件のメッセージのみ保持
     oasis_context_token_limit: int = 16384  # コンテキストウィンドウのトークン上限（qwen3:14b=32K対応）
     oasis_max_output_tokens: int = 512  # LLM出力トークン上限

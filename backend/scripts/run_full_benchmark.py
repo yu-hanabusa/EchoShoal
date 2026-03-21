@@ -1,4 +1,4 @@
-"""全ベンチマーク統計評価 — 全9シナリオ×5回実行してレポート出力.
+"""全ベンチマーク統計評価 — 全9シナリオ×3回実行してレポート出力.
 
 使い方:
   cd backend
@@ -30,7 +30,7 @@ from app.evaluation.benchmarks import get_benchmark, list_benchmarks  # noqa: E4
 from app.evaluation.models import EvaluationResult, RunStatistics  # noqa: E402
 from app.evaluation.runner import run_benchmark_multi  # noqa: E402
 
-NUM_RUNS = 5
+NUM_RUNS = 3
 REPORT_PATH = Path(__file__).resolve().parent.parent / "benchmark_report.txt"
 
 logging.basicConfig(
