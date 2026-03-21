@@ -209,7 +209,7 @@ Light Tasks (Ollama):          Heavy Tasks (Claude/OpenAI):
 OASISSimulationEngine
   │
   ├─ CAMEL-AI OASIS フレームワーク
-  ├─ Reddit/Twitter 的SNS空間
+  ├─ X(Twitter)/Reddit 的SNS空間
   ├─ エージェント間の投稿・コメント・リポスト
   ├─ 自動的な関係グラフ成長
   ├─ SQLiteにインタラクション記録
