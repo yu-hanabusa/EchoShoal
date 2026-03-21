@@ -313,18 +313,90 @@ class OASISSimulationEngine:
         import oasis.social_agent.agent as agent_module
         from camel.messages import BaseMessage
 
-        async def _direct_ollama_text(
-            agent: Any, user_content: str, model: str
-        ) -> str:
-            """CAMELバイパス: Ollamaに直接テキスト生成を要求する.
+        async def _parse_and_execute_from_text(
+            agent: Any, text: str, agent_log: Any
+        ) -> bool:
+            """LLMのテキスト応答からアクションをパースして実行する.
 
-            astepがNoneを返す場合（ツール呼び出し解析失敗）に使用。
-            ツールなしで呼び出し、テキスト応答のみ取得する。
+            CAMELがツール呼び出しを解析できなかった場合に使用。
+            LLMはテキスト中にJSONや構造化データでアクションを記述していることが多い。
             """
+            import json
+            import re as _re
+
+            # thinkタグを除去
+            text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+            if not text:
+                return False
+
+            # パターン1: JSON形式 {"action": "create_comment", "post_id": N, "content": "..."}
+            json_match = _re.search(
+                r'\{\s*"action"\s*:\s*"(create_comment|create_post)"'
+                r'.*?\}',
+                text, _re.DOTALL,
+            )
+            if json_match:
+                try:
+                    obj = json.loads(json_match.group(0))
+                    action = obj.get("action", "")
+                    content = obj.get("content", "")
+                    if action == "create_comment" and content:
+                        post_id = int(obj.get("post_id", 1))
+                        await agent.env.action.create_comment(
+                            post_id=post_id, content=content,
+                        )
+                        agent_log.info(
+                            f"Agent {agent.social_agent_id} parsed "
+                            f"create_comment on post {post_id} ({len(content)} chars)"
+                        )
+                        return True
+                    elif action == "create_post" and content:
+                        await agent.env.action.create_post(content=content)
+                        agent_log.info(
+                            f"Agent {agent.social_agent_id} parsed "
+                            f"create_post ({len(content)} chars)"
+                        )
+                        return True
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    pass
+
+            # パターン2: 投稿IDへの言及 + コメント内容
+            comment_match = _re.search(
+                r'(?:投稿(?:ID)?[:：\s]*|post_id[:：\s]*)(\d+).*?'
+                r'(?:コメント(?:内容)?[:：\s]*|content[:：\s]*)[「「]?(.{10,500}?)[」」]?(?:\s*[-—]|\s*$)',
+                text, _re.DOTALL,
+            )
+            if comment_match:
+                post_id = int(comment_match.group(1))
+                content = comment_match.group(2).strip()
+                if content:
+                    await agent.env.action.create_comment(
+                        post_id=post_id, content=content,
+                    )
+                    agent_log.info(
+                        f"Agent {agent.social_agent_id} parsed "
+                        f"create_comment on post {post_id} ({len(content)} chars)"
+                    )
+                    return True
+
+            # パターン3: テキスト全体をcreate_postとして投稿
+            if len(text) > 5:
+                await agent.env.action.create_post(content=text)
+                agent_log.info(
+                    f"Agent {agent.social_agent_id} fallback "
+                    f"create_post ({len(text)} chars)"
+                )
+                return True
+
+            return False
+
+        async def _direct_ollama_fallback(
+            agent: Any, user_content: str, model: str, agent_log: Any
+        ) -> bool:
+            """CAMELバイパス: Ollamaに直接テキスト生成を要求し、アクションを実行する."""
             import re as _re
             try:
                 import httpx
-                # エージェントのシステムプロンプトを取得
                 sys_content = ""
                 if hasattr(agent, "system_message") and agent.system_message:
                     sys_content = agent.system_message.content or ""
@@ -339,7 +411,7 @@ class OASISSimulationEngine:
                                     "以下の状況について、あなたの立場から"
                                     "感想を日本語で1〜3文で述べてください。"
                                     "ツール呼び出しは不要です。テキストで回答してください。\n\n"
-                                    + user_content[-2000:]  # コンテキスト制限
+                                    + user_content[-2000:]
                                 )},
                             ],
                             "stream": False,
@@ -349,10 +421,16 @@ class OASISSimulationEngine:
                 if resp.status_code == 200:
                     text = resp.json().get("message", {}).get("content", "")
                     text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
-                    return text
+                    if text and len(text) > 5:
+                        await agent.env.action.create_post(content=text)
+                        agent_log.info(
+                            f"Agent {agent.social_agent_id} direct fallback "
+                            f"create_post ({len(text)} chars)"
+                        )
+                        return True
             except Exception:
                 pass
-            return ""
+            return False
 
         async def _jp_perform_action(self: Any) -> Any:  # type: ignore[override]
             from oasis.social_agent.agent import ALL_SOCIAL_ACTIONS, agent_log
@@ -396,16 +474,9 @@ class OASISSimulationEngine:
                         f"Agent {self.social_agent_id} astep returned "
                         f"invalid response, retrying without tools"
                     )
-                    # Ollama直接呼び出し（ツールなし）でテキスト応答を取得
-                    text = await _direct_ollama_text(
-                        self, user_msg.content, _settings.ollama_model
+                    await _direct_ollama_fallback(
+                        self, user_msg.content, _settings.ollama_model, agent_log
                     )
-                    if text:
-                        await self.env.action.create_post(content=text)
-                        agent_log.info(
-                            f"Agent {self.social_agent_id} direct fallback "
-                            f"create_post ({len(text)} chars)"
-                        )
                     return response
 
                 # トークン使用量をトラッカーに記録
@@ -445,15 +516,9 @@ class OASISSimulationEngine:
                             )
                         return response
                 else:
-                    # ツール呼び出しなし — テキスト応答をcreate_postとして投稿
+                    # ツール呼び出しなし — テキスト応答からアクションをパース
                     text = response.msg.content or ""
-                    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
-                    if text:
-                        await self.env.action.create_post(content=text)
-                        agent_log.info(
-                            f"Agent {self.social_agent_id} fallback "
-                            f"create_post from text response ({len(text)} chars)"
-                        )
+                    await _parse_and_execute_from_text(self, text, agent_log)
                     return response
             except Exception as e:
                 agent_log.error(f"Agent {self.social_agent_id} error: {e}")
