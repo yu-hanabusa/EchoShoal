@@ -219,16 +219,24 @@ class AgentMemoryStore:
         from_round: int = 1,
         to_round: int | None = None,
     ) -> list[dict[str, Any]]:
-        """観察者から見える行動を取得する（同一シミュレーション内のみ）."""
+        """観察者から見える行動を取得する（同一シミュレーション内のみ）.
+
+        可視性ルール:
+        - public: 全エージェントに見える
+        - partial: 同じステークホルダータイプのエージェントにのみ見える
+        - private: 行動を実行した本人のみ見える
+        """
         to_round_val = to_round or 9999
 
         return await self.graph.execute_read(
+            "MATCH (observer:Agent {agent_id: $observer_id, simulation_id: $sim_id}) "
+            "WITH observer "
             "MATCH (a:Agent)-[:PERFORMED]->(ar:ActionRecord) "
             "WHERE ar.simulation_id = $sim_id "
             "  AND ar.round >= $from_round AND ar.round <= $to_round "
             "  AND ("
             "    ar.visibility = 'public' "
-            "    OR ar.visibility = 'partial' "
+            "    OR (ar.visibility = 'partial' AND a.agent_type = observer.agent_type) "
             "    OR ar.agent_id = $observer_id"
             "  ) "
             "RETURN ar.agent_name AS agent_name, ar.action_type AS action_type, "

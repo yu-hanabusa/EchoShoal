@@ -45,6 +45,7 @@ _redis: RedisClient | None = None
 _job_manager: JobManager | None = None
 _active_simulations: int = 0
 _request_timestamps: deque[float] = deque()
+_running_tasks: dict[str, asyncio.Task[None]] = {}  # job_id → Task
 
 
 def _get_job_manager() -> JobManager:
@@ -77,52 +78,130 @@ async def _get_graph_client() -> GraphClient | None:
     return None
 
 
-# ─── 市場調査（シミュレーション前のデータ収集） ───
+# ─── 市場調査（シミュレーション前のデータ収集、非同期ジョブ） ───
 
 @router.post("/research")
-async def run_research(
+async def start_research(
     service_name: str = Form(...),
+    service_description: str = Form(default=""),
     description: str = Form(default=""),
+    service_url: str = Form(default=""),
     target_year: int = Form(default=0),
+    job_id: str = Form(default=""),
 ) -> JSONResponse:
-    """サービスの市場調査を実行し、3つのレポートを返す.
+    """市場調査をバックグラウンドで開始し、job_id を返す.
 
-    シミュレーション開始前にフロントエンドで結果を確認するためのエンドポイント。
-    Google Trends / GitHub / Yahoo Finance からデータを収集し、
-    LLMで市場分析・ユーザー行動・ステークホルダーの3レポートを生成する。
+    既存の job_id が渡された場合はそのジョブを再利用する。
+    渡されなかった場合は新規ジョブを作成する。
+    フロントエンドは GET /research/{job_id} でポーリングして結果を取得する。
     """
-    from app.core.market_research.pipeline import run_market_research
-    from app.simulation.scenario_analyzer import ScenarioAnalyzer
+    job_manager = _get_job_manager()
 
-    llm = LLMRouter()
-    actual_year = target_year if target_year >= 2000 else None
-
-    # シナリオ解析で競合名を推定
-    competitors: list[str] = []
-    try:
-        analyzer = ScenarioAnalyzer(llm=llm)
-        scenario = ScenarioInput(
-            description=description or f"{service_name}の市場分析",
+    if job_id:
+        info = await job_manager.get_job_info(job_id)
+        if info is None:
+            raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    else:
+        job_id = await job_manager.create_job(
+            scenario_description=description[:200] if description else service_description[:200],
             service_name=service_name,
         )
-        enriched = await analyzer.analyze_async(scenario)
-        if enriched.interpolated_info:
-            competitors = enriched.interpolated_info.competitors
-    except Exception as e:
-        logger.warning("競合推定失敗（市場調査は続行）: %s", e)
 
-    result = await run_market_research(
-        service_name=service_name,
-        description=description or f"{service_name}の市場分析",
-        target_year=actual_year,
-        competitors=competitors,
-        llm=llm,
+    # フォーム状態をシナリオとして保存（resume 用）
+    scenario_data = {
+        "description": description or f"{service_name}の市場分析",
+        "service_name": service_name,
+        "service_url": service_url or None,
+        "service_description": service_description,
+        "target_year": target_year if target_year >= 2000 else None,
+        "num_rounds": 24,
+    }
+    await job_manager.save_scenario(job_id, scenario_data)
+
+    # 市場調査をバックグラウンドで実行
+    task = asyncio.create_task(_run_research_task(job_id, job_manager, scenario_data))
+    _running_tasks[job_id] = task
+    task.add_done_callback(lambda _: _running_tasks.pop(job_id, None))
+
+    return JSONResponse(
+        status_code=202,
+        content={"job_id": job_id, "status": "researching"},
     )
+
+
+@router.get("/{job_id}/research")
+async def get_research_result(job_id: str) -> JSONResponse:
+    """市場調査の結果を取得する.
+
+    調査中の場合は status: researching を返す。
+    完了時は status: completed + 調査結果を返す。
+    """
+    job_manager = _get_job_manager()
+    info = await job_manager.get_job_info(job_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+
+    research = await job_manager.get_research(job_id)
+    if research is None:
+        return JSONResponse(
+            status_code=200,
+            content={"status": "researching", "job_id": job_id},
+        )
+
+    if research.get("error"):
+        return JSONResponse(
+            status_code=200,
+            content={"status": "failed", "job_id": job_id, "error": research["error"]},
+        )
 
     return JSONResponse(
         status_code=200,
-        content=result.model_dump(),
+        content={"status": "completed", "job_id": job_id, "result": research},
     )
+
+
+async def _run_research_task(
+    job_id: str, job_manager: JobManager, scenario_data: dict[str, Any],
+) -> None:
+    """市場調査をバックグラウンドで実行し、結果を Redis に保存する."""
+    try:
+        from app.core.market_research.pipeline import run_market_research
+
+        llm = LLMRouter()
+        service_name = scenario_data.get("service_name", "")
+        description = scenario_data.get("description", "")
+        actual_year = scenario_data.get("target_year")
+
+        # シナリオ解析で競合名を推定
+        competitors: list[str] = []
+        try:
+            analyzer = ScenarioAnalyzer(llm=llm)
+            scenario = ScenarioInput(
+                description=description or f"{service_name}の市場分析",
+                service_name=service_name,
+            )
+            enriched = await analyzer.analyze_async(scenario)
+            if enriched.interpolated_info:
+                competitors = enriched.interpolated_info.competitors
+        except Exception as e:
+            logger.warning("競合推定失敗（市場調査は続行）: %s", e)
+
+        result = await run_market_research(
+            service_name=service_name,
+            description=description or f"{service_name}の市場分析",
+            target_year=actual_year,
+            competitors=competitors,
+            llm=llm,
+        )
+
+        await job_manager.save_research(job_id, result.model_dump())
+        logger.info("市場調査完了: job=%s", job_id)
+
+    except asyncio.CancelledError:
+        logger.info("市場調査キャンセル: job=%s", job_id)
+    except Exception as exc:
+        logger.exception("市場調査失敗: job=%s", job_id)
+        await job_manager.save_research(job_id, {"error": str(exc)})
 
 
 # ─── メイン: シミュレーション作成 + 即実行 ───
@@ -134,15 +213,14 @@ async def create_simulation(
     service_name: str = Form(default=""),
     service_url: str = Form(default=""),
     target_year: int = Form(default=0),
+    job_id: str = Form(default=""),
     files: list[UploadFile] = File(default=[]),
-    research_market_report: str = Form(default=""),
-    research_user_behavior: str = Form(default=""),
-    research_stakeholders: str = Form(default=""),
 ) -> JSONResponse:
     """シミュレーションを作成し、即座に実行を開始する.
 
     シナリオテキスト + 文書ファイル（任意、複数可）を同時に受け取る。
-    AI加速度・経済ショック等のパラメータはNLPから自動推定する。
+    既存の job_id が渡された場合（市場調査済み）はそのジョブを再利用する。
+    市場調査結果は Redis から自動取得して知識グラフに格納する。
     """
     global _active_simulations
     _check_rate_limit()
@@ -160,22 +238,32 @@ async def create_simulation(
     )
 
     job_manager = _get_job_manager()
-    job_id = await job_manager.create_job(
-        scenario_description=description[:200],
-        service_name=service_name,
-    )
+
+    # 既存ジョブがあれば再利用、なければ新規作成
+    if job_id:
+        info = await job_manager.get_job_info(job_id)
+        if info is None:
+            raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+        if info.status != JobStatus.CREATED:
+            raise HTTPException(status_code=400, detail="このジョブは既に実行されています")
+    else:
+        job_id = await job_manager.create_job(
+            scenario_description=description[:200],
+            service_name=service_name,
+        )
+
     await job_manager.save_scenario(job_id, scenario.model_dump())
 
-    # 市場調査結果をドキュメントとして格納
+    # Redis に保存された市場調査結果をドキュメントとして格納
     graph_client = await _get_graph_client()
-    research_docs = [
-        ("market_report.txt", research_market_report),
-        ("user_behavior.txt", research_user_behavior),
-        ("stakeholders.txt", research_stakeholders),
-    ]
-    if graph_client:
+    research = await job_manager.get_research(job_id)
+    if research and not research.get("error") and graph_client:
+        research_docs = [
+            ("market_report.txt", research.get("market_report", "")),
+            ("user_behavior.txt", research.get("user_behavior", "")),
+            ("stakeholders.txt", research.get("stakeholders", "")),
+        ]
         processor = DocumentProcessor(graph_client, simulation_id=job_id)
-        parser = DocumentParser()
         for filename, text in research_docs:
             if text.strip():
                 try:
@@ -204,7 +292,9 @@ async def create_simulation(
     # 即座に実行開始
     await job_manager.set_queued(job_id)
     _active_simulations += 1
-    asyncio.create_task(_run_simulation_task(job_id, scenario, job_manager))
+    task = asyncio.create_task(_run_simulation_task(job_id, scenario, job_manager))
+    _running_tasks[job_id] = task
+    task.add_done_callback(lambda _: _running_tasks.pop(job_id, None))
 
     return JSONResponse(
         status_code=202,
@@ -350,7 +440,9 @@ async def rerun_simulation(job_id: str) -> JSONResponse:
 
     await job_manager.set_queued(new_job_id)
     _active_simulations += 1
-    asyncio.create_task(_run_simulation_task(new_job_id, scenario, job_manager))
+    task = asyncio.create_task(_run_simulation_task(new_job_id, scenario, job_manager))
+    _running_tasks[new_job_id] = task
+    task.add_done_callback(lambda _: _running_tasks.pop(new_job_id, None))
 
     return JSONResponse(
         status_code=202,
@@ -472,6 +564,10 @@ async def _run_simulation_task(
                 rounds=results,
                 scenario_description=scenario.description,
                 agents_summary=engine.get_summary().get("agents", []),
+                confidence_notes=(
+                    enriched.interpolated_info.confidence_notes
+                    if enriched and enriched.interpolated_info else None
+                ),
             )
             report_generator = ReportGenerator(llm=llm)
             report = await report_generator.generate(report_input)
@@ -520,6 +616,9 @@ async def _run_simulation_task(
 
         await job_manager.set_completed(job_id, result_data)
 
+    except asyncio.CancelledError:
+        logger.info("シミュレーションキャンセル: job=%s", job_id)
+        await job_manager.set_failed(job_id, "キャンセルされました")
     except Exception as exc:
         logger.exception("シミュレーション失敗: job=%s", job_id)
         await job_manager.set_failed(job_id, str(exc))
@@ -561,6 +660,11 @@ async def get_simulation(job_id: str) -> dict[str, Any]:
         result = await job_manager.get_result(job_id)
         if result:
             response["result"] = result
+    # CREATED 状態のジョブにはシナリオ情報を含める（resume 用）
+    if info.status == JobStatus.CREATED:
+        scenario = await job_manager.get_scenario(job_id)
+        if scenario:
+            response["scenario"] = scenario
     return response
 
 
@@ -593,11 +697,17 @@ async def update_simulation(job_id: str, body: dict[str, Any]) -> dict[str, str]
 
 @router.delete("/{job_id}")
 async def delete_simulation(job_id: str) -> dict[str, str]:
-    """シミュレーションを削除する（Redis + Neo4jのデータをクリーンアップ）."""
+    """シミュレーションを削除する（実行中タスク停止 + Redis + Neo4jクリーンアップ）."""
     job_manager = _get_job_manager()
     info = await job_manager.get_job_info(job_id)
     if info is None:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+
+    # 実行中のバックグラウンドタスクをキャンセル
+    task = _running_tasks.pop(job_id, None)
+    if task and not task.done():
+        task.cancel()
+        logger.info("バックグラウンドタスクをキャンセル: job=%s", job_id)
 
     # Redis削除
     await job_manager.delete_job(job_id)

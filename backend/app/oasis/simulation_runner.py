@@ -34,7 +34,11 @@ ProgressCallback = Callable[[int, int], Coroutine[Any, Any, None]]
 _active_token_tracker: Any | None = None
 _active_oasis_agent_map: dict[int, str] = {}  # OASIS agent_id -> agent name
 _active_round_number: int = 0
-_active_market_summary: str = ""  # 現在の市場状態テキスト（エージェントに共有）
+_active_market_summary: str = ""  # 現在の市場状態テキスト（全エージェント共通の市場指標）
+# 情報非対称性: エージェントごとにフィルタされた市場コンテキスト
+_active_agent_contexts: dict[int, str] = {}  # OASIS agent_id -> filtered market activity
+_active_agent_type_map: dict[int, str] = {}  # OASIS agent_id -> stakeholder_type
+_active_action_history: list[dict[str, Any]] = []  # 全ラウンドの行動履歴（可視性付き）
 
 
 def _truncate_at_sentence(text: str, max_len: int = 500) -> str:
@@ -65,13 +69,13 @@ class OASISSimulationEngine:
         event_scheduler: EventScheduler | None = None,
         enriched_scenario: EnrichedScenario | None = None,
         simulation_id: str = "",
-        # 以下は既存互換のために受け取るが、OASISでは別途管理する
         rag=None,
         agent_memory=None,
     ):
         self.agents = agents
         self.llm = llm
         self.scenario = scenario
+        self._agent_memory = agent_memory
         self.market = ServiceMarketState(
             service_name=scenario.service_name if scenario else "",
         )
@@ -97,6 +101,7 @@ class OASISSimulationEngine:
     async def run(self, num_rounds: int | None = None) -> list[RoundResult]:
         """OASIS環境でシミュレーションを実行する."""
         global _active_token_tracker, _active_oasis_agent_map, _active_round_number
+        global _active_agent_contexts, _active_agent_type_map, _active_action_history
 
         rounds = num_rounds or (self.scenario.num_rounds if self.scenario else settings.default_rounds)
         rounds = min(rounds, settings.max_rounds)
@@ -106,6 +111,10 @@ class OASISSimulationEngine:
         # トークントラッカーをモジュールレベルにセット（OASIS会話のトラッキング用）
         _active_token_tracker = self.llm.token_tracker
         _active_oasis_agent_map = {}
+        # 情報非対称性: エージェントごとのコンテキストと行動履歴を初期化
+        _active_agent_contexts = {}
+        _active_agent_type_map = {}
+        _active_action_history = []
 
         # 市場初期状態をLLMで推定
         if self._enriched_scenario:
@@ -117,11 +126,14 @@ class OASISSimulationEngine:
         # OASIS環境セットアップ
         await self._setup_oasis_environment()
 
-        # OASIS agent_id → エージェント名マッピングを構築
+        # OASIS agent_id → エージェント名 / ステークホルダータイプ マッピングを構築
         for es_id, oasis_agent in self._oasis_agents.items():
             agent = next((a for a in self.agents if a.id == es_id), None)
             if agent:
                 _active_oasis_agent_map[oasis_agent.agent_id] = agent.name
+                _active_agent_type_map[oasis_agent.agent_id] = (
+                    agent.profile.stakeholder_type.value
+                )
 
         try:
             for round_num in range(1, rounds + 1):
@@ -138,6 +150,9 @@ class OASISSimulationEngine:
             _active_token_tracker = None
             _active_oasis_agent_map = {}
             _active_round_number = 0
+            _active_agent_contexts = {}
+            _active_agent_type_map = {}
+            _active_action_history = []
 
         return self.results
 
@@ -415,6 +430,7 @@ class OASISSimulationEngine:
                                 )},
                             ],
                             "stream": False,
+                            "think": False,
                             "options": {"num_predict": 256},
                         },
                     )
@@ -436,13 +452,18 @@ class OASISSimulationEngine:
             from oasis.social_agent.agent import ALL_SOCIAL_ACTIONS, agent_log
 
             env_prompt = await self.env.to_text_prompt()
-            # 市場状態とラウンド情報をエージェントに共有
+            # 情報非対称性: エージェントごとにフィルタされた市場コンテキストを注入
             market_context = ""
             if _active_market_summary:
+                # 市場指標は公開データとして全エージェント共通
                 market_context = (
                     f"\n【現在の市場状況（{_active_round_number}ヶ月目）】\n"
                     f"{_active_market_summary}\n"
                 )
+            # エージェント固有の市場動向（可視性フィルタ適用済み）
+            agent_specific = _active_agent_contexts.get(self.social_agent_id, "")
+            if agent_specific:
+                market_context += f"\n{agent_specific}\n"
             user_msg = BaseMessage.make_user_message(
                 role_name="User",
                 content=(
@@ -454,7 +475,8 @@ class OASISSimulationEngine:
                     f"- 不満や懸念があれば遠慮なく批判してください\n"
                     f"- 必ず日本語で発言してください\n"
                     f"{market_context}\n"
-                    f"現在のSNS環境:\n{env_prompt}"
+                    f"現在のSNS環境:\n{env_prompt}\n"
+                    f"/no_think"
                 ),
             )
             try:
@@ -632,18 +654,21 @@ class OASISSimulationEngine:
 
     async def _run_oasis_round(self, round_number: int) -> RoundResult:
         """1ラウンドのOASISシミュレーションを実行する."""
-        global _active_market_summary
+        global _active_market_summary, _active_agent_contexts
         self.market.round_number = round_number
         all_actions: list[dict[str, Any]] = []
         events: list[str] = []
 
-        # エージェントに市場状態を共有（議論の質向上のため）
+        # 市場指標（全エージェント共通の公開データ）
         dims = self.market.dimensions
         key_dims = []
         for d, v in dims.items():
             pct = round(v * 100)
             key_dims.append(f"{d.value}={pct}%")
         _active_market_summary = ", ".join(key_dims)
+
+        # 情報非対称性: エージェントごとにフィルタされた市場動向を構築
+        _active_agent_contexts = _build_per_agent_contexts()
 
         # Time Engine: アクティブエージェントを確率的に選択
         active_agents = self._select_active_oasis_agents()
@@ -678,6 +703,9 @@ class OASISSimulationEngine:
         round_actions = self._extract_round_actions(round_number, round_trace_count)
         self._last_known_trace_count = new_trace_count
         all_actions.extend(round_actions)
+
+        # 情報非対称性: 行動履歴に可視性付きで記録（次ラウンドのフィルタリングに使用）
+        _record_actions_to_history(round_actions, self.agents)
 
         # SNS議論内容から市場ディメンションを更新（アクション0件でも投稿があれば実行）
         await self._update_market_from_actions(round_actions, round_number)
@@ -1439,6 +1467,98 @@ class OASISSimulationEngine:
             logger.warning("SNSフィード取得失敗")
 
         return feed
+
+
+def _build_per_agent_contexts() -> dict[int, str]:
+    """情報非対称性: エージェントごとにフィルタされた市場動向テキストを構築する.
+
+    可視性ルール:
+    - public: 全エージェントに見える
+    - partial: 同じステークホルダータイプのエージェントにのみ見える
+    - private: 行動を実行した本人のみ見える（自分の過去の行動）
+    """
+    if not _active_action_history:
+        return {}
+
+    contexts: dict[int, str] = {}
+
+    for oasis_id, observer_type in _active_agent_type_map.items():
+        observer_name = _active_oasis_agent_map.get(oasis_id, "")
+        visible_actions: list[dict[str, Any]] = []
+
+        for action in _active_action_history:
+            vis = action.get("visibility", "public")
+            if vis == "public":
+                visible_actions.append(action)
+            elif vis == "partial" and action.get("agent_type") == observer_type:
+                visible_actions.append(action)
+            elif action.get("agent_name") == observer_name:
+                # 自分自身の行動は常に見える（private含む）
+                visible_actions.append(action)
+
+        if not visible_actions:
+            continue
+
+        # 他者の行動のみをサマリーに含める（自分の行動は除外）
+        other_actions = [a for a in visible_actions if a.get("agent_name") != observer_name]
+        own_actions = [a for a in visible_actions if a.get("agent_name") == observer_name]
+
+        lines: list[str] = []
+
+        if own_actions:
+            lines.append("【あなたの直近の行動】")
+            for act in own_actions[-5:]:
+                desc = act.get("description", "")[:40]
+                lines.append(
+                    f"  R{act['round']}: {act['type']}"
+                    + (f"（{desc}）" if desc else "")
+                )
+
+        if other_actions:
+            lines.append("【直近の市場動向（あなたから見える範囲）】")
+            for act in other_actions[-15:]:
+                desc = act.get("description", "")[:40]
+                lines.append(
+                    f"  R{act['round']}: {act['agent_name']} → {act['type']}"
+                    + (f"（{desc}）" if desc else "")
+                )
+
+        if lines:
+            contexts[oasis_id] = "\n".join(lines)
+
+    return contexts
+
+
+def _record_actions_to_history(
+    round_actions: list[dict[str, Any]],
+    es_agents: list[Any],
+) -> None:
+    """ラウンドの行動を可視性付きで履歴に記録する.
+
+    ACTION_VISIBILITYに定義されたアクションタイプは対応する可視性を使用し、
+    OASIS固有のSNSアクション（post_opinion, comment等）はpublicとする。
+    """
+    from app.core.graph.agent_memory import get_visibility
+
+    # EchoShoalエージェントの stakeholder_type マッピング
+    agent_type_map: dict[str, str] = {}
+    for agent in es_agents:
+        agent_type_map[agent.id] = agent.profile.stakeholder_type.value
+
+    for action in round_actions:
+        es_agent_id = action.get("agent_id", "")
+        action_type = action.get("type", "")
+        visibility = get_visibility(action_type)
+
+        _active_action_history.append({
+            "agent_name": action.get("agent", ""),
+            "agent_id": es_agent_id,
+            "agent_type": agent_type_map.get(es_agent_id, ""),
+            "type": action_type,
+            "description": action.get("description", ""),
+            "visibility": visibility,
+            "round": action.get("round_number", 0),
+        })
 
 
 def _map_oasis_action(oasis_action: str) -> str:

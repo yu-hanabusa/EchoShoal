@@ -141,6 +141,19 @@ class AgentGenerator:
     def __init__(self, llm: LLMRouter):
         self.llm = llm
 
+    @staticmethod
+    def _enforce_max_agents(agents: list[BaseAgent]) -> list[BaseAgent]:
+        """エージェント数がoasis_max_agentsを超えないよう切り詰める."""
+        from app.config import settings
+        max_agents = settings.oasis_max_agents
+        if len(agents) <= max_agents:
+            return agents
+        logger.warning(
+            "エージェント数が上限を超過: %d体 → %d体に制限",
+            len(agents), max_agents,
+        )
+        return agents[:max_agents]
+
     async def generate(
         self,
         scenario: ScenarioInput,
@@ -204,7 +217,7 @@ class AgentGenerator:
             logger.info("エージェント生成完了: %d体（エンティティ%d + 補完%d）",
                         len(agents), len([a for a in agents if a in entity_agents]) if orgs else 0,
                         len(complement_agents))
-            return agents
+            return self._enforce_max_agents(agents)
 
         if not agents:
             # フォールバック

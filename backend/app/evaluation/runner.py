@@ -272,6 +272,10 @@ async def run_simulation_for_benchmark(
                 rounds=rounds,
                 scenario_description=scenario.description,
                 agents_summary=summary.get("agents", []),
+                confidence_notes=(
+                    enriched.interpolated_info.confidence_notes
+                    if enriched and enriched.interpolated_info else None
+                ),
             )
             report_generator = ReportGenerator(llm=llm)
             report = await report_generator.generate(report_input)

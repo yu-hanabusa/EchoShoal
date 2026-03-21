@@ -193,6 +193,15 @@ class ReportGenerator:
             f"ディメンション最終値:\n{json.dumps(final_market.get('dimensions', {}), ensure_ascii=False, indent=2)}\n"
             f"文書参照数: {len(doc_impact)}件\n"
             f"シミュレーション期間: {data.get('total_rounds', 0)}ヶ月\n\n"
+        )
+        notes = data.get("confidence_notes", [])
+        if notes:
+            prompt += (
+                "【現在LLMが推定している情報（実データがあれば精度向上）】\n"
+                + "\n".join(f"- {n}" for n in notes)
+                + "\n\n"
+            )
+        prompt += (
             "以下の観点で提案してください:\n"
             "1. 競合情報: どの競合のどのようなデータがあれば予測が改善されるか\n"
             "2. ユーザー情報: ターゲットユーザーのどのようなデータが有用か\n"
@@ -295,7 +304,7 @@ class ReportGenerator:
 
     def _build_summary_prompt(self, data: dict[str, Any]) -> str:
         """サマリー用プロンプトを構築."""
-        return (
+        prompt = (
             "以下のシミュレーション結果の要約データに基づき、"
             "対象サービスの成功可否を含む3〜5文のエグゼクティブサマリーを作成してください。\n\n"
             f"シナリオ: {data.get('scenario_description', '')}\n"
@@ -304,6 +313,14 @@ class ReportGenerator:
             f"総アクション種別数: {len(data.get('action_summary', {}))}\n"
             f"主要変化ラウンド: {json.dumps(data.get('significant_rounds', []), ensure_ascii=False)}\n"
         )
+        notes = data.get("confidence_notes", [])
+        if notes:
+            prompt += (
+                "\n【LLM推定情報（ユーザー未入力のためLLMが補間）】\n"
+                + "\n".join(f"- {n}" for n in notes)
+                + "\n\n上記は推定値です。サマリーでは推定に基づく部分を明示してください。\n"
+            )
+        return prompt
 
 
 def _summarize_timeline(values: list[float]) -> str:

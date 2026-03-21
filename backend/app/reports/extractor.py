@@ -99,9 +99,10 @@ def build_report_data(
     rounds: list[RoundResult],
     scenario_description: str = "",
     agents_summary: list[dict[str, Any]] | None = None,
+    confidence_notes: list[str] | None = None,
 ) -> dict[str, Any]:
     """レポート生成に必要な全データをまとめる."""
-    return {
+    data: dict[str, Any] = {
         "scenario_description": scenario_description,
         "total_rounds": len(rounds),
         "dimension_timeline": extract_dimension_timeline(rounds),
@@ -112,3 +113,6 @@ def build_report_data(
         "agents": agents_summary or [],
         "final_market": rounds[-1].market_state.model_dump() if rounds else {},
     }
+    if confidence_notes:
+        data["confidence_notes"] = confidence_notes
+    return data

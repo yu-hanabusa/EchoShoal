@@ -151,6 +151,16 @@ class TestAgentMemoryStore:
         assert "observer_id" in str(graph.execute_read.call_args[0][1])
 
     @pytest.mark.asyncio
+    async def test_get_visible_actions_partial_checks_agent_type(self):
+        """partial可視性がステークホルダータイプのチェックを含むことを確認."""
+        store, graph = self._make_store(execute_read_return=[])
+        await store.get_visible_actions("id1", from_round=1)
+        query = graph.execute_read.call_args[0][0]
+        # observerノードを取得してagent_typeを比較していることを確認
+        assert "observer" in query.lower()
+        assert "a.agent_type = observer.agent_type" in query
+
+    @pytest.mark.asyncio
     async def test_get_market_activity_summary_empty(self):
         store, graph = self._make_store(execute_read_return=[])
         summary = await store.get_market_activity_summary("id1", current_round=1)
