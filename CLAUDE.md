@@ -110,12 +110,12 @@ pnpm test                        # Run tests
 
 After completing any feature implementation, you MUST run the following in order before reporting completion to the user:
 
-1. `/test` — Run the full test suite. Fix any failures before proceeding.
-2. `/security-review` — Scan for hardcoded secrets, injection risks, and vulnerabilities. Fix critical issues.
-3. `/refactor` — Review code quality, duplication, and type safety. Fix issues found.
+1. `/test` — Run tests related to changed files. Fix any failures before proceeding.
+2. `/security-review` — Scan changed files for hardcoded secrets, injection risks, and vulnerabilities. Fix critical issues.
+3. `/refactor` — Review changed files for code quality, duplication, and type safety. Fix issues found.
+4. `/commit` — Commit the changes.
 
-Only after all three pass with no critical issues, report the implementation as complete.
-If the user asks to commit, use `/commit`.
+Only after all four pass with no critical issues, report the implementation as complete.
 
 ## Security Rules
 

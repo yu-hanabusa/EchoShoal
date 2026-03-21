@@ -17,6 +17,16 @@ export interface JobInfo {
   };
   error?: string | null;
   result?: SimulationResult;
+  scenario?: SavedScenario;
+}
+
+export interface SavedScenario {
+  description: string;
+  service_name: string;
+  service_url?: string | null;
+  service_description?: string;
+  target_year?: number | null;
+  num_rounds?: number;
 }
 
 export interface ScenarioInput {
@@ -225,6 +235,14 @@ export interface MarketResearchResult {
     sources_used: string[];
     errors: string[];
   };
+}
+
+/** 市場調査ジョブレスポンス */
+export interface ResearchJobResponse {
+  status: "researching" | "completed" | "failed";
+  job_id: string;
+  error?: string;
+  result?: MarketResearchResult;
 }
 
 /** ベンチマーク情報 */

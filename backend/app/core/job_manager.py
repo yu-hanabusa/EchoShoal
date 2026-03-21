@@ -24,6 +24,7 @@ _KEY_STATUS = "job:{job_id}:status"
 _KEY_RESULT = "job:{job_id}:result"
 _KEY_PROGRESS = "job:{job_id}:progress"
 _KEY_SCENARIO = "job:{job_id}:scenario"
+_KEY_RESEARCH = "job:{job_id}:research"
 _KEY_INDEX = "jobs:index"  # Sorted Set (score=created_at timestamp)
 
 # TTL: 結果は7日間保持
@@ -98,6 +99,16 @@ class JobManager:
     async def get_scenario(self, job_id: str) -> dict[str, Any] | None:
         """保存されたシナリオ入力を取得する."""
         return await self.redis.get_json(_KEY_SCENARIO.format(job_id=job_id))
+
+    async def save_research(self, job_id: str, research: dict[str, Any]) -> None:
+        """市場調査結果を保存する."""
+        await self.redis.set_json(
+            _KEY_RESEARCH.format(job_id=job_id), research, ttl=_RESULT_TTL,
+        )
+
+    async def get_research(self, job_id: str) -> dict[str, Any] | None:
+        """保存された市場調査結果を取得する."""
+        return await self.redis.get_json(_KEY_RESEARCH.format(job_id=job_id))
 
     async def set_queued(self, job_id: str) -> None:
         """ジョブをキュー済みに更新する（実行開始時）."""
@@ -222,6 +233,7 @@ class JobManager:
             await self.redis.delete(_KEY_RESULT.format(job_id=job_id))
             await self.redis.delete(_KEY_PROGRESS.format(job_id=job_id))
             await self.redis.delete(_KEY_SCENARIO.format(job_id=job_id))
+            await self.redis.delete(_KEY_RESEARCH.format(job_id=job_id))
             # インデックスから削除
             client = await self.redis._ensure_connected()
             await client.zrem(_KEY_INDEX, job_id)

@@ -29,6 +29,9 @@ def create_oasis_model():
         model_config_dict={
             "temperature": 0.7,
             "max_tokens": settings.oasis_max_output_tokens,
+            # qwen3のthinkingモードを無効化 — <think>タグがCAMELの
+            # ツール呼び出し解析を壊し、response.msg=Noneになる問題を防ぐ
+            "extra_body": {"think": False},
         },
     )
     logger.info("OASISモデル作成: platform=Ollama, model=%s", settings.ollama_model)

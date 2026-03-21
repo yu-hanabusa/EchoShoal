@@ -6,9 +6,9 @@ import type {
   DocumentInfo,
   EvaluationJobResult,
   JobInfo,
-  MarketResearchResult,
   PaginatedResponse,
   PredictionResult,
+  ResearchJobResponse,
   SimulationReport,
 } from "./types";
 
@@ -26,16 +26,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** 市場調査を実行 */
-export async function runMarketResearch(
-  serviceName: string,
-  description: string,
-  targetYear: number,
-): Promise<MarketResearchResult> {
+/** 市場調査をバックグラウンドで開始（job_id を返す） */
+export async function startMarketResearch(params: {
+  serviceName: string;
+  serviceDescription?: string;
+  description?: string;
+  serviceUrl?: string;
+  targetYear: number;
+  jobId?: string;
+}): Promise<{ job_id: string; status: string }> {
   const formData = new FormData();
-  formData.append("service_name", serviceName);
-  formData.append("description", description);
-  formData.append("target_year", String(targetYear));
+  formData.append("service_name", params.serviceName);
+  if (params.serviceDescription) formData.append("service_description", params.serviceDescription);
+  if (params.description) formData.append("description", params.description);
+  if (params.serviceUrl) formData.append("service_url", params.serviceUrl);
+  formData.append("target_year", String(params.targetYear));
+  if (params.jobId) formData.append("job_id", params.jobId);
 
   const res = await fetch(`${BASE_URL}/simulations/research`, {
     method: "POST",
@@ -45,7 +51,12 @@ export async function runMarketResearch(
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Research error: ${res.status}`);
   }
-  return res.json() as Promise<MarketResearchResult>;
+  return res.json() as Promise<{ job_id: string; status: string }>;
+}
+
+/** 市場調査の結果を取得（ポーリング用） */
+export async function getMarketResearch(jobId: string): Promise<ResearchJobResponse> {
+  return request(`/simulations/${jobId}/research`);
 }
 
 /** シミュレーション一覧を取得（ページネーション対応） */

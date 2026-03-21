@@ -9,15 +9,11 @@ Commit the current changes after a feature implementation.
 
 ## Steps
 
-1. Run tests to verify nothing is broken:
-   ```bash
-   cd backend && uv run python -m pytest tests/unit/ -v --tb=short
-   ```
-   If tests fail, fix them before proceeding.
+1. Run `/test` to run tests related to changed files. Fix any failures before proceeding.
 
 2. Run `/security-review` to check for hardcoded secrets or injection risks in changed files.
 
-3. Run `/refactor` to review code quality of the changes.
+3. Run `/refactor` to review code quality of changed files.
 
 4. Review the git diff to understand all changes:
    - `git status -u` (never use -uall)
