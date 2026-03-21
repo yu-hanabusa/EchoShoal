@@ -22,7 +22,9 @@ BrowserRouter
       ├── /                        → HomePage
       ├── /new                     → NewSimulationPage
       ├── /simulation/:jobId       → SimulationPage
-      └── /simulation/:jobId/report → ReportPage
+      ├── /simulation/:jobId/report → ReportPage
+      ├── /benchmarks              → BenchmarkListPage
+      └── /benchmark/:jobId        → BenchmarkResultPage
 ```
 
 ## 3. コンポーネントツリー
@@ -66,17 +68,23 @@ App
 │           │       ├── OASISプラットフォーム統計
 │           │       ├── MarketChart ──── 成長系ディメンション
 │           │       ├── MarketChart ──── リスク系ディメンション
-│           │       └── AgentTable ───── エージェント一覧
-│           │           └── AgentPersonaCard (モーダル)
-│           │               └── RadarChart (性格6軸)
+│           │       └── AgentPersonaCard (モーダル)
+│           │           └── RadarChart (性格6軸)
 │           │
-│           └── ReportPage ──────────── AIレポート表示
-│               ├── 成功スコアカード (0-100)
-│               ├── 判定根拠 / リスク / 機会 (Markdown)
-│               ├── エグゼクティブサマリー (Markdown)
-│               ├── 予測ハイライト
-│               ├── ディメンション予測テーブル
-│               └── レポートセクション × 6 (Markdown)
+│           ├── ReportPage ──────────── AIレポート表示
+│           │   ├── ScoreGauge ─────── 成功スコアゲージ (0-100)
+│           │   ├── SectionNav ─────── スティッキーセクションナビ
+│           │   ├── エグゼクティブサマリー (Markdown)
+│           │   ├── DimensionRadar ─── 8次元レーダーチャート
+│           │   ├── DimensionSparkline ─ ディメンション別ミニチャート
+│           │   ├── RiskOpportunityCard ─ リスク/機会カード
+│           │   ├── 予測ハイライト
+│           │   └── レポートセクション × 6 (Markdown)
+│           │
+│           ├── BenchmarkListPage ──── ベンチマーク一覧
+│           │   └── ベンチマークカード × N
+│           │
+│           └── BenchmarkResultPage ── ベンチマーク結果表示
 ```
 
 ## 4. 状態管理設計
@@ -364,19 +372,9 @@ Props:
     └── コメント内容 + 著者名
 ```
 
-### 8.4 AgentTable + AgentPersonaCard
+### 8.4 AgentPersonaCard
 
 ```
-AgentTable Props:
-├── agents: AgentSummary[]     # エージェント一覧
-└── serviceName?: string       # サービス名（上部に配置）
-
-機能:
-├── テーブル列: 名前、種別、人員、評判、満足度
-├── サービス名一致エージェントを先頭に配置
-├── レベルバッジ（高/中/低、色分け）
-└── 名前クリック → AgentPersonaCard モーダル
-
 AgentPersonaCard Props:
 ├── agent: AgentSummary        # エージェント詳細
 └── onClose: () => void        # 閉じるコールバック
@@ -393,6 +391,70 @@ AgentPersonaCard Props:
 ├── エージェント種別バッジ
 ├── 財務指標（売上、人員、満足度、評判）
 └── 説明テキスト
+```
+
+### 8.5 ScoreGauge（成功スコアゲージ）
+
+```
+Props:
+├── score: number              # 0-100
+├── verdict: string            # "成功見込み" / "要注意" / "困難"
+└── size?: number              # ゲージサイズ
+
+機能:
+├── SVG円弧ゲージ
+├── 色分け（緑≥70/黄≥40/赤<40）
+└── 中央にスコア数値 + 判定テキスト
+```
+
+### 8.6 DimensionRadar（レーダーチャート）
+
+```
+Props:
+└── dimensions: Record<string, number>  # 8次元の最終値
+
+機能:
+├── Recharts RadarChart
+├── 8軸で市場状態をスナップショット表示
+└── ディメンション色に対応
+```
+
+### 8.7 DimensionSparkline（ミニトレンドチャート）
+
+```
+Props:
+├── data: number[]             # ラウンド別の値
+├── color: string              # ライン色
+└── width/height               # サイズ
+
+機能:
+├── 小さなインラインラインチャート
+└── ディメンション別トレンドを一目で表示
+```
+
+### 8.8 RiskOpportunityCard（リスク/機会カード）
+
+```
+Props:
+├── items: string[]            # リスクまたは機会のリスト
+├── type: "risk" | "opportunity"
+└── title: string
+
+機能:
+├── アイコン付きリスト表示
+└── リスク=赤、機会=緑の色分け
+```
+
+### 8.9 SectionNav（セクションナビゲーション）
+
+```
+Props:
+└── sections: { id, label }[]  # ナビゲーション項目
+
+機能:
+├── スティッキーサイドバー
+├── スクロール位置に応じてアクティブ項目をハイライト
+└── クリックで該当セクションへスクロール
 ```
 
 ## 9. ビルド・開発構成

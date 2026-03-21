@@ -16,7 +16,7 @@ stakeholder-driven "what-if" scenario analysis.
 ## Tech Stack
 
 - **Backend**: FastAPI (Python 3.13) with uv
-- **Frontend**: React 18 + TypeScript + Vite with pnpm
+- **Frontend**: React 19 + TypeScript + Vite with pnpm
 - **Graph DB**: Neo4j Community Edition
 - **Cache/Queue**: Redis
 - **LLM (light)**: Ollama (qwen2.5:14b)
@@ -33,7 +33,8 @@ EchoShoal/
 │   │   ├── api/      # API routes
 │   │   ├── core/     # LLM, NLP, Graph clients
 │   │   ├── simulation/  # Simulation engine
-│   │   │   └── agents/  # 7 stakeholder agent types
+│   │   │   └── agents/  # 8 stakeholder agent types
+│   │   ├── oasis/       # OASIS SNS simulation engine
 │   │   ├── prediction/  # Quantitative prediction
 │   │   ├── reports/     # Report generation
 │   │   └── evaluation/  # Benchmark evaluation
@@ -52,6 +53,7 @@ EchoShoal/
 - **Investor/VC** — funding, market signals
 - **Platformer** — AWS/Google/etc (sudden competitors)
 - **Community** — industry groups, OSS communities
+- **EndUser** — existing/potential/switching users
 
 ### Market Dimensions (tracked per round)
 user_adoption, revenue_potential, tech_maturity, competitive_pressure,

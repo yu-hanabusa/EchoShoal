@@ -17,8 +17,10 @@
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐    │
 │  │ 共通コンポーネント                                            │    │
-│  │ NavBar │ ProgressBar │ MarketChart │ AgentTable │ SocialFeed │    │
-│  │ RelationshipGraph │ ActionTimeline │ AgentPersonaCard        │    │
+│  │ NavBar │ ProgressBar │ MarketChart │ SocialFeed              │    │
+│  │ RelationshipGraph │ AgentPersonaCard │ ScoreGauge            │    │
+│  │ DimensionRadar │ DimensionSparkline │ SectionNav             │    │
+│  │ RiskOpportunityCard                                          │    │
 │  └──────────────────────────────────────────────────────────────┘    │
 │                                                                      │
 │  ┌────────────────────────────────────────┐                          │
@@ -368,8 +370,8 @@ EchoShoal/
 │   │   ├── api/
 │   │   │   ├── client.ts            # APIクライアント (fetch)
 │   │   │   └── types.ts             # TypeScript型定義
-│   │   ├── pages/                    # 4ページ
-│   │   └── components/              # 9コンポーネント
+│   │   ├── pages/                    # 6ページ
+│   │   └── components/              # 11コンポーネント
 │   ├── package.json                  # Node依存関係 (pnpm)
 │   ├── vite.config.ts                # Vite設定 + APIプロキシ
 │   └── tsconfig.json                 # TypeScript設定
