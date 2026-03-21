@@ -19,7 +19,7 @@ stakeholder-driven "what-if" scenario analysis.
 - **Frontend**: React 19 + TypeScript + Vite with pnpm
 - **Graph DB**: Neo4j Community Edition
 - **Cache/Queue**: Redis
-- **LLM (light)**: Ollama (qwen2.5:14b)
+- **LLM (light)**: Ollama (qwen3:14b)
 - **LLM (heavy)**: Claude API / OpenAI API
 - **NLP**: ルールベース辞書 + LLM
 - **Testing**: pytest + pytest-asyncio + httpx

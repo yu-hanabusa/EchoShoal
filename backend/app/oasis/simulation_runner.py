@@ -389,11 +389,12 @@ class OASISSimulationEngine:
 
                 response = await self.astep(user_msg)
 
-                # responseがNoneの場合 — CAMELがツール呼び出しを解析できなかった
-                if response is None:
+                # responseまたはresponse.msgがNoneの場合
+                # — CAMELが複数メッセージやツール呼び出し解析に失敗
+                if response is None or getattr(response, "msg", None) is None:
                     agent_log.warning(
-                        f"Agent {self.social_agent_id} astep returned None, "
-                        "retrying without tools"
+                        f"Agent {self.social_agent_id} astep returned "
+                        f"invalid response, retrying without tools"
                     )
                     # Ollama直接呼び出し（ツールなし）でテキスト応答を取得
                     text = await _direct_ollama_text(
