@@ -193,6 +193,23 @@ cd frontend && pnpm dev
 cd frontend && pnpm build
 ```
 
+## ベンチマーク評価
+
+過去のサービスリリース事例（成功5件・失敗4件）を使い、シミュレーターの予測精度を検証できます。フロントエンドの `/benchmarks` ページから実行するか、APIを直接呼び出します。
+
+```bash
+# API経由で単発実行（例: Slack 2014）
+curl -X POST http://localhost:8000/api/evaluation/run/slack_2014
+
+# 統計評価（5回実行して再現性を検証）
+curl -X POST http://localhost:8000/api/evaluation/run/slack_2014/multi?num_runs=5
+
+# 全ベンチマーク一括実行
+curl -X POST http://localhost:8000/api/evaluation/run-all
+```
+
+詳細な評価手法・シナリオ一覧は [backend/app/evaluation/README.md](backend/app/evaluation/README.md) を参照してください。
+
 ## ライセンス
 
 [Apache License 2.0](LICENSE) の下で公開されています。
