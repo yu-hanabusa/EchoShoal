@@ -63,9 +63,9 @@
 │  │  └────┬─────┘  └──────────┘  └────┬─────┘  └──────────────┘  │  │
 │  │       │                            │                           │  │
 │  │  ┌────┴─────┐  ┌──────────┐  ┌────┴─────┐  ┌──────────────┐  │  │
-│  │  │ Agent    │  │ GraphRAG │  │ Agent    │  │ Job          │  │  │
-│  │  │ Memory   │  │ Retriever│  │ Memory   │  │ Manager      │  │  │
-│  │  │ Store    │  │ (可視性)  │  │ Store    │  │ (Redis)      │  │  │
+│  │  │ Agent    │  │ GraphRAG │  │ Data     │  │ Job          │  │  │
+│  │  │ Memory   │  │ Retriever│  │ Sources  │  │ Manager      │  │  │
+│  │  │ Store    │  │ (可視性)  │  │ (e-Stat) │  │ (Redis)      │  │  │
 │  │  └──────────┘  └──────────┘  └──────────┘  └──────────────┘  │  │
 │  │                                                                │  │
 │  └────────────────────────────────────────────────────────────────┘  │
@@ -116,6 +116,7 @@
 | GraphRAGRetriever | `core/graph/rag.py` | 可視性制御付きコンテキスト取得 |
 | AgentMemoryStore | `core/graph/agent_memory.py` | エージェントの行動履歴をNeo4jに記録 |
 | DocumentProcessor | `core/documents/processor.py` | 文書パース→NLP解析→Neo4j格納 |
+| DataCollectionPipeline | `core/data_sources/pipeline.py` | e-Stat統計データ収集→Neo4j格納 |
 | JobManager | `core/job_manager.py` | Redis上の非同期ジョブライフサイクル管理 |
 | RedisClient | `core/redis_client.py` | Redis非同期ラッパー |
 
@@ -198,8 +199,8 @@
 Light Tasks (Ollama):          Heavy Tasks (Claude/OpenAI):
 - AGENT_DECISION               - REPORT_GENERATION
 - EMOTION_UPDATE               - ONTOLOGY_DESIGN
-- MARKET_UPDATE                - USER_CHAT
-- EVENT_GENERATION             - PERSONA_GENERATION
+                               - USER_CHAT
+                               - PERSONA_GENERATION
 ```
 
 ## 5. シミュレーションエンジン
