@@ -198,9 +198,8 @@
 Light Tasks (Ollama):          Heavy Tasks (Claude/OpenAI):
 - AGENT_DECISION               - REPORT_GENERATION
 - EMOTION_UPDATE               - ONTOLOGY_DESIGN
-- AGENT_INTERVIEW              - USER_CHAT
-- MARKET_UPDATE                - PERSONA_GENERATION
-- EVENT_GENERATION
+- MARKET_UPDATE                - USER_CHAT
+- EVENT_GENERATION             - PERSONA_GENERATION
 ```
 
 ## 5. シミュレーションエンジン

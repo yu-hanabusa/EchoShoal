@@ -49,9 +49,6 @@ class TestTaskTypeClassification:
     def test_emotion_update_is_light(self):
         assert TaskType.EMOTION_UPDATE in LIGHT_TASKS
 
-    def test_agent_interview_is_light(self):
-        assert TaskType.AGENT_INTERVIEW in LIGHT_TASKS
-
     def test_report_generation_is_heavy(self):
         assert TaskType.REPORT_GENERATION in HEAVY_TASKS
 

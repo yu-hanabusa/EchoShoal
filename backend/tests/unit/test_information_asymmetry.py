@@ -223,3 +223,67 @@ class TestGetVisibilityForOasisActions:
         assert get_visibility("divest") == "partial"
         assert get_visibility("reject_service") == "private"
         assert get_visibility("adopt_service") == "public"
+
+
+class TestBuildInterpolatedContext:
+    """_build_interpolated_context のテスト."""
+
+    def test_with_full_interpolated_info(self):
+        """補間情報がすべて揃っている場合のコンテキスト構築."""
+        from unittest.mock import MagicMock
+        enriched = MagicMock()
+        enriched.interpolated_info.competitors = ["Slack", "Teams"]
+        enriched.interpolated_info.revenue_model = "SaaS月額制"
+        enriched.interpolated_info.target_users = "中小企業"
+        enriched.interpolated_info.market_size_estimate = "500億円"
+        enriched.interpolated_info.price_range = "月額1000〜5000円"
+        enriched.interpolated_info.tech_stack = "React + Node.js"
+        enriched.interpolated_info.team_size_estimate = "5-10名"
+
+        ctx = simulation_runner._build_interpolated_context(enriched)
+        assert "Slack" in ctx
+        assert "SaaS月額制" in ctx
+        assert "500億円" in ctx
+        assert "【市場分析情報（LLM推定）】" in ctx
+
+    def test_with_no_enriched(self):
+        """enrichedがNoneの場合は空文字."""
+        assert simulation_runner._build_interpolated_context(None) == ""
+
+    def test_with_empty_info(self):
+        """補間情報がすべて空の場合は空文字."""
+        from unittest.mock import MagicMock
+        enriched = MagicMock()
+        enriched.interpolated_info.competitors = []
+        enriched.interpolated_info.revenue_model = ""
+        enriched.interpolated_info.target_users = ""
+        enriched.interpolated_info.market_size_estimate = ""
+        enriched.interpolated_info.price_range = ""
+        enriched.interpolated_info.tech_stack = ""
+        enriched.interpolated_info.team_size_estimate = ""
+
+        assert simulation_runner._build_interpolated_context(enriched) == ""
+
+
+class TestSharedKnowledgeInContext:
+    """共有知識がエージェントコンテキストに含まれるかのテスト."""
+
+    def setup_method(self):
+        _setup_module_state()
+
+    def teardown_method(self):
+        _teardown_module_state()
+
+    def test_shared_knowledge_injected_to_all_agents(self):
+        """GraphRAG共有知識が全エージェントのコンテキストに含まれる."""
+        simulation_runner._active_shared_knowledge = "【参考資料の要約】\nSlackは2014年に急成長した"
+        contexts = simulation_runner._build_per_agent_contexts()
+        for oasis_id in simulation_runner._active_agent_type_map:
+            assert "Slackは2014年に急成長した" in contexts.get(oasis_id, "")
+
+    def test_empty_shared_knowledge_no_effect(self):
+        """共有知識が空の場合は影響なし."""
+        simulation_runner._active_shared_knowledge = ""
+        contexts = simulation_runner._build_per_agent_contexts()
+        for ctx in contexts.values():
+            assert "参考資料" not in ctx

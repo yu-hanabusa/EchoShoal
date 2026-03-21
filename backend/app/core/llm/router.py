@@ -18,14 +18,12 @@ class TaskType(str, Enum):
     REPORT_GENERATION = "report_generation"  # -> Claude/OpenAI (heavy)
     ONTOLOGY_DESIGN = "ontology_design"  # -> Claude/OpenAI (heavy)
     USER_CHAT = "user_chat"  # -> Claude/OpenAI (heavy)
-    AGENT_INTERVIEW = "agent_interview"  # -> Ollama (light)
     PERSONA_GENERATION = "persona_generation"  # -> Claude/OpenAI (heavy)
 
 
 LIGHT_TASKS = {
     TaskType.AGENT_DECISION,
     TaskType.EMOTION_UPDATE,
-    TaskType.AGENT_INTERVIEW,
 }
 
 HEAVY_TASKS = {
