@@ -184,18 +184,6 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
-/** 文書処理結果 */
-export interface ProcessResult {
-  document_id: string;
-  filename: string;
-  entities_found: number;
-  technologies: string[];
-  organizations: string[];
-  policies: string[];
-  keywords: string[];
-  new_nodes_created: number;
-}
-
 /** 文書情報 */
 export interface DocumentInfo {
   doc_id: string;
@@ -342,3 +330,11 @@ export const DIMENSION_COLORS: Record<string, string> = {
   ecosystem_health: "#06b6d4",
   funding_climate: "#9ca3af",
 };
+
+/** Threat dimensions where high raw value = bad (need inversion for display) */
+export const THREAT_DIMENSIONS = new Set(["competitive_pressure", "regulatory_risk"]);
+
+/** Returns true if the dimension is a threat metric (high = bad) */
+export function isThreatDimension(dimension: string): boolean {
+  return THREAT_DIMENSIONS.has(dimension);
+}

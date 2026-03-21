@@ -34,6 +34,7 @@ ProgressCallback = Callable[[int, int], Coroutine[Any, Any, None]]
 _active_token_tracker: Any | None = None
 _active_oasis_agent_map: dict[int, str] = {}  # OASIS agent_id -> agent name
 _active_round_number: int = 0
+_active_market_summary: str = ""  # 現在の市場状態テキスト（エージェントに共有）
 
 
 def _truncate_at_sentence(text: str, max_len: int = 500) -> str:
@@ -305,27 +306,76 @@ class OASISSimulationEngine:
         SocialEnvironment.env_template = StdTemplate(
             "$groups_env\n"
             "$posts_env\n"
-            "あなたの立場から、投稿（create_post）またはコメント（create_comment）で"
-            "意見を述べてください。必ず日本語で発言してください。"
+            "あなたの立場から感想や意見を必ず述べてください。日本語で発言してください。"
         )
 
         # perform_action_by_llm のユーザーメッセージを日本語化
         import oasis.social_agent.agent as agent_module
         from camel.messages import BaseMessage
 
+        async def _direct_ollama_text(
+            agent: Any, user_content: str, model: str
+        ) -> str:
+            """CAMELバイパス: Ollamaに直接テキスト生成を要求する.
+
+            astepがNoneを返す場合（ツール呼び出し解析失敗）に使用。
+            ツールなしで呼び出し、テキスト応答のみ取得する。
+            """
+            import re as _re
+            try:
+                import httpx
+                # エージェントのシステムプロンプトを取得
+                sys_content = ""
+                if hasattr(agent, "system_message") and agent.system_message:
+                    sys_content = agent.system_message.content or ""
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(
+                        "http://localhost:11434/api/chat",
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": sys_content},
+                                {"role": "user", "content": (
+                                    "以下の状況について、あなたの立場から"
+                                    "感想を日本語で1〜3文で述べてください。"
+                                    "ツール呼び出しは不要です。テキストで回答してください。\n\n"
+                                    + user_content[-2000:]  # コンテキスト制限
+                                )},
+                            ],
+                            "stream": False,
+                            "options": {"num_predict": 256},
+                        },
+                    )
+                if resp.status_code == 200:
+                    text = resp.json().get("message", {}).get("content", "")
+                    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+                    return text
+            except Exception:
+                pass
+            return ""
+
         async def _jp_perform_action(self: Any) -> Any:  # type: ignore[override]
             from oasis.social_agent.agent import ALL_SOCIAL_ACTIONS, agent_log
 
             env_prompt = await self.env.to_text_prompt()
+            # 市場状態とラウンド情報をエージェントに共有
+            market_context = ""
+            if _active_market_summary:
+                market_context = (
+                    f"\n【現在の市場状況（{_active_round_number}ヶ月目）】\n"
+                    f"{_active_market_summary}\n"
+                )
             user_msg = BaseMessage.make_user_message(
                 role_name="User",
                 content=(
-                    f"以下のSNS環境を読み、あなたの立場から必ずアクションを実行してください。\n"
-                    f"【優先順位】\n"
-                    f"1. 既存の投稿にコメント（create_comment）— 議論に参加する\n"
-                    f"2. 新しい投稿を作成（create_post）— 自分の意見を発信する\n"
-                    f"3. いいね/フォロー — 他者の意見に反応する\n"
-                    f"必ず日本語で発言してください。\n\n"
+                    f"以下のSNS環境と市場状況を読み、あなたの立場から必ず感想を述べてください。\n"
+                    f"【行動ルール — 優先順位順に実行】\n"
+                    f"1. 既存の投稿にコメント（create_comment）— 他者の意見に対する感想・反論を書く\n"
+                    f"2. 新しい投稿を作成（create_post）— 自分の意見・感想を発信する\n"
+                    f"3. いいね/フォロー — 共感する投稿にはlike_post、気になるユーザーにはfollow\n"
+                    f"- 不満や懸念があれば遠慮なく批判してください\n"
+                    f"- 必ず日本語で発言してください\n"
+                    f"{market_context}\n"
                     f"現在のSNS環境:\n{env_prompt}"
                 ),
             )
@@ -334,14 +384,34 @@ class OASISSimulationEngine:
                     f"Agent {self.social_agent_id} observing environment: "
                     f"{env_prompt}"
                 )
+                import re as _re
+                from app.config import settings as _settings
+
                 response = await self.astep(user_msg)
+
+                # responseがNoneの場合 — CAMELがツール呼び出しを解析できなかった
+                if response is None:
+                    agent_log.warning(
+                        f"Agent {self.social_agent_id} astep returned None, "
+                        "retrying without tools"
+                    )
+                    # Ollama直接呼び出し（ツールなし）でテキスト応答を取得
+                    text = await _direct_ollama_text(
+                        self, user_msg.content, _settings.ollama_model
+                    )
+                    if text:
+                        await self.env.action.create_post(content=text)
+                        agent_log.info(
+                            f"Agent {self.social_agent_id} direct fallback "
+                            f"create_post ({len(text)} chars)"
+                        )
+                    return response
 
                 # トークン使用量をトラッカーに記録
                 if _active_token_tracker is not None:
                     usage_dict = response.info.get("usage") or {}
                     if usage_dict:
                         from app.core.llm.token_tracker import TokenUsage
-                        from app.config import settings as _settings
                         agent_name = _active_oasis_agent_map.get(
                             self.social_agent_id, f"oasis_agent_{self.social_agent_id}"
                         )
@@ -358,17 +428,30 @@ class OASISSimulationEngine:
                             agent_name=agent_name,
                         )
 
-                for tool_call in response.info["tool_calls"]:
-                    action_name = tool_call.tool_name
-                    args = tool_call.args
-                    agent_log.info(
-                        f"Agent {self.social_agent_id} performed "
-                        f"action: {action_name} with args: {args}"
-                    )
-                    if action_name not in ALL_SOCIAL_ACTIONS:
+                tool_calls = response.info.get("tool_calls", [])
+                if tool_calls:
+                    for tool_call in tool_calls:
+                        action_name = tool_call.tool_name
+                        args = tool_call.args
                         agent_log.info(
-                            f"Agent {self.social_agent_id} get the result: "
-                            f"{tool_call.result}"
+                            f"Agent {self.social_agent_id} performed "
+                            f"action: {action_name} with args: {args}"
+                        )
+                        if action_name not in ALL_SOCIAL_ACTIONS:
+                            agent_log.info(
+                                f"Agent {self.social_agent_id} get the result: "
+                                f"{tool_call.result}"
+                            )
+                        return response
+                else:
+                    # ツール呼び出しなし — テキスト応答をcreate_postとして投稿
+                    text = response.msg.content or ""
+                    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+                    if text:
+                        await self.env.action.create_post(content=text)
+                        agent_log.info(
+                            f"Agent {self.social_agent_id} fallback "
+                            f"create_post from text response ({len(text)} chars)"
                         )
                     return response
             except Exception as e:
@@ -417,6 +500,8 @@ class OASISSimulationEngine:
                     f"「{sn}」の使い勝手、価格、セキュリティなどを"
                     "自分たちの立場から率直に評価してください。"
                     "既存ツールとの比較、乗り換えコスト、不満や期待を具体的に述べてください。"
+                    "不満がある場合は明確に批判し、乗り換えない場合はその理由を述べてください。"
+                    "「なんとなく良さそう」ではなく、具体的な体験に基づいて判断してください。"
                 )
             elif st == "investor":
                 parts.append(
@@ -481,9 +566,18 @@ class OASISSimulationEngine:
 
     async def _run_oasis_round(self, round_number: int) -> RoundResult:
         """1ラウンドのOASISシミュレーションを実行する."""
+        global _active_market_summary
         self.market.round_number = round_number
         all_actions: list[dict[str, Any]] = []
         events: list[str] = []
+
+        # エージェントに市場状態を共有（議論の質向上のため）
+        dims = self.market.dimensions
+        key_dims = []
+        for d, v in dims.items():
+            pct = round(v * 100)
+            key_dims.append(f"{d.value}={pct}%")
+        _active_market_summary = ", ".join(key_dims)
 
         # Time Engine: アクティブエージェントを確率的に選択
         active_agents = self._select_active_oasis_agents()
@@ -955,17 +1049,12 @@ class OASISSimulationEngine:
             f"Engagement stats: {stats_text}\n\n"
             f"Boundary awareness (極端な値のディメンション):\n{boundary_text}\n\n"
             "Rules:\n"
-            f"- '{service_name}'の投稿 = 対象サービスのアクション。積極的な施策はuser_adoption, market_awarenessにプラス。\n"
-            "- 競合の投稿 = competitive_pressureの上昇要因。批判的な意見はuser_adoptionにマイナス。\n"
-            "- ユーザーの肯定的投稿 = user_adoption, ecosystem_healthにプラス。否定的 = マイナス。\n"
-            "- 投資家の関心 = funding_climateにプラス。\n"
-            "- 0.0/1.0に近いディメンションは、重大なイベントがない限りdelta≒0.0を返すこと。\n\n"
-            "【重要】因果関係の注意:\n"
-            "- 規制議論の活発化 ≠ ユーザー離脱。規制はregulatory_riskに反映し、user_adoptionには直接影響させない。\n"
-            "  規制議論が盛んなのはむしろ市場が成長している証拠であることが多い。\n"
-            "- Engagement change（いいね・コメント・フォローの増加）はユーザー関心の代理指標。\n"
-            "  エンゲージメントが増加中ならuser_adoptionとmarket_awarenessにプラス。\n"
-            "- 議論のトーンがネガティブでも、議論量が増えていれば市場関心は高まっている。\n\n"
+            "- 議論の内容（肯定/否定/批判）を読み取り、各ディメンションへの影響を判断すること。\n"
+            "- 議論量ではなく議論の質・トーンで判断すること。多く議論されていても否定的ならuser_adoptionは下がる。\n"
+            "- 競合の批判的投稿はcompetitive_pressureの上昇要因かつuser_adoptionのマイナス要因。\n"
+            "- ユーザーの不満・批判はuser_adoption, revenue_potentialのマイナス要因。\n"
+            "- 0.0/1.0に近いディメンションは、重大なイベントがない限りdelta≒0.0を返すこと。\n"
+            "- 規制議論はregulatory_riskに反映し、user_adoptionには直接影響させない。\n\n"
             "Return EXACTLY this JSON with delta values (-0.1 to +0.1):\n"
             '{"dimension_deltas": {'
             '"user_adoption": 0.0, "revenue_potential": 0.0, "tech_maturity": 0.0, '

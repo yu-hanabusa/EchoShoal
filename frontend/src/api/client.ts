@@ -9,7 +9,6 @@ import type {
   MarketResearchResult,
   PaginatedResponse,
   PredictionResult,
-  ProcessResult,
   SimulationReport,
 } from "./types";
 
@@ -55,29 +54,6 @@ export async function listSimulations(
   limit = 20,
 ): Promise<PaginatedResponse<JobInfo>> {
   return request(`/simulations/?skip=${skip}&limit=${limit}`);
-}
-
-/** このシミュレーション用の追加文書をアップロード */
-export async function uploadSimulationDocument(
-  jobId: string,
-  file: File,
-  source?: string,
-): Promise<ProcessResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-  if (source) {
-    formData.append("source", source);
-  }
-
-  const res = await fetch(`${BASE_URL}/simulations/${jobId}/documents`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Upload error: ${res.status}`);
-  }
-  return res.json() as Promise<ProcessResult>;
 }
 
 /** ジョブのステータス + 結果を取得 */

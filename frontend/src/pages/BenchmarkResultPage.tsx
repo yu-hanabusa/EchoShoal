@@ -4,8 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { getEvaluationResult, getSimulation } from "../api/client";
 import ProgressBar from "../components/ProgressBar";
 import MarketChart from "../components/MarketChart";
-import SocialFeed from "../components/SocialFeed";
-import AgentTable from "../components/AgentTable";
 import type {
   EvaluationResult,
   FullBenchmarkResult,
@@ -197,7 +195,7 @@ export default function BenchmarkResultPage() {
     ? undefined // Full result is self-contained
     : evalData?.status === "completed" ? jobId : undefined;
 
-  const { data: simData } = useQuery({
+  const { data: _simData } = useQuery({
     queryKey: ["simulation-for-eval", simJobId],
     queryFn: () => getSimulation(simJobId!),
     enabled: false, // We get simulation data from the evaluation result's child job
@@ -233,9 +231,6 @@ export default function BenchmarkResultPage() {
   const evaluation = fullResult?.evaluation || evalOnly;
   const research = fullResult?.research;
 
-  // Get simulation data from the result (stored in Redis by runner)
-  // The child job's result contains rounds/summary/social_feed
-  const resultData = evalData.result as Record<string, unknown> | undefined;
 
   return (
     <div className="min-h-screen bg-surface-1">

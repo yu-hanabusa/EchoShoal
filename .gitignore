@@ -33,3 +33,16 @@ redis_data/
 
 # Logs
 *.log
+
+# Simulation output
+backend/simulations/
+backend/oasis_*.db
+
+# Benchmark logs
+backend/benchmark_*.txt
+
+# Claude Code
+.claude/
+
+# Misc artifacts
+backend/=*

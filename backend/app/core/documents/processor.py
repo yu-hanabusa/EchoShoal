@@ -438,10 +438,19 @@ class DocumentProcessor:
                 task_type=TaskType.AGENT_DECISION,
                 prompt=(
                     f"Text:\n{text[:1500]}\n\n"
-                    'List all company/service/agency names.\n'
+                    "List all company/service/agency names that are **market players** "
+                    "(competitors, partners, customers, regulators, investors).\n"
+                    "EXCLUDE:\n"
+                    "- Information sources cited in the text (e.g. Yahoo Finance, "
+                    "Bloomberg, TechCrunch, Google Trends, Wikipedia)\n"
+                    "- Development tools/platforms not competing in this market "
+                    "(e.g. GitHub, GitLab, Stack Overflow)\n"
+                    "- Research/consulting firms (e.g. McKinsey, Gartner)\n"
+                    "Only include organizations that actively participate in the "
+                    "market being discussed.\n"
                     '{"organizations":["Slack","Microsoft Teams","LINE WORKS"]}'
                 ),
-                system_prompt="Extract names. JSON only.",
+                system_prompt="Extract market player names. JSON only.",
             )
             raw = response.get("organizations", [])
             if isinstance(raw, list):
