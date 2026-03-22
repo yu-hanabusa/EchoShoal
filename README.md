@@ -213,7 +213,7 @@ curl -X POST http://localhost:8000/api/evaluation/run/slack_2014/multi?num_runs=
 curl -X POST http://localhost:8000/api/evaluation/run-all
 ```
 
-詳細な評価手法・シナリオ一覧は [backend/app/evaluation/README.md](backend/app/evaluation/README.md) を参照してください。
+詳細な評価手法・シナリオ一覧は [backend/app/evaluation/README.md](backend/app/evaluation/README.md)、過去の評価結果は [docs/BENCHMARK_RESULTS.md](docs/BENCHMARK_RESULTS.md) を参照してください。
 
 ## ライセンス
 

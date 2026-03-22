@@ -38,11 +38,19 @@ redis_data/
 backend/simulations/
 backend/oasis_*.db
 
-# Benchmark logs
+# Benchmark artifacts
 backend/benchmark_*.txt
+backend/benchmark_*.json
+backend/benchmark_reports/
+
+# Development scripts
+backend/check_sim.py
+backend/test_market_update.py
+backend/run_benchmark_*.py
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Misc artifacts
 backend/=*

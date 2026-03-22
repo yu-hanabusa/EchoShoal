@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_name: str = "EchoShoal"
-    debug: bool = True
+    debug: bool = False
 
     # LLM Settings
     ollama_base_url: str = "http://localhost:11434"
