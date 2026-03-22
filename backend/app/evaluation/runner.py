@@ -320,7 +320,8 @@ async def run_benchmark(
         results = output.rounds
         elapsed = time.monotonic() - start_time
 
-        evaluation = evaluate_benchmark(benchmark, results)
+        success_score = output.report.get("success_score") if output.report else None
+        evaluation = evaluate_benchmark(benchmark, results, success_score=success_score)
         evaluation.execution_time_seconds = round(elapsed, 2)
 
         # ディメンション推移を記録
@@ -430,6 +431,12 @@ async def run_benchmark_multi(
             )
             per_trend_hit_rates[et.metric] = hits / len(per_run_results)
 
+    outcome_evaluated = [r for r in per_run_results if r.outcome_correct is not None]
+    outcome_hit_rate = (
+        sum(1 for r in outcome_evaluated if r.outcome_correct) / len(outcome_evaluated)
+        if outcome_evaluated else None
+    )
+
     return RunStatistics(
         num_runs=num_runs,
         per_run_results=per_run_results,
@@ -438,6 +445,7 @@ async def run_benchmark_multi(
         min_direction_accuracy=round(min(accuracies), 4),
         max_direction_accuracy=round(max(accuracies), 4),
         per_trend_hit_rates=per_trend_hit_rates,
+        outcome_hit_rate=outcome_hit_rate,
     )
 
 
@@ -561,7 +569,8 @@ async def run_benchmark_with_research(
         )
         results = output.rounds
 
-        evaluation = evaluate_benchmark(benchmark, results)
+        success_score = output.report.get("success_score") if output.report else None
+        evaluation = evaluate_benchmark(benchmark, results, success_score=success_score)
         evaluation.execution_time_seconds = round(time.monotonic() - sim_start, 2)
 
         # ディメンション推移を記録
@@ -664,6 +673,14 @@ async def run_all_benchmarks(
     mean_dir_acc = sum(r.direction_accuracy for r in results) / len(results)
     passed = sum(1 for r in results if r.direction_accuracy >= pass_threshold)
 
+    # 成功/失敗予測の集計
+    outcome_results = [r for r in results if r.outcome_correct is not None]
+    outcome_correct_count = sum(1 for r in outcome_results if r.outcome_correct)
+    outcome_evaluated_count = len(outcome_results)
+
+    combined_accs = [r.combined_accuracy for r in results if r.combined_accuracy is not None]
+    mean_combined = round(sum(combined_accs) / len(combined_accs), 4) if combined_accs else None
+
     return EvaluationSuiteResult(
         results=results,
         mean_direction_accuracy=round(mean_dir_acc, 4),
@@ -671,4 +688,7 @@ async def run_all_benchmarks(
         passed_benchmarks=passed,
         pass_threshold=pass_threshold,
         execution_time_seconds=round(elapsed, 2),
+        mean_combined_accuracy=mean_combined,
+        outcome_correct_count=outcome_correct_count,
+        outcome_evaluated_count=outcome_evaluated_count,
     )

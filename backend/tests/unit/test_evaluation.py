@@ -14,6 +14,7 @@ from app.evaluation.comparator import (
     DIRECTION_THRESHOLD,
     compute_actual_direction,
     evaluate_benchmark,
+    evaluate_outcome,
     evaluate_trend,
     extract_metric_values,
 )
@@ -21,6 +22,7 @@ from app.evaluation.models import (
     BenchmarkScenario,
     EvaluationResult,
     EvaluationSuiteResult,
+    ExpectedOutcome,
     ExpectedTrend,
     RunStatistics,
     TrendDirection,
@@ -527,6 +529,121 @@ class TestEvaluateBenchmark:
         ])
         result = evaluate_benchmark(benchmark, rounds)
         assert result.direction_accuracy == pytest.approx(0.5)
+
+
+# ─── 成功/失敗予測テスト ───
+
+
+class TestEvaluateOutcome:
+    def test_success_high_score(self):
+        """成功事例でスコア75 → 正解."""
+        correct, score, verdict = evaluate_outcome(
+            ExpectedOutcome.SUCCESS, {"score": 75, "verdict": "成功見込み"},
+        )
+        assert correct is True
+        assert score == 75
+
+    def test_success_low_score(self):
+        """成功事例でスコア30 → 不正解."""
+        correct, score, _ = evaluate_outcome(
+            ExpectedOutcome.SUCCESS, {"score": 30, "verdict": "困難"},
+        )
+        assert correct is False
+        assert score == 30
+
+    def test_failure_low_score(self):
+        """失敗事例でスコア30 → 正解."""
+        correct, score, _ = evaluate_outcome(
+            ExpectedOutcome.FAILURE, {"score": 30, "verdict": "困難"},
+        )
+        assert correct is True
+
+    def test_failure_high_score(self):
+        """失敗事例でスコア75 → 不正解."""
+        correct, _, _ = evaluate_outcome(
+            ExpectedOutcome.FAILURE, {"score": 75, "verdict": "成功見込み"},
+        )
+        assert correct is False
+
+    def test_boundary_50_is_success(self):
+        """スコア50 → 成功予測（中間点）."""
+        correct, _, _ = evaluate_outcome(
+            ExpectedOutcome.SUCCESS, {"score": 50},
+        )
+        assert correct is True
+
+    def test_none_expected(self):
+        correct, score, verdict = evaluate_outcome(None, {"score": 50})
+        assert correct is None
+        assert score is None
+
+    def test_none_score(self):
+        correct, score, verdict = evaluate_outcome(ExpectedOutcome.SUCCESS, None)
+        assert correct is None
+
+    def test_missing_score_key(self):
+        correct, _, _ = evaluate_outcome(ExpectedOutcome.SUCCESS, {"verdict": "ok"})
+        assert correct is None
+
+
+class TestEvaluateBenchmarkWithOutcome:
+    def _make_benchmark(
+        self,
+        trends: list[ExpectedTrend],
+        outcome: ExpectedOutcome | None = None,
+    ) -> BenchmarkScenario:
+        from app.simulation.models import ScenarioInput
+        return BenchmarkScenario(
+            id="test_bench",
+            name="テストベンチマーク",
+            description="テスト用",
+            scenario_input=ScenarioInput(
+                description="テスト用シナリオ（10文字以上必要）",
+                num_rounds=12,
+            ),
+            expected_trends=trends,
+            expected_outcome=outcome,
+        )
+
+    def test_combined_accuracy_perfect(self):
+        """方向100% + 成功予測正解 → 統合100%."""
+        rounds = make_rounds_with_trend(dim_start=0.3, dim_delta=0.02)
+        benchmark = self._make_benchmark(
+            [ExpectedTrend(metric="dimensions.user_adoption", direction=TrendDirection.UP)],
+            outcome=ExpectedOutcome.SUCCESS,
+        )
+        result = evaluate_benchmark(benchmark, rounds, success_score={"score": 70})
+        assert result.direction_accuracy == 1.0
+        assert result.outcome_correct is True
+        assert result.combined_accuracy == 1.0
+
+    def test_combined_accuracy_half(self):
+        """方向100% + 成功予測不正解 → 統合50%."""
+        rounds = make_rounds_with_trend(dim_start=0.3, dim_delta=0.02)
+        benchmark = self._make_benchmark(
+            [ExpectedTrend(metric="dimensions.user_adoption", direction=TrendDirection.UP)],
+            outcome=ExpectedOutcome.SUCCESS,
+        )
+        result = evaluate_benchmark(benchmark, rounds, success_score={"score": 30})
+        assert result.direction_accuracy == 1.0
+        assert result.outcome_correct is False
+        assert result.combined_accuracy == 0.5
+
+    def test_combined_none_without_report(self):
+        """レポートなし → combined_accuracy=None."""
+        rounds = make_rounds_with_trend(dim_start=0.3, dim_delta=0.02)
+        benchmark = self._make_benchmark(
+            [ExpectedTrend(metric="dimensions.user_adoption", direction=TrendDirection.UP)],
+            outcome=ExpectedOutcome.SUCCESS,
+        )
+        result = evaluate_benchmark(benchmark, rounds)
+        assert result.outcome_correct is None
+        assert result.combined_accuracy is None
+
+    def test_all_benchmarks_have_expected_outcome(self):
+        """全9ベンチマークにexpected_outcomeが設定されていること."""
+        for b in list_benchmarks():
+            assert b.expected_outcome is not None, f"{b.id} lacks expected_outcome"
 
 
 # ─── APIエンドポイントテスト ───

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from app.evaluation.models import (
     BenchmarkScenario,
+    ExpectedOutcome,
     ExpectedTrend,
     TrendDirection,
 )
@@ -73,6 +74,7 @@ def _slack_2014() -> BenchmarkScenario:
                 description="サードパーティ連携エコシステムの成長",
             ),
         ],
+        expected_outcome=ExpectedOutcome.SUCCESS,
         tags=["saas", "success", "product_led_growth"],
     )
 
@@ -116,6 +118,7 @@ def _notion_vs_confluence() -> BenchmarkScenario:
                 description="エンタープライズ転換による収益化",
             ),
         ],
+        expected_outcome=ExpectedOutcome.SUCCESS,
         tags=["saas", "success", "plg", "enterprise"],
     )
 
@@ -160,9 +163,9 @@ def _github_copilot_2022() -> BenchmarkScenario:
                 description="AmazonやGoogleの競合ツール投入",
             ),
             ExpectedTrend(
-                metric="dimensions.revenue_potential",
+                metric="dimensions.regulatory_risk",
                 direction=TrendDirection.UP,
-                description="サブスクリプション収益の安定化",
+                description="著作権・OSSライセンス訴訟の発生（Doe v. GitHub 2022）",
             ),
             ExpectedTrend(
                 metric="ai_disruption_level",
@@ -170,6 +173,7 @@ def _github_copilot_2022() -> BenchmarkScenario:
                 description="AI破壊度の上昇",
             ),
         ],
+        expected_outcome=ExpectedOutcome.SUCCESS,
         tags=["ai", "success", "developer_tools"],
     )
 
@@ -202,24 +206,20 @@ def _zoom_2020() -> BenchmarkScenario:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                description="パンデミック駆動のユーザー獲得",
+                description="パンデミック駆動のユーザー獲得（1000万→3億DAP）",
             ),
             ExpectedTrend(
                 metric="dimensions.competitive_pressure",
                 direction=TrendDirection.UP,
-                description="Microsoft・Googleの対抗措置",
+                description="Microsoft Teams・Google Meetの急速な対抗措置",
             ),
             ExpectedTrend(
-                metric="dimensions.regulatory_risk",
+                metric="dimensions.market_awareness",
                 direction=TrendDirection.UP,
-                description="セキュリティ懸念による規制圧力",
-            ),
-            ExpectedTrend(
-                metric="dimensions.revenue_potential",
-                direction=TrendDirection.UP,
-                description="有料プランへの転換",
+                description="パンデミックで一般名詞化するほど認知度が爆発",
             ),
         ],
+        expected_outcome=ExpectedOutcome.SUCCESS,
         tags=["saas", "success", "pandemic", "video_conferencing"],
     )
 
@@ -279,6 +279,7 @@ def _chatgpt_2022() -> BenchmarkScenario:
                 description="AI破壊度の上昇",
             ),
         ],
+        expected_outcome=ExpectedOutcome.SUCCESS,
         tags=["ai", "success", "explosive_growth"],
     )
 
@@ -316,20 +317,21 @@ def _google_wave_2009() -> BenchmarkScenario:
         expected_trends=[
             ExpectedTrend(
                 metric="dimensions.user_adoption",
-                direction=TrendDirection.STABLE,
-                description="招待制で初期ユーザーが少なく、普及しないまま推移",
+                direction=TrendDirection.DOWN,
+                description="招待制→一般公開後も定着せず、2010年8月に打ち切り",
             ),
             ExpectedTrend(
-                metric="dimensions.market_awareness",
+                metric="dimensions.revenue_potential",
                 direction=TrendDirection.DOWN,
-                description="初期の話題性が急速に低下",
+                description="無料サービスのまま収益化できずに終了",
             ),
             ExpectedTrend(
-                metric="dimensions.ecosystem_health",
+                metric="dimensions.tech_maturity",
                 direction=TrendDirection.DOWN,
-                description="サードパーティ開発者の離脱",
+                description="先進的すぎる技術が市場に受け入れられず停滞",
             ),
         ],
+        expected_outcome=ExpectedOutcome.FAILURE,
         tags=["collaboration", "failure", "platformer"],
     )
 
@@ -374,6 +376,7 @@ def _google_plus_2011() -> BenchmarkScenario:
                 description="広告収益モデルが機能しない",
             ),
         ],
+        expected_outcome=ExpectedOutcome.FAILURE,
         tags=["sns", "failure", "platformer"],
     )
 
@@ -424,6 +427,7 @@ def _quibi_2020() -> BenchmarkScenario:
                 description="このカテゴリへの投資冷え込み",
             ),
         ],
+        expected_outcome=ExpectedOutcome.FAILURE,
         tags=["streaming", "failure", "startup"],
     )
 
@@ -474,6 +478,7 @@ def _jasper_ai_2023() -> BenchmarkScenario:
                 description="AI技術の進歩がラッパー型ビジネスを脅かす",
             ),
         ],
+        expected_outcome=ExpectedOutcome.FAILURE,
         tags=["ai", "failure", "saas", "disrupted"],
     )
 

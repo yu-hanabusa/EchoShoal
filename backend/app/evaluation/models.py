@@ -23,6 +23,13 @@ class TrendDirection(str, Enum):
     STABLE = "stable"
 
 
+class ExpectedOutcome(str, Enum):
+    """ベンチマークの期待される成功/失敗結果."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+
+
 class ExpectedTrend(BaseModel):
     """ベンチマークが主張する単一の期待トレンド.
 
@@ -51,6 +58,7 @@ class BenchmarkScenario(BaseModel):
     description: str
     scenario_input: ScenarioInput
     expected_trends: list[ExpectedTrend]
+    expected_outcome: ExpectedOutcome | None = None  # 成功/失敗の期待結果
     tags: list[str] = Field(default_factory=list)
     reference_url: str = ""  # 参考文献URL
     reference_description: str = ""  # 参考文献の説明
@@ -103,6 +111,12 @@ class EvaluationResult(BaseModel):
     direction_accuracy: float  # 方向正解率 (0.0〜1.0)
     simulation_rounds: int
     execution_time_seconds: float = 0.0
+    # 成功/失敗予測の評価
+    expected_outcome: str | None = None      # "success" or "failure"
+    predicted_score: int | None = None       # SuccessScore.score (0-100)
+    predicted_verdict: str | None = None     # SuccessScore.verdict
+    outcome_correct: bool | None = None      # 予測が期待と一致したか
+    combined_accuracy: float | None = None   # (direction_accuracy + outcome_accuracy) / 2
     dimension_timelines: list[DimensionTimeline] = Field(default_factory=list)
     agents: list[AgentRecord] = Field(default_factory=list)
     token_usage: TokenUsageSummary | None = None
@@ -118,6 +132,7 @@ class RunStatistics(BaseModel):
     min_direction_accuracy: float
     max_direction_accuracy: float
     per_trend_hit_rates: dict[str, float]  # metric → N回中何回方向一致したか
+    outcome_hit_rate: float | None = None  # N回中何回outcomeが正解だったか
 
 
 class ResearchData(BaseModel):
@@ -153,3 +168,6 @@ class EvaluationSuiteResult(BaseModel):
     passed_benchmarks: int  # direction_accuracy >= pass_threshold
     pass_threshold: float = 0.6
     execution_time_seconds: float = 0.0
+    mean_combined_accuracy: float | None = None
+    outcome_correct_count: int = 0
+    outcome_evaluated_count: int = 0

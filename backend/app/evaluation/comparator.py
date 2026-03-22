@@ -13,6 +13,7 @@ from __future__ import annotations
 from app.evaluation.models import (
     BenchmarkScenario,
     EvaluationResult,
+    ExpectedOutcome,
     ExpectedTrend,
     TrendDirection,
     TrendResult,
@@ -130,14 +131,43 @@ def evaluate_trend(
     )
 
 
+# ─── 成功/失敗予測評価 ───
+
+
+def evaluate_outcome(
+    expected_outcome: ExpectedOutcome | None,
+    success_score: dict | None,
+) -> tuple[bool | None, int | None, str | None]:
+    """成功/失敗予測の正誤を判定する.
+
+    Returns:
+        (outcome_correct, predicted_score, predicted_verdict)
+    """
+    if expected_outcome is None or success_score is None:
+        return None, None, None
+
+    score = success_score.get("score")
+    verdict = success_score.get("verdict", "")
+
+    if score is None:
+        return None, None, None
+
+    # 50は0-100の自然な中間点: >= 50は成功予測、< 50は失敗予測
+    predicted_success = score >= 50
+    expected_success = expected_outcome == ExpectedOutcome.SUCCESS
+
+    return predicted_success == expected_success, score, verdict
+
+
 # ─── ベンチマーク全体評価 ───
 
 
 def evaluate_benchmark(
     benchmark: BenchmarkScenario,
     rounds: list[RoundResult],
+    success_score: dict | None = None,
 ) -> EvaluationResult:
-    """1つのベンチマーク全体を評価する（方向正解率のみ）."""
+    """1つのベンチマーク全体を評価する（方向正解率 + 成功予測）."""
     trend_results = [
         evaluate_trend(et, rounds) for et in benchmark.expected_trends
     ]
@@ -149,10 +179,28 @@ def evaluate_benchmark(
     else:
         direction_accuracy = 0.0
 
+    # 成功/失敗予測の評価
+    outcome_correct, predicted_score, predicted_verdict = evaluate_outcome(
+        benchmark.expected_outcome, success_score,
+    )
+
+    # combined_accuracy: direction_accuracyとoutcome正誤の単純平均
+    combined_accuracy = None
+    if outcome_correct is not None:
+        outcome_value = 1.0 if outcome_correct else 0.0
+        combined_accuracy = round((direction_accuracy + outcome_value) / 2, 4)
+
     return EvaluationResult(
         benchmark_id=benchmark.id,
         benchmark_name=benchmark.name,
         trend_results=trend_results,
         direction_accuracy=round(direction_accuracy, 4),
         simulation_rounds=len(rounds),
+        expected_outcome=(
+            benchmark.expected_outcome.value if benchmark.expected_outcome else None
+        ),
+        predicted_score=predicted_score,
+        predicted_verdict=predicted_verdict,
+        outcome_correct=outcome_correct,
+        combined_accuracy=combined_accuracy,
     )
