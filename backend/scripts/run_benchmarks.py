@@ -36,6 +36,7 @@ import asyncio
 import json
 import logging
 import math
+import signal
 import sys
 import time
 from datetime import datetime
@@ -545,27 +546,45 @@ async def main() -> None:
     all_results: list[dict] = []
     json_results: list[dict] = []
 
-    if args.with_research:
-        # ── 市場調査付き実行 ──
-        await _run_with_research(args, job_manager, all_results, json_results)
-    elif args.runs >= 2:
-        # ── 統計評価（N回実行） ──
-        await _run_multi(args, job_manager, all_results, json_results)
+    # Ctrl+C でグレースフルシャットダウン
+    shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def _on_sigint() -> None:
+        if not shutdown_event.is_set():
+            shutdown_event.set()
+            logger.warning("Ctrl+C を検出 — 実行を中断しています...")
+
+    if sys.platform != "win32":
+        loop.add_signal_handler(signal.SIGINT, _on_sigint)
     else:
-        # ── 通常実行（1回） ──
-        await _run_single(args, job_manager, all_results, json_results)
+        signal.signal(signal.SIGINT, lambda *_: _on_sigint())
+
+    try:
+        if args.with_research:
+            await _run_with_research(args, job_manager, all_results, json_results, shutdown=shutdown_event)
+        elif args.runs >= 2:
+            await _run_multi(args, job_manager, all_results, json_results, shutdown=shutdown_event)
+        else:
+            await _run_single(args, job_manager, all_results, json_results, shutdown=shutdown_event)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.warning("ベンチマーク実行を中断しました")
 
     elapsed = time.monotonic() - start_time
     print(f"\n総実行時間: {elapsed:.1f}s ({elapsed / 60:.1f}分)")
 
+    if shutdown_event.is_set():
+        print("\n⚠ 中断されました。Ollama の GPU を解放するには:")
+        print("  ollama stop qwen3:14b")
+
     # JSON出力
-    if args.output == "json":
+    if args.output == "json" and json_results:
         output_path = Path("benchmark_results.json")
         output_path.write_text(json.dumps(json_results, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"詳細結果: {output_path}")
 
     # レポートファイル
-    if args.report:
+    if args.report and all_results:
         generate_report_file(
             all_results, elapsed, Path(args.report),
             with_research=args.with_research,
@@ -582,6 +601,8 @@ async def _run_single(
     job_manager: JobManager,
     all_results: list[dict],
     json_results: list[dict],
+    *,
+    shutdown: asyncio.Event | None = None,
 ) -> None:
     """通常実行（各ベンチマーク1回）."""
     if args.benchmark:
@@ -606,6 +627,10 @@ async def _run_single(
         benchmarks = list_benchmarks()
 
         for i, b in enumerate(benchmarks):
+            if shutdown and shutdown.is_set():
+                logger.warning("中断: 残り %d 件をスキップ", len(benchmarks) - i)
+                break
+
             logger.info("[%d/%d] %s", i + 1, len(benchmarks), b.name)
             start = time.monotonic()
             try:
@@ -640,6 +665,8 @@ async def _run_multi(
     job_manager: JobManager,
     all_results: list[dict],
     json_results: list[dict],
+    *,
+    shutdown: asyncio.Event | None = None,
 ) -> None:
     """統計評価（N回実行）."""
     if args.benchmark:
@@ -659,6 +686,10 @@ async def _run_multi(
         benchmarks = list_benchmarks()
         all_stats = []
         for b in benchmarks:
+            if shutdown and shutdown.is_set():
+                logger.warning("中断: 残りのベンチマークをスキップ")
+                break
+
             logger.info("\n--- %s ---", b.name)
             stats = await run_benchmark_multi(b.id, job_manager, args.runs)
             all_stats.append((b.name, stats))
@@ -690,6 +721,8 @@ async def _run_with_research(
     job_manager: JobManager,
     all_results: list[dict],
     json_results: list[dict],
+    *,
+    shutdown: asyncio.Event | None = None,
 ) -> None:
     """市場調査付き実行."""
     if args.benchmark:
@@ -703,9 +736,17 @@ async def _run_with_research(
     logger.info("市場調査付きベンチマーク: %d件 × %d回 = %d実行", len(benchmarks_to_run), args.runs, total_runs)
 
     for b_idx, benchmark in enumerate(benchmarks_to_run):
+        if shutdown and shutdown.is_set():
+            logger.warning("中断: 残りのベンチマークをスキップ")
+            break
+
         logger.info("[%d/%d] %s (×%d回)", b_idx + 1, len(benchmarks_to_run), benchmark.name, args.runs)
 
         for run_idx in range(args.runs):
+            if shutdown and shutdown.is_set():
+                logger.warning("中断: 残りの実行をスキップ")
+                break
+
             run_count += 1
             logger.info("  実行 %d/%d (全体 %d/%d)", run_idx + 1, args.runs, run_count, total_runs)
 
@@ -738,4 +779,8 @@ async def _run_with_research(
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n中断されました。Ollama の GPU を解放するには:")
+        print("  ollama stop qwen3:14b")
