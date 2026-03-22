@@ -52,5 +52,8 @@ backend/run_benchmark_*.py
 .claude/
 CLAUDE.md
 
+# Qiita drafts
+qiita/
+
 # Misc artifacts
 backend/=*
