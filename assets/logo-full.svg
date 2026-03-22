@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 256" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a3a5c"/>
+      <stop offset="100%" stop-color="#1b4d5e"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4dd0e1"/>
+      <stop offset="100%" stop-color="#26c6da"/>
+    </linearGradient>
+    <linearGradient id="fish1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4dd0e1"/>
+      <stop offset="100%" stop-color="#00bcd4"/>
+    </linearGradient>
+    <linearGradient id="fish2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#26c6da"/>
+      <stop offset="100%" stop-color="#00acc1"/>
+    </linearGradient>
+    <linearGradient id="fish3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#80deea"/>
+      <stop offset="100%" stop-color="#4dd0e1"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e0f7fa"/>
+      <stop offset="100%" stop-color="#b2ebf2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon section -->
+  <g transform="translate(20, 8)">
+    <rect width="240" height="240" rx="48" fill="url(#bg)"/>
+
+    <circle cx="120" cy="124" r="42" stroke="url(#wave)" stroke-width="2.5" opacity="0.7" fill="none"/>
+    <circle cx="120" cy="124" r="68" stroke="url(#wave)" stroke-width="2" opacity="0.5" fill="none"/>
+    <circle cx="120" cy="124" r="94" stroke="url(#wave)" stroke-width="1.5" opacity="0.32" fill="none"/>
+
+    <!-- Lead fish -->
+    <g transform="translate(140, 121) scale(1.0)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish1)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish1)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+      <path d="M-4,-11 Q2,-22 10,-12" fill="url(#fish1)" opacity="0.7"/>
+    </g>
+    <!-- Upper mid -->
+    <g transform="translate(96, 100) scale(0.72)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish2)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish2)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+    </g>
+    <!-- Lower mid -->
+    <g transform="translate(98, 144) scale(0.72)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish2)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish2)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+    </g>
+    <!-- Trailing -->
+    <g transform="translate(60, 92) scale(0.52)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish3)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish3)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+    </g>
+    <g transform="translate(56, 122) scale(0.52)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish3)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish3)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+    </g>
+    <g transform="translate(62, 154) scale(0.52)">
+      <ellipse cx="0" cy="0" rx="24" ry="12" fill="url(#fish3)"/>
+      <path d="M-22,-2 L-38,-16 L-34,0 L-38,16 L-22,2 Z" fill="url(#fish3)"/>
+      <circle cx="14" cy="-3" r="3.5" fill="#e0f7fa"/>
+      <circle cx="14.8" cy="-3.2" r="1.8" fill="#0d2137"/>
+    </g>
+  </g>
+
+  <!-- Text -->
+  <text x="300" y="142" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="72" font-weight="700" fill="url(#textGrad)" letter-spacing="-1">
+    Echo<tspan font-weight="400" fill="#4dd0e1">Shoal</tspan>
+  </text>
+  <text x="302" y="182" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" fill="#80cbc4" letter-spacing="4">
+    SERVICE IMPACT SIMULATOR
+  </text>
+</svg>
