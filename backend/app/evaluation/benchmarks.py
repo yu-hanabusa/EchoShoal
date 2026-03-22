@@ -165,7 +165,7 @@ def _github_copilot_2022() -> BenchmarkScenario:
             ExpectedTrend(
                 metric="dimensions.regulatory_risk",
                 direction=TrendDirection.UP,
-                description="著作権・OSSライセンス訴訟の発生（Doe v. GitHub 2022）",
+                description="著作権・OSSライセンスに関する法的懸念の高まり",
             ),
             ExpectedTrend(
                 metric="ai_disruption_level",
@@ -206,7 +206,7 @@ def _zoom_2020() -> BenchmarkScenario:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.UP,
-                description="パンデミック駆動のユーザー獲得（1000万→3億DAP）",
+                description="パンデミック駆動のユーザー獲得",
             ),
             ExpectedTrend(
                 metric="dimensions.competitive_pressure",
@@ -216,7 +216,7 @@ def _zoom_2020() -> BenchmarkScenario:
             ExpectedTrend(
                 metric="dimensions.market_awareness",
                 direction=TrendDirection.UP,
-                description="パンデミックで一般名詞化するほど認知度が爆発",
+                description="パンデミックによる認知度の急上昇",
             ),
         ],
         expected_outcome=ExpectedOutcome.SUCCESS,
@@ -318,17 +318,17 @@ def _google_wave_2009() -> BenchmarkScenario:
             ExpectedTrend(
                 metric="dimensions.user_adoption",
                 direction=TrendDirection.DOWN,
-                description="招待制→一般公開後も定着せず、2010年8月に打ち切り",
+                description="複雑すぎるUIと不明確なユースケースによる定着困難",
             ),
             ExpectedTrend(
                 metric="dimensions.revenue_potential",
                 direction=TrendDirection.DOWN,
-                description="無料サービスのまま収益化できずに終了",
+                description="無料サービスで収益モデルが不明確",
             ),
             ExpectedTrend(
                 metric="dimensions.tech_maturity",
                 direction=TrendDirection.DOWN,
-                description="先進的すぎる技術が市場に受け入れられず停滞",
+                description="先進的すぎる技術と市場ニーズの乖離リスク",
             ),
         ],
         expected_outcome=ExpectedOutcome.FAILURE,
@@ -450,7 +450,7 @@ def _jasper_ai_2023() -> BenchmarkScenario:
                 "ARRは約1億ドルに到達。10万以上の有料顧客。"
                 "競合はCopy.ai、Writesonic、Rytr等の同種ツール。"
                 "基盤技術（GPT-3）はOpenAI APIとして誰でもアクセス可能。"
-                "2022年11月にOpenAIがChatGPTを無料で一般公開する予定。"
+                "OpenAIが汎用AIチャットサービス「ChatGPT」の無料公開を準備中との報道がある。"
                 "生成AIコンテンツ市場は急速に拡大中。"
             ),
             num_rounds=12,
@@ -481,6 +481,166 @@ def _jasper_ai_2023() -> BenchmarkScenario:
         expected_outcome=ExpectedOutcome.FAILURE,
         tags=["ai", "failure", "saas", "disrupted"],
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  匿名化マッピング（A/Bテスト用）
+# ═══════════════════════════════════════════════════════════════
+
+from app.evaluation.anonymizer import AnonymizationMap
+
+ANONYMIZATION_MAPS: dict[str, AnonymizationMap] = {
+    "slack_2014": AnonymizationMap(
+        service_alias="TeamConnect",
+        replacements=[
+            ("Stewart Butterfield", "創業者A"),
+            ("Tiny Speck", "スタートアップX"),
+            ("Flickr", "写真共有サービス"),
+            ("Glitch", "オンラインゲーム"),
+            ("HipChat", "ChatTool-A"),
+            ("Campfire", "ChatTool-B"),
+            ("Microsoft Lync", "UC-Platform-A"),
+            ("Skype for Business", "UC-Platform-A Next"),
+            ("Yammer", "SocialTool-A"),
+            ("37signals", "開発会社B"),
+            ("Basecamp", "PM-Tool-A"),
+            ("Atlassian", "DevToolCo"),
+            ("Slack", "TeamConnect"),
+        ],
+    ),
+    "notion_vs_confluence_2020": AnonymizationMap(
+        service_alias="DocuSpace",
+        replacements=[
+            ("Confluence", "WikiTool-A"),
+            ("Atlassian", "DevToolCo"),
+            ("Roam Research", "NoteTool-B"),
+            ("Google Docs", "CloudDocs-A"),
+            ("Notion", "DocuSpace"),
+            ("Coda", "DocTool-C"),
+            ("Jira", "DevTracker-A"),
+        ],
+    ),
+    "github_copilot_2022": AnonymizationMap(
+        service_alias="CodeAssist",
+        replacements=[
+            ("GitHub Copilot", "CodeAssist"),
+            ("Amazon CodeWhisperer", "CodeGen-A"),
+            ("CodeWhisperer", "CodeGen-A"),
+            ("Tabnine", "CodeGen-B"),
+            ("Kite", "CodeGen-C"),
+            ("IntelliCode", "CodeGen-D"),
+            ("OpenAI Codex", "AIモデルX"),
+            ("OpenAI", "AIラボX"),
+            ("Codex", "AIモデルX"),
+            ("GitHub", "DevPlatform"),
+            ("Microsoft", "大手テック企業M"),
+            ("VS Code", "主要エディタ"),
+        ],
+    ),
+    "zoom_2020": AnonymizationMap(
+        service_alias="MeetNow",
+        replacements=[
+            ("Microsoft Teams", "VideoChat-A"),
+            ("Google Meet", "VideoChat-B"),
+            ("Cisco WebEx", "VideoChat-C"),
+            ("WebEx", "VideoChat-C"),
+            ("Skype for Business", "VideoChat-D"),
+            ("Skype", "VideoChat-D"),
+            ("Zoom Rooms", "MeetNow Rooms"),
+            ("Zoom Phone", "MeetNow Phone"),
+            ("Zoom", "MeetNow"),
+        ],
+    ),
+    "chatgpt_2022": AnonymizationMap(
+        service_alias="DialogAI",
+        replacements=[
+            ("GPT-3.5", "LLM-v2"),
+            ("GPT-3", "LLM-v1"),
+            ("RLHF", "対話最適化手法"),
+            ("OpenAI", "AIラボX"),
+            ("ChatGPT", "DialogAI"),
+            ("Google Assistant", "音声AI-A"),
+            ("Alexa", "音声AI-B"),
+            ("Siri", "音声AI-C"),
+            ("Microsoft", "大手テック企業M"),
+            ("Bing", "検索エンジンB"),
+            ("Google", "検索大手G"),
+        ],
+    ),
+    "google_wave_2009": AnonymizationMap(
+        service_alias="WaveComm",
+        replacements=[
+            ("Google Wave", "WaveComm"),
+            ("Google I/O", "開発者カンファレンス"),
+            ("Lars Rasmussen", "開発者A"),
+            ("Jens Rasmussen", "開発者B"),
+            ("Wave Protocol", "WaveComm Protocol"),
+            ("Gmail", "メールサービスG"),
+            ("Google Apps", "クラウドオフィスG"),
+            ("Google Docs", "クラウドドキュメントG"),
+            ("Microsoft Exchange", "メールサーバーM"),
+            ("Outlook", "メールクライアントM"),
+            ("SharePoint", "社内WikiM"),
+            ("Campfire", "チャットツールC"),
+            ("Basecamp", "PMツールC"),
+            ("Google", "大手テック企業G"),
+        ],
+    ),
+    "google_plus_2011": AnonymizationMap(
+        service_alias="CircleNet",
+        replacements=[
+            ("Vic Gundotra", "プロジェクトリーダーV"),
+            ("Google+", "CircleNet"),
+            ("Google Plus", "CircleNet"),
+            ("Facebook", "SNS-A"),
+            ("Twitter", "SNS-B"),
+            ("LinkedIn", "SNS-C"),
+            ("Tumblr", "SNS-D"),
+            ("Pinterest", "SNS-E"),
+            ("Hangouts", "ビデオ通話機能"),
+            ("Sparks", "興味フィード機能"),
+            ("Circles", "グループ分類機能"),
+            ("Gmail", "メールサービスG"),
+            ("YouTube", "動画サービスY"),
+            ("Google", "大手テック企業G"),
+        ],
+    ),
+    "quibi_2020": AnonymizationMap(
+        service_alias="QuickVid",
+        replacements=[
+            ("Jeffrey Katzenberg", "ハリウッド重鎮A"),
+            ("Katzenberg", "重鎮A"),
+            ("Meg Whitman", "経営者B"),
+            ("Whitman", "経営者B"),
+            ("Turnstyle", "回転表示技術"),
+            ("Netflix", "StreamingCo-A"),
+            ("Disney+", "StreamingCo-B"),
+            ("TikTok", "ShortVideo-A"),
+            ("YouTube", "VideoPlatform-A"),
+            ("HBO Max", "StreamingCo-C"),
+            ("Hulu", "StreamingCo-D"),
+            ("T-Mobile", "通信キャリアT"),
+            ("Quibi", "QuickVid"),
+        ],
+    ),
+    "jasper_ai_2023": AnonymizationMap(
+        service_alias="CopyGen",
+        replacements=[
+            ("Jasper AI", "CopyGen"),
+            ("Jasper", "CopyGen"),
+            ("Jarvis", "CopyGen旧名"),
+            ("Copy.ai", "AIWriter-A"),
+            ("Writesonic", "AIWriter-B"),
+            ("Rytr", "AIWriter-C"),
+            ("Grammarly", "文法チェッカーG"),
+            ("OpenAI", "AIラボX"),
+            ("GPT-3", "LLM-v1"),
+            ("ChatGPT", "AIラボX汎用サービス"),
+            ("Microsoft", "大手テック企業M"),
+            ("Insight Partners", "投資ファンドI"),
+        ],
+    ),
+}
 
 
 # ─── レジストリ ───

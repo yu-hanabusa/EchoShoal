@@ -20,7 +20,8 @@ from app.core.graph.client import GraphClient
 from app.core.graph.rag import GraphRAGRetriever
 from app.core.job_manager import JobManager
 from app.core.llm.router import LLMRouter
-from app.evaluation.benchmarks import get_benchmark, list_benchmarks
+from app.evaluation.anonymizer import AnonymizationMap, anonymize_documents, anonymize_scenario
+from app.evaluation.benchmarks import ANONYMIZATION_MAPS, get_benchmark, list_benchmarks
 from app.evaluation.comparator import evaluate_benchmark
 from app.evaluation.models import (
     AgentRecord,
@@ -143,8 +144,18 @@ async def run_simulation_for_benchmark(
     job_manager: JobManager,
     collected_data: object | None = None,
     stakeholder_report: str = "",
+    anonymize: bool = False,
+    skip_scenario_docs: bool = False,
 ) -> _SimulationOutput:
     """ベンチマーク用にシミュレーションを実行し、結果を返す."""
+    # 匿名化適用
+    anon_map: AnonymizationMap | None = None
+    if anonymize:
+        anon_map = ANONYMIZATION_MAPS.get(benchmark.id)
+        if anon_map:
+            benchmark = anonymize_scenario(benchmark, anon_map)
+            logger.info("匿名化適用: %s → %s", benchmark.id, anon_map.service_alias)
+
     scenario = benchmark.scenario_input
 
     await job_manager.set_running(job_id)
@@ -164,7 +175,14 @@ async def run_simulation_for_benchmark(
 
     try:
         # 補足資料の読み込みと知識グラフ格納
-        docs = _load_scenario_documents(benchmark.id)
+        # skip_scenario_docs=True の場合は補足資料を使わない（汚染テストの公平性担保）
+        docs: list[tuple[str, str]] = []
+        if not skip_scenario_docs:
+            docs = _load_scenario_documents(benchmark.id)
+            # 匿名化時はドキュメント内のサービス名も置換
+            if docs and anon_map:
+                docs = anonymize_documents(docs, anon_map)
+                logger.info("補足資料を匿名化: %d件", len(docs))
         if docs and graph_client:
             logger.info("補足資料 %d件を読み込み: %s", len(docs), benchmark.id)
             await _process_scenario_documents(docs, graph_client, job_id)
@@ -301,6 +319,8 @@ async def run_simulation_for_benchmark(
 async def run_benchmark(
     benchmark_id: str,
     job_manager: JobManager,
+    anonymize: bool = False,
+    skip_scenario_docs: bool = False,
 ) -> EvaluationResult:
     """単一ベンチマークを実行して評価結果を返す."""
     benchmark = get_benchmark(benchmark_id)
@@ -308,21 +328,26 @@ async def run_benchmark(
         msg = f"ベンチマーク '{benchmark_id}' が見つかりません"
         raise ValueError(msg)
 
+    label = "[匿名評価]" if anonymize else "[評価]"
     job_id = await job_manager.create_job(
-        scenario_description=f"[評価] {benchmark.name}",
+        scenario_description=f"{label} {benchmark.name}",
     )
     await job_manager.save_scenario(job_id, benchmark.scenario_input.model_dump())
 
     start_time = time.monotonic()
 
     try:
-        output = await run_simulation_for_benchmark(benchmark, job_id, job_manager)
+        output = await run_simulation_for_benchmark(
+            benchmark, job_id, job_manager, anonymize=anonymize,
+            skip_scenario_docs=skip_scenario_docs,
+        )
         results = output.rounds
         elapsed = time.monotonic() - start_time
 
         success_score = output.report.get("success_score") if output.report else None
         evaluation = evaluate_benchmark(benchmark, results, success_score=success_score)
         evaluation.execution_time_seconds = round(elapsed, 2)
+        evaluation.anonymized = anonymize
 
         # ディメンション推移を記録
         from app.simulation.models import MarketDimension
@@ -379,6 +404,7 @@ async def run_benchmark_multi(
     job_manager: JobManager,
     num_runs: int = 5,
     parent_job_id: str | None = None,
+    anonymize: bool = False,
 ) -> RunStatistics:
     """同一ベンチマークを複数回実行し、統計情報を返す.
 
@@ -394,7 +420,7 @@ async def run_benchmark_multi(
                 phase=f"実行 {i + 1}/{num_runs} 回目",
             )
         try:
-            result = await run_benchmark(benchmark_id, job_manager)
+            result = await run_benchmark(benchmark_id, job_manager, anonymize=anonymize)
             per_run_results.append(result)
         except Exception:
             logger.exception("実行 %d/%d 失敗、スキップ", i + 1, num_runs)
@@ -412,6 +438,8 @@ async def run_benchmark_multi(
 
     accuracies = [r.direction_accuracy for r in per_run_results]
     mean_acc = sum(accuracies) / len(accuracies)
+    sorted_acc = sorted(accuracies)
+    median_acc = sorted_acc[len(sorted_acc) // 2]
 
     if len(accuracies) > 1:
         variance = sum((a - mean_acc) ** 2 for a in accuracies) / (len(accuracies) - 1)
@@ -419,9 +447,22 @@ async def run_benchmark_multi(
     else:
         stddev_acc = 0.0
 
+    # 95%信頼区間 (t分布近似: n<30ではt値を使うが、簡易的にz=1.96で近似)
+    ci_95 = None
+    n = len(accuracies)
+    if n >= 3:
+        se = stddev_acc / math.sqrt(n)
+        # t値の簡易テーブル (df=n-1, 95%両側)
+        _t_table = {2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447,
+                    7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228}
+        t_val = _t_table.get(n - 1, 1.96)
+        ci_95 = (round(mean_acc - t_val * se, 4), round(mean_acc + t_val * se, 4))
+
     # 各トレンドごとのヒット率を計算
     benchmark = get_benchmark(benchmark_id)
     per_trend_hit_rates: dict[str, float] = {}
+    baseline_all_up: float | None = None
+    lift: float | None = None
     if benchmark:
         for et in benchmark.expected_trends:
             hits = sum(
@@ -430,6 +471,12 @@ async def run_benchmark_multi(
                 if tr.metric == et.metric and tr.direction_correct
             )
             per_trend_hit_rates[et.metric] = hits / len(per_run_results)
+
+        # ベースライン比較
+        from app.evaluation.comparator import compute_baseline
+        bl = compute_baseline(benchmark.expected_trends)
+        baseline_all_up = bl.all_up_accuracy
+        lift = round(mean_acc - bl.majority_class_accuracy, 4)
 
     outcome_evaluated = [r for r in per_run_results if r.outcome_correct is not None]
     outcome_hit_rate = (
@@ -441,11 +488,15 @@ async def run_benchmark_multi(
         num_runs=num_runs,
         per_run_results=per_run_results,
         mean_direction_accuracy=round(mean_acc, 4),
+        median_direction_accuracy=round(median_acc, 4),
         stddev_direction_accuracy=round(stddev_acc, 4),
         min_direction_accuracy=round(min(accuracies), 4),
         max_direction_accuracy=round(max(accuracies), 4),
+        confidence_interval_95=ci_95,
         per_trend_hit_rates=per_trend_hit_rates,
         outcome_hit_rate=outcome_hit_rate,
+        baseline_all_up_accuracy=baseline_all_up,
+        lift_over_baseline=lift,
     )
 
 
@@ -639,24 +690,61 @@ async def run_all_benchmarks(
     job_manager: JobManager,
     pass_threshold: float = 0.6,
     parent_job_id: str | None = None,
+    max_concurrent: int | None = None,
+    anonymize: bool = False,
 ) -> EvaluationSuiteResult:
-    """全ベンチマークを順次実行して総合評価を返す."""
+    """全ベンチマークを実行して総合評価を返す.
+
+    max_concurrent > 1 の場合、セマフォ付き並列実行でスループットを向上させる。
+    Ollama GPU共有のため、デフォルトは逐次実行（max_concurrent=1）。
+    """
+    import asyncio
+
     benchmarks = list_benchmarks()
     start_time = time.monotonic()
     total = len(benchmarks)
+    concurrency = max_concurrent or 1
+    completed_count = 0
 
     results: list[EvaluationResult] = []
-    for idx, benchmark in enumerate(benchmarks):
-        if parent_job_id:
-            await job_manager.update_progress(
-                parent_job_id, idx + 1, total,
-                phase=f"ベンチマーク {idx + 1}/{total}: {benchmark.name}",
-            )
-        try:
-            result = await run_benchmark(benchmark.id, job_manager)
-            results.append(result)
-        except Exception:
-            logger.exception("ベンチマーク '%s' をスキップ", benchmark.id)
+
+    if concurrency <= 1:
+        # 逐次実行（従来動作）
+        for idx, benchmark in enumerate(benchmarks):
+            if parent_job_id:
+                await job_manager.update_progress(
+                    parent_job_id, idx + 1, total,
+                    phase=f"ベンチマーク {idx + 1}/{total}: {benchmark.name}",
+                )
+            try:
+                result = await run_benchmark(benchmark.id, job_manager, anonymize=anonymize)
+                results.append(result)
+            except Exception:
+                logger.exception("ベンチマーク '%s' をスキップ", benchmark.id)
+    else:
+        # セマフォ付き並列実行
+        semaphore = asyncio.Semaphore(concurrency)
+        result_map: dict[str, EvaluationResult] = {}
+
+        async def _run_one(bm: BenchmarkScenario) -> None:
+            nonlocal completed_count
+            async with semaphore:
+                try:
+                    result = await run_benchmark(bm.id, job_manager, anonymize=anonymize)
+                    result_map[bm.id] = result
+                except Exception:
+                    logger.exception("ベンチマーク '%s' をスキップ", bm.id)
+                finally:
+                    completed_count += 1
+                    if parent_job_id:
+                        await job_manager.update_progress(
+                            parent_job_id, completed_count, total,
+                            phase=f"完了 {completed_count}/{total}",
+                        )
+
+        await asyncio.gather(*[_run_one(b) for b in benchmarks])
+        # 定義順序を保持
+        results = [result_map[b.id] for b in benchmarks if b.id in result_map]
 
     elapsed = time.monotonic() - start_time
 
@@ -681,6 +769,15 @@ async def run_all_benchmarks(
     combined_accs = [r.combined_accuracy for r in results if r.combined_accuracy is not None]
     mean_combined = round(sum(combined_accs) / len(combined_accs), 4) if combined_accs else None
 
+    # ベースライン集計（全ベンチマークの期待トレンドを集約）
+    from app.evaluation.comparator import compute_baseline
+    all_trends = []
+    for b in benchmarks:
+        all_trends.extend(b.expected_trends)
+    suite_baseline = compute_baseline(all_trends)
+    lifts = [r.baseline.lift_over_baseline for r in results if r.baseline]
+    mean_lift = round(sum(lifts) / len(lifts), 4) if lifts else None
+
     return EvaluationSuiteResult(
         results=results,
         mean_direction_accuracy=round(mean_dir_acc, 4),
@@ -691,4 +788,6 @@ async def run_all_benchmarks(
         mean_combined_accuracy=mean_combined,
         outcome_correct_count=outcome_correct_count,
         outcome_evaluated_count=outcome_evaluated_count,
+        baseline_all_up_accuracy=suite_baseline.all_up_accuracy,
+        mean_lift_over_baseline=mean_lift,
     )

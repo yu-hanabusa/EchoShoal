@@ -38,14 +38,13 @@
 - Atlassianのプロダクトスイート（JIRA、Confluence、Bitbucket）との深い連携
 - 月額$2/ユーザーの低価格路線
 - 2014年時点で5万チーム以上が利用
-- Slackの登場後、シェアを急速に失う
-- 2018年にSlackとの競争に敗北しサービス終了
+- Slackの登場により競争激化が予想される
 
 【Microsoft Lync（後のSkype for Business）】
 - Exchange/OutlookなどMicrosoft製品群との統合が最大の強み
 - 大企業のIT部門が一括導入可能
 - 2014年時点ではチャット専用ツールとしてはUIが重い
-- 2016年にMicrosoft Teamsの構想へ発展
+- チームチャット市場への本格参入は未定
 
 【Yammer（Microsoft）】
 - 社内SNSとして2012年にMicrosoftが$12億で買収
@@ -62,7 +61,7 @@
 【IRC】
 - オープンソース開発者の間で根強い人気
 - 無料だが設定が煩雑、ファイル共有やモバイル対応が弱い
-- Slack登場後、多くのOSSプロジェクトがSlackに移行
+- より使いやすい代替ツールが登場すれば移行が進む可能性がある
 
 ■ 規制環境（2014年時点）
 
@@ -99,18 +98,8 @@
 5. セキュリティ認証: SOC 2等の取得にはコストと時間が必要
 6. 既存のメール習慣: メールからの行動変容に対する組織的抵抗
 
-■ Slackの成長要因（後の振り返り）
-
-1. プロダクト品質: UIデザインとUXが圧倒的に優れていた
-2. Product-Led Growth: 無料プランからの自然な有料転換
-3. ボトムアップ採用: 開発チーム→部門→全社への浸透パターン
-4. 連携エコシステム: APIファーストの設計思想で急速にサードパーティ連携を拡大
-5. 口コミ駆動: 利用者の熱量が自然な宣伝効果を生んだ
-6. タイミング: リモートワーク・分散チームの増加トレンドと合致
-
 出典:
 [1] IDC "Worldwide Enterprise Social Software 2014-2018 Forecast" (2014)
 [2] Gartner "Magic Quadrant for Unified Communications" (2014)
 [3] TechCrunch "Slack Raises $120M At A $1.12B Valuation" (2014-10-31)
-[4] First Round Review "From 0 to $1B - Slack's Founder Shares Their Epic Launch Strategy" (2015)
-[5] NVCA Yearbook 2015 (2014 venture capital statistics)
+[4] NVCA Yearbook 2015 (2014年データ)

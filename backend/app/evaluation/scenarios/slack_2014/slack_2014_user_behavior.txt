@@ -110,12 +110,12 @@ Slackの初期利用データ（Slack社公式、2014年時点）:
 【HipChat → Slack】
 - 乗り換え動機: UIの美しさ、連携の豊富さ、検索の品質
 - 障壁: Atlassian製品群（JIRA、Confluence）との統合が切れる懸念
-- 実態: 2014年後半から大量の移行が発生、HipChatのシェアが急落
+- 実態: Slack登場によりHipChatからの移行が始まりつつある
 
 【IRC → Slack】
 - 乗り換え動機: ファイル共有、検索、モバイル対応、新メンバーのオンボーディング容易化
 - 障壁: IRCの自由度・カスタマイズ性を好むユーザーの抵抗
-- 実態: 多くのOSSプロジェクトが2014-2015年にSlackに移行
+- 実態: OSSプロジェクトでもSlackへの関心が高まりつつある
 
 【Campfire → Slack】
 - 乗り換え動機: Campfireの開発停滞、Slackの機能優位
@@ -171,5 +171,3 @@ Slackの初期利用データ（Slack社公式、2014年時点）:
 [1] Radicati Group "Email Statistics Report, 2014-2018" (2014)
 [2] McKinsey Global Institute "The Social Economy" (2012)
 [3] Slack公式ブログ "The 2014 Year in Slack" (2014-12)
-[4] First Round Review "From 0 to $1B" (2015)
-[5] Gartner "Market Guide for Workstream Collaboration" (2015)

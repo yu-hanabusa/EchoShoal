@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     oasis_message_window_size: int = 20  # 直近N件のメッセージのみ保持
     oasis_context_token_limit: int = 16384  # コンテキストウィンドウのトークン上限（qwen3:14b=32K対応）
     oasis_max_output_tokens: int = 512  # LLM出力トークン上限
+    oasis_temperature: float = 0.7  # OASIS LLM temperature（低い値で再現性向上）
 
     # Rate Limiting
     max_concurrent_simulations: int = 3

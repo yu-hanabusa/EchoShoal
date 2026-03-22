@@ -11,7 +11,7 @@
 - 現状満足度: 4/5（圧倒的な市場支配。Google Appsの企業進出に多少の警戒感はあるが、Waveは脅威とみなしていない）
 - 動機: 現状維持（メール市場の支配的地位を維持。Google Appsへの対抗としてSharePoint強化に注力。Waveは実験的で直接的な脅威とは認識していない）
 - リソース: 従業員約9.3万名、年間売上約$584B。SharePointの年間売上約$14B。Office/Exchangeの長期契約ロックインが強固
-- 予想行動: Waveを無視。SharePointの機能拡張に注力。リアルタイムコラボレーション機能は将来的にOffice/SharePointに統合する方向（実際にはTeamsとして2016年に結実）
+- 予想行動: Waveを無視。SharePointの機能拡張に注力。リアルタイムコラボレーション機能は将来的にOffice/SharePointに統合する方向
 - 意思決定特性: 非常に保守的。既存製品のカニバリゼーションを避ける傾向。革新的な新概念には後追いで対応
 
 ■ ステークホルダー: Gmail（Google自社、カニバリゼーション問題）
@@ -20,7 +20,7 @@
 - 現状満足度: 4/5（個人メール市場で確固たる地位を築き、Google Apps for Businessで企業市場にも進出中。Waveとの位置づけの曖昧さに社内でも混乱）
 - 動機: 自己防衛（Waveがメール代替を標榜するが、Gmailチームは自社製品の存在意義を守る必要がある。社内政治的な対立）
 - リソース: Gmail開発チームはGoogle社内でも大規模。ユーザーベースの圧倒的な優位性
-- 予想行動: Waveとの統合を表面的には支持しつつも、実質的にはGmailの改良に注力。Wave中止後、WaveのOT技術をGoogle Docsに吸収
+- 予想行動: Waveとの統合を表面的には支持しつつも、実質的にはGmailの改良に注力。WaveのOT技術がGoogle Docsに転用される可能性がある
 - 意思決定特性: 社内の複数チーム間の調整が必要。Waveとの統合ロードマップは不明確で、ユーザーへのメッセージも混乱
 
 ■ ステークホルダー: 37signals / Basecamp（Campfire / Basecamp）
@@ -72,5 +72,4 @@
 - IDC "Worldwide Collaborative Applications Market 2009-2013 Forecast" (2009年)
 - Radicati Group "Email Statistics Report, 2009-2013" (2009年)
 - Microsoft Annual Report FY2009
-- Google Official Blog "Update on Google Wave" (2010年8月4日)
 - PwC/NVCA MoneyTree Report Q4 2009

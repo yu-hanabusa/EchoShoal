@@ -102,6 +102,14 @@ class TokenUsageSummary(BaseModel):
     agent_conversations: list[dict] = Field(default_factory=list)
 
 
+class BaselineAccuracy(BaseModel):
+    """ナイーブベースラインとの比較指標."""
+
+    all_up_accuracy: float  # 全トレンドをUPと予測した場合の正解率
+    majority_class_accuracy: float  # 最頻方向で全予測した場合の正解率
+    lift_over_baseline: float  # シミュレーター精度 - ベースライン精度
+
+
 class EvaluationResult(BaseModel):
     """1つのベンチマークの評価結果."""
 
@@ -111,6 +119,9 @@ class EvaluationResult(BaseModel):
     direction_accuracy: float  # 方向正解率 (0.0〜1.0)
     simulation_rounds: int
     execution_time_seconds: float = 0.0
+    anonymized: bool = False  # 匿名化A/Bテスト: Trueなら匿名化実行
+    # ベースライン比較
+    baseline: BaselineAccuracy | None = None
     # 成功/失敗予測の評価
     expected_outcome: str | None = None      # "success" or "failure"
     predicted_score: int | None = None       # SuccessScore.score (0-100)
@@ -128,11 +139,16 @@ class RunStatistics(BaseModel):
     num_runs: int
     per_run_results: list[EvaluationResult]
     mean_direction_accuracy: float
+    median_direction_accuracy: float = 0.0
     stddev_direction_accuracy: float
     min_direction_accuracy: float
     max_direction_accuracy: float
+    confidence_interval_95: tuple[float, float] | None = None  # 95%信頼区間
     per_trend_hit_rates: dict[str, float]  # metric → N回中何回方向一致したか
     outcome_hit_rate: float | None = None  # N回中何回outcomeが正解だったか
+    # ベースライン比較（全実行の期待トレンドに基づく）
+    baseline_all_up_accuracy: float | None = None
+    lift_over_baseline: float | None = None  # mean_accuracy - baseline
 
 
 class ResearchData(BaseModel):
@@ -171,3 +187,6 @@ class EvaluationSuiteResult(BaseModel):
     mean_combined_accuracy: float | None = None
     outcome_correct_count: int = 0
     outcome_evaluated_count: int = 0
+    # ベースライン比較（全ベンチマークの期待トレンド集計）
+    baseline_all_up_accuracy: float | None = None
+    mean_lift_over_baseline: float | None = None

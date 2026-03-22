@@ -1,33 +1,32 @@
 ■ 市場規模
-・ビデオ会議市場：2019年時点で約$14B、2020年にCOVID-19により$20B超に急拡大
-  （Grand View Research）
-・2027年までに$50Bに成長する見込み（Fortune Business Insights、2020年時点の予測）
-・UCaaS（Unified Communications as a Service）市場：2020年で約$36B（IDC）
-・COVID-19により企業のデジタルコミュニケーション投資が2020年に前年比40%以上増加
-・教育向けビデオ会議市場：2020年にオンライン授業需要で前年比300%以上の成長
+・ビデオ会議市場：2019年時点で約$14B（Grand View Research）
+・2027年までに$50Bに成長する見込み（Fortune Business Insights、2019年時点の予測）
+・UCaaS（Unified Communications as a Service）市場：2019年で約$30B（IDC）
+・企業のデジタルコミュニケーション投資は年10〜15%の成長トレンド
+・教育向けビデオ会議市場：遠隔授業やMOOCsの普及により年15〜20%の成長を維持
 
-■ 市場シェア（2020年時点）
-・Zoom：消費者・SMBビデオ会議市場でシェア約40〜50%（Okta Business @ Work 2021より、
-  エンタープライズアプリとしての採用率で1位）
-・Microsoft Teams：Office 365バンドル効果でエンタープライズ市場のシェア約30〜35%。
-  2020年にDAUが1,500万人から1.15億人に急成長。
-・Google Meet：教育市場でのシェアが高い。2020年時点で全体の約10〜15%。
-  Google Classroomとの統合が強み。
-・Cisco WebEx：従来のエンタープライズ市場でのレガシーシェア約10〜15%。
+■ 市場シェア（2019年末時点）
+・Zoom：消費者・SMBビデオ会議市場でシェアを急拡大中。2019年12月時点のDAP
+  （1日の会議参加者数）は約1,000万人。2019年4月のIPO以降、急速に認知度が向上。
+・Microsoft Teams：Office 365バンドル効果でエンタープライズ市場に浸透。
+  2019年7月にDAU 1,300万人と発表。Skype for Businessからの移行を推進中。
+・Google Hangouts Meet：教育市場でのシェアが高い。
+  Google Classroomとの統合が強み。エンタープライズ市場では存在感が薄い。
+・Cisco WebEx：従来のエンタープライズ市場でのレガシーシェア約15〜20%。
   大企業・政府機関での利用が中心。
-・Skype：個人利用が中心。2020年3月に1日4,000万ユーザーを記録したが、
-  ビジネス向けではTeamsに移行が進行。
+・Skype：個人利用が中心。MicrosoftがSkype for Businessの終了を発表し、
+  ビジネス向けではTeamsへの移行を推進中。
 
 ■ 各ツールの特徴
 ・Zoom：ビデオ品質とUXの優秀さが最大の差別化。「ワンクリックで参加」の手軽さ。
   無料プランの40分制限がバイラル拡散の設計として機能（短い会議は無料、
-  長い会議は有料に誘導）。弱点はセキュリティ問題（Zoom bombing、E2EE未対応 ※後に対応）。
+  長い会議は有料に誘導）。弱点はセキュリティ問題（Zoom bombing、E2EE未対応）。
 ・Microsoft Teams：Office 365（月額$5〜/ユーザー）に含まれるためコスト優位性が高い。
   チャット・ファイル共有・ビデオ会議の統合プラットフォーム。
   弱点はビデオ品質とUIの複雑さ。
-・Google Meet：Googleアカウントで即利用可能。Chromeとの相性が良い。
-  教育機関にGoogle Workspaceが普及しているため学校市場に強い。
-  弱点は機能の少なさ（ブレイクアウトルームが2020年後半にようやく追加）。
+・Google Hangouts Meet：Googleアカウントで即利用可能。Chromeとの相性が良い。
+  教育機関にG Suiteが普及しているため学校市場に強い。
+  弱点は機能の少なさ（ブレイクアウトルーム未対応等）。
 ・Cisco WebEx：セキュリティ認証（FedRAMP等）が最も充実。
   大企業のIT部門に信頼されている。弱点はUIの古さと価格の高さ。
 
@@ -35,55 +34,55 @@
 ・HIPAA準拠：遠隔医療向けにHIPAA準拠のビデオ会議が必須。
   Zoom for Healthcareが対応。WebExも対応済み。
 ・FedRAMP：米国連邦政府向けのクラウドセキュリティ認証。
-  Zoom for Governmentが2020年に認証取得。WebExは取得済み。
+  WebExは取得済み。ZoomはFedRAMP認証取得に向けて取り組み中。
 ・GDPR：EU内でのデータ処理要件。全主要プレイヤーが対応を表明。
 ・児童保護（COPPA/FERPA）：教育機関でのオンライン授業利用に際し、
   生徒のプライバシー保護が義務化。Zoom、Google Meetが対応。
 ・暗号化要件：各国政府機関向けにエンドツーエンド暗号化の要求が増加。
-  Zoomは2020年5月にKeybase社を買収し、10月にE2EEを実装。
+  Zoomは2019年時点でE2EEに未対応であり、セキュリティ研究者からの批判を受けている。
 ・録画の同意要件：多くの地域で通話録画に参加者の同意が法律で義務化。
 
 ■ 技術トレンド
 ・クラウドネイティブアーキテクチャ：オンプレミスからクラウドベースのUCaaSへの
-  移行が加速。2020年はCOVID-19によりこのトレンドが5〜10年前倒しされた。
+  移行が加速。企業のクラウド移行は今後5〜10年で大きく進展すると予測されている。
 ・AIの活用：ノイズキャンセリング（NVIDIA RTX Voice等との連携）、
-  自動文字起こし、バーチャル背景のAI処理。Zoomは2020年にAIノイズ抑制を実装。
+  自動文字起こし、バーチャル背景のAI処理。各社がAI機能の拡充を進めている。
 ・WebRTCの普及：ブラウザのみでのビデオ通話が技術的に成熟。
-  Google Meetはフルブラウザベース、Zoomもウェブクライアントを改善。
+  Google MeetはフルブラウザベースでZoomもウェブクライアントを提供。
 ・5Gの展開：モバイルからの高品質ビデオ通話を可能にする次世代インフラ。
   2020年は5Gの商用展開初期段階。
 ・ハイブリッドワーク対応：オフィスとリモートの両方をサポートする
-  会議室システム（Zoom Rooms等）への投資が拡大。
+  会議室システム（Zoom Rooms等）への投資が拡大傾向。
 
 ■ 資金調達環境
-・Zoom：2020年時点で追加資金調達は不要。FY2021の営業CFは$1.47B。
-  株価上昇により時価総額は最大$160B超に到達。
-・Microsoft（Teams親会社）：自己資金。2020年度売上$143B。
-  Teamsへの投資を積極化（年間$1B以上と推定）。
+・Zoom：2019年4月にIPO（初値$65、時価総額約$16B）。IPO後株価は堅調に推移し、
+  2019年末時点で時価総額は約$16B。FY2020（2020年1月期）の売上は$622.7M（前年比88%増）、
+  営業利益は$10.6M。営業CFは$151.9M。追加資金調達の必要性は低い。
+・Microsoft（Teams親会社）：自己資金。2019年度売上$126B。
+  Teamsへの投資を積極化し、Slack対抗のチャット統合プラットフォームとして推進。
 ・Google（Meet親会社）：Alphabet全体の潤沢な資金力で開発。
-  Google Workspaceの拡充に大規模投資。
-・Cisco（WebEx親会社）：2020年度売上$49B。WebExのクラウド移行に投資。
-  しかしZoomとTeamsの急成長に対して守勢。
-・UCaaS市場全体：2020年にRingCentral、8x8等のUCaaSプレイヤーにも投資が集中。
-  RingCentralは2020年に売上$1.2Bを記録。
+  G Suite（現Google Workspace）の拡充に大規模投資。
+・Cisco（WebEx親会社）：2019年度売上$52B。WebExのクラウド移行に投資。
+  しかしZoomやTeamsの成長に対して守勢に回りつつある。
+・UCaaS市場全体：RingCentral、8x8等のUCaaSプレイヤーにも投資が集中。
+  RingCentralは2019年に売上$903Mを記録（前年比34%増）。
 
 ■ 参入障壁
-・ネットワーク効果：「みんながZoomを使っているから自分も使う」という強力な循環。
-  2020年時点でZoomは消費者の間で事実上のデフォルトツール。
+・ネットワーク効果：「みんながZoomを使っているから自分も使う」という循環が
+  SMBや消費者市場で形成されつつある。2019年12月時点のDAP 1,000万人はこの兆候。
 ・インフラ投資：グローバルなデータセンターネットワークの構築に数百億円単位の投資が必要。
   Zoomは自社開発のメディアサーバーで差別化。
-・ブランド認知：「Zoom」が動詞化するほどの浸透。この認知度の獲得は
-  広告費だけでは達成不可能。
+・ブランド認知：ZoomはIPO後の急速な認知拡大により、ビデオ会議の代名詞になりつつある。
+  ただし、エンタープライズ市場ではまだCisco/Microsoftのブランド力が根強い。
 ・バンドル戦略の壁：Microsoft TeamsはOffice 365にバンドルされており、
   単体ビデオ会議ツールとしてのZoomはバンドル価格に対抗困難。
-  （ただし2020年時点ではZoomのUX優位性で対抗可能）
+  （ただしZoomのUX優位性で対抗可能な面もある）
 ・既存契約：大企業はCisco/Microsoftと長期契約を結んでいるケースが多く、
   中途解約は困難。
 
 ■ 参考文献
-・Grand View Research "Video Conferencing Market Report" (2020年)
-・IDC "Worldwide Unified Communications & Collaboration Market" (2020年)
-・Fortune Business Insights "Video Conferencing Market" (2020年)
-・Okta "Business @ Work Report" (2021年)
-・Zoom FY2021 10-K Annual Report
-・Microsoft FY2020 Annual Report
+・Grand View Research "Video Conferencing Market Report" (2019年)
+・IDC "Worldwide Unified Communications & Collaboration Market" (2019年)
+・Fortune Business Insights "Video Conferencing Market" (2019年)
+・Zoom FY2020 10-K Annual Report（2020年1月期）
+・Microsoft FY2019 Annual Report

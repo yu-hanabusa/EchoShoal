@@ -66,7 +66,7 @@
 - 動機: 規制強化（SNSのデータ収集・利用に関する透明性と消費者保護の確保。Google+がプライバシーを重視する設計であることは好意的に受け止めるが、Google全体のデータ収集戦略には警戒）
 - リソース: FTCの調査権限、EU各国のデータ保護当局。COPPA（13歳未満規制）の執行。Googleの情報独占に対する反トラスト調査も視野
 - 予想行動: SNS業界全体のプライバシー基準の引き上げ。Google+のCirclesモデルを好事例として評価しつつ、Googleのデータ統合戦略（検索+メール+SNS）を監視
-- 意思決定特性: 規則主義。消費者保護の観点から個別企業の行動を監視。EU側はGDPR（2018年施行）の議論を加速
+- 意思決定特性: 規則主義。消費者保護の観点から個別企業の行動を監視。EU側はデータ保護規則強化の議論を加速
 
 ■ ステークホルダー: VC / テック投資家
 - 種別: 投資家（investor）
@@ -80,6 +80,4 @@
 ■ 出典
 - eMarketer "Worldwide Social Network Ad Spending" (2011年10月)
 - Pew Research Center "Social Networking Sites and Our Lives" (2011年6月)
-- comScore "The State of Social Media" (2012年2月)
-- Facebook S-1 Filing (2012年2月1日)
 - PwC/NVCA MoneyTree Report 2011

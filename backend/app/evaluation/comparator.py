@@ -10,7 +10,10 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from app.evaluation.models import (
+    BaselineAccuracy,
     BenchmarkScenario,
     EvaluationResult,
     ExpectedOutcome,
@@ -159,6 +162,41 @@ def evaluate_outcome(
     return predicted_success == expected_success, score, verdict
 
 
+# ─── ベースライン計算 ───
+
+
+def compute_baseline(expected_trends: list[ExpectedTrend]) -> BaselineAccuracy:
+    """ナイーブベースラインの精度を計算する.
+
+    「全トレンドをUPと予測」「最頻方向で全予測」した場合の正解率を返す。
+    シミュレーターが偶然以上の予測力を持つかの判定に使う。
+    """
+    if not expected_trends:
+        return BaselineAccuracy(
+            all_up_accuracy=0.0,
+            majority_class_accuracy=0.0,
+            lift_over_baseline=0.0,
+        )
+
+    total = len(expected_trends)
+    directions = [et.direction for et in expected_trends]
+
+    # 全UPベースライン
+    all_up_correct = sum(1 for d in directions if d == TrendDirection.UP)
+    all_up_accuracy = all_up_correct / total
+
+    # 最頻方向ベースライン（多数決）
+    counts = Counter(directions)
+    majority_correct = counts.most_common(1)[0][1]
+    majority_class_accuracy = majority_correct / total
+
+    return BaselineAccuracy(
+        all_up_accuracy=round(all_up_accuracy, 4),
+        majority_class_accuracy=round(majority_class_accuracy, 4),
+        lift_over_baseline=0.0,  # 後でシミュレーター精度と比較して設定
+    )
+
+
 # ─── ベンチマーク全体評価 ───
 
 
@@ -167,7 +205,7 @@ def evaluate_benchmark(
     rounds: list[RoundResult],
     success_score: dict | None = None,
 ) -> EvaluationResult:
-    """1つのベンチマーク全体を評価する（方向正解率 + 成功予測）."""
+    """1つのベンチマーク全体を評価する（方向正解率 + 成功予測 + ベースライン比較）."""
     trend_results = [
         evaluate_trend(et, rounds) for et in benchmark.expected_trends
     ]
@@ -178,6 +216,12 @@ def evaluate_benchmark(
         ) / len(trend_results)
     else:
         direction_accuracy = 0.0
+
+    # ベースライン比較
+    baseline = compute_baseline(benchmark.expected_trends)
+    baseline.lift_over_baseline = round(
+        direction_accuracy - baseline.majority_class_accuracy, 4,
+    )
 
     # 成功/失敗予測の評価
     outcome_correct, predicted_score, predicted_verdict = evaluate_outcome(
@@ -196,6 +240,7 @@ def evaluate_benchmark(
         trend_results=trend_results,
         direction_accuracy=round(direction_accuracy, 4),
         simulation_rounds=len(rounds),
+        baseline=baseline,
         expected_outcome=(
             benchmark.expected_outcome.value if benchmark.expected_outcome else None
         ),

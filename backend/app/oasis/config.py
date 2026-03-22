@@ -27,7 +27,7 @@ def create_oasis_model():
         model_type=settings.ollama_model,
         url=f"{settings.ollama_base_url}/v1",
         model_config_dict={
-            "temperature": 0.7,
+            "temperature": settings.oasis_temperature,
             "max_tokens": settings.oasis_max_output_tokens,
             # qwen3のthinkingモードを無効化 — <think>タグがCAMELの
             # ツール呼び出し解析を壊し、response.msg=Noneになる問題を防ぐ
