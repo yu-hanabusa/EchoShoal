@@ -114,7 +114,7 @@ async def start_research(
         "service_url": service_url or None,
         "service_description": service_description,
         "target_year": target_year if target_year >= 2000 else None,
-        "num_rounds": 24,
+        "num_rounds": 12,
     }
     await job_manager.save_scenario(job_id, scenario_data)
 
@@ -209,7 +209,7 @@ async def _run_research_task(
 @router.post("/")
 async def create_simulation(
     description: str = Form(...),
-    num_rounds: int = Form(default=24),
+    num_rounds: int = Form(default=12),
     service_name: str = Form(default=""),
     service_url: str = Form(default=""),
     target_year: int = Form(default=0),

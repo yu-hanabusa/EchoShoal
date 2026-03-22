@@ -62,7 +62,7 @@ class ServiceMarketState(BaseModel):
 class ScenarioInput(BaseModel):
     """User-provided scenario for simulation."""
     description: str = Field(..., min_length=10, max_length=2000)
-    num_rounds: int = Field(default=24, ge=1, le=36)
+    num_rounds: int = Field(default=12, ge=1, le=36)
 
     # サービス情報
     service_name: str = Field(default="", description="評価対象のサービス名")

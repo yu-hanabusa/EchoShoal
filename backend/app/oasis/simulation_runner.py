@@ -173,7 +173,9 @@ class OASISSimulationEngine:
 
         Neo4jに格納済みの静的知識をエージェント共有コンテキストとして取得する。
         GraphRAGが利用不可の場合は空文字を返す。
+        文書名リストは self._document_names にキャッシュされる。
         """
+        self._document_names: list[str] = []
         if not self._rag:
             return ""
         sections: list[str] = []
@@ -181,6 +183,17 @@ class OASISSimulationEngine:
             doc_insights = await self._rag._get_document_insights()
             if doc_insights:
                 sections.append(doc_insights)
+                # 文書名を抽出してキャッシュ（document_references用）
+                results = await self._rag.graph.execute_read(
+                    "MATCH (d:Document) "
+                    "WHERE d.simulation_id = $sim_id AND d.filename IS NOT NULL "
+                    "RETURN d.doc_id AS doc_id, d.filename AS filename",
+                    {"sim_id": self._rag.simulation_id},
+                )
+                self._document_names = [
+                    {"doc_id": r["doc_id"], "filename": r["filename"]}
+                    for r in results
+                ]
         except Exception:
             logger.warning("GraphRAG: 文書知識の取得に失敗")
         try:
@@ -190,7 +203,8 @@ class OASISSimulationEngine:
         except Exception:
             logger.warning("GraphRAG: 統計データの取得に失敗")
         if sections:
-            logger.info("GraphRAG共有知識を取得: %dセクション", len(sections))
+            logger.info("GraphRAG共有知識を取得: %dセクション, 文書%d件",
+                        len(sections), len(self._document_names))
         return "\n\n".join(sections)
 
     async def _setup_oasis_environment(self) -> None:
@@ -769,12 +783,27 @@ class OASISSimulationEngine:
                 round_number, all_actions, events
             )
 
+        # 文書参照ログ: 文書知識が共有されている場合、全エージェントが参照したことを記録
+        doc_refs: list[Any] = []
+        if hasattr(self, "_document_names") and self._document_names:
+            from app.simulation.models import DocumentReference
+            for doc in self._document_names:
+                doc_refs.append(DocumentReference(
+                    document_id=doc.get("doc_id", ""),
+                    document_name=doc.get("filename", ""),
+                    agent_id="all",
+                    agent_name="全エージェント（共有知識）",
+                    round_number=round_number,
+                    context_snippet=f"GraphRAG経由で文書知識を共有",
+                ))
+
         return RoundResult(
             round_number=round_number,
             market_state=self.market.model_copy(deep=True),
             actions_taken=all_actions,
             events=events,
             summary=narrative,
+            document_references=doc_refs,
         )
 
     def _get_max_post_id(self) -> int:
@@ -1195,7 +1224,7 @@ class OASISSimulationEngine:
             '"competitive_pressure": 0.0, "regulatory_risk": 0.0, "market_awareness": 0.0, '
             '"ecosystem_health": 0.0, "funding_climate": 0.0}, '
             '"macro_deltas": {"economic_sentiment": 0.0, "tech_hype_level": 0.0, '
-            '"regulatory_pressure": 0.0, "ai_disruption_level": 0.0}}'
+            '"regulatory_pressure": 0.0, "ai_disruption_level": 0.0, "remote_work_adoption": 0.0}}'
         )
 
         try:
@@ -1225,7 +1254,7 @@ class OASISSimulationEngine:
 
             # マクロdelta適用（ソフトバウンダリ）
             raw_macros = response.get("macro_deltas", {})
-            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"):
+            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level", "remote_work_adoption"):
                 if key in raw_macros:
                     try:
                         current = getattr(self.market, key)
@@ -1272,7 +1301,7 @@ class OASISSimulationEngine:
             '"competitive_pressure": 0.5, "regulatory_risk": 0.2, "market_awareness": 0.1, '
             '"ecosystem_health": 0.2, "funding_climate": 0.3}, '
             '"economic_sentiment": 0.5, "tech_hype_level": 0.4, '
-            '"regulatory_pressure": 0.3, "ai_disruption_level": 0.3}'
+            '"regulatory_pressure": 0.3, "ai_disruption_level": 0.3, "remote_work_adoption": 0.4}'
         )
 
         try:
@@ -1294,7 +1323,7 @@ class OASISSimulationEngine:
                     val = max(0.0, min(1.0, float(raw_dims[dim.value])))
                     self.market.dimensions[dim] = val
 
-            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level"):
+            for key in ("economic_sentiment", "tech_hype_level", "regulatory_pressure", "ai_disruption_level", "remote_work_adoption"):
                 if key in response:
                     val = max(0.0, min(1.0, float(response[key])))
                     setattr(self.market, key, val)

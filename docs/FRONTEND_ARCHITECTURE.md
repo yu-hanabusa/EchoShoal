@@ -65,7 +65,6 @@ App
 │           │       │   ├── テキストフィルター
 │           │       │   ├── 投稿カード × N
 │           │       │   └── 展開式コメント
-│           │       ├── OASISプラットフォーム統計
 │           │       ├── MarketChart ──── 成長系ディメンション
 │           │       ├── MarketChart ──── リスク系ディメンション
 │           │       └── AgentPersonaCard (モーダル)
@@ -156,8 +155,6 @@ api/client.ts
 ├── getReport(jobId)              → GET  /api/simulations/{id}/report
 ├── getPrediction(jobId)          → GET  /api/simulations/{id}/prediction
 ├── getSimulationDocuments(jobId) → GET  /api/simulations/{id}/documents
-├── getSimulationGraph(jobId)     → GET  /api/simulations/{id}/graph
-├── compareSimulations(base, alt) → GET  /api/simulations/{base}/compare/{alt}
 ├── uploadSimulationDocument()    → POST /api/simulations/{id}/documents
 ├── updateSimulation(jobId, data) → PATCH /api/simulations/{id}
 ├── deleteSimulation(jobId)       → DELETE /api/simulations/{id}

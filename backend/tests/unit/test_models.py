@@ -68,7 +68,7 @@ class TestScenarioInput:
 
     def test_default_values(self):
         scenario = ScenarioInput(description="テストシナリオの説明文です")
-        assert scenario.num_rounds == 24
+        assert scenario.num_rounds == 12
         assert scenario.service_name == ""
         assert scenario.service_url is None
         assert scenario.target_market is None

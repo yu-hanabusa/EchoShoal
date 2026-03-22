@@ -108,9 +108,8 @@ num_rounds: int            # シミュレーション期間（1〜36ヶ月、デ
 service_name: str          # サービス名（任意）
 service_url: str | None    # GitHub URL等（任意、GitHub URLならREADME自動取得）
 target_market: str | None  # ターゲット市場の説明（任意）
-economic_climate: float    # 経済環境（-1.0〜1.0、0で自動推定）
-tech_disruption: float     # 技術破壊度（-1.0〜1.0、0で自動推定）
 regulatory_change: str | None  # 規制変更（任意、NLPで自動検出）
+target_year: int | None    # 市場調査の対象年（例: 2014、任意）
 ```
 
 #### ServiceMarketState（市場スナップショット）

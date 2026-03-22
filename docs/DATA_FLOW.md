@@ -337,7 +337,7 @@
 │  │ env = oasis.make(                          │   │
 │  │   agent_graph=プロファイル一覧,              │   │
 │  │   platform=Reddit,                         │   │
-│  │   database_path=simulations/{id}/sim.db    │   │
+│  │   database_path=simulations/{id}/oasis.db   │   │
 │  │ )                                          │   │
 │  └───────────────────────────────────────────┘   │
 │                                                  │
@@ -357,11 +357,9 @@
 │  │   │  ├─ いいね (like/dislike)               │   │
 │  │   │  └─ フォロー (follow)                   │   │
 │  │   │                                        │   │
-│  │   ├─ アクション分析                         │   │
-│  │   │  OASISActionAnalyzer:                  │   │
-│  │   │  投稿内容 → 市場ディメンションへの影響   │   │
-│  │   │                                        │   │
 │  │   ├─ 市場状態更新                           │   │
+│  │   │  LLMが投稿内容を分析し                  │   │
+│  │   │  市場ディメンションへの影響を推定         │   │
 │  │   │                                        │   │
 │  │   └─ RoundResult形式に変換                  │   │
 │  └───────────────────────────────────────────┘   │
