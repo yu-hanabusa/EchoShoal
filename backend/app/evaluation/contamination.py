@@ -146,16 +146,16 @@ async def run_contamination_test(
 
     start_time = time.monotonic()
 
-    # A: 実名版（補足資料なし）
+    # A: 実名版（シナリオテキストあり）
     logger.info("汚染テスト A（実名版）開始: %s", benchmark_id)
     real_eval = await run_benchmark(
-        benchmark_id, job_manager, anonymize=False, skip_scenario_docs=True,
+        benchmark_id, job_manager, anonymize=False,
     )
 
-    # B: 匿名版（補足資料なし）
+    # B: 匿名版（シナリオテキストを匿名化して使用）
     logger.info("汚染テスト B（匿名版）開始: %s", benchmark_id)
     anon_eval = await run_benchmark(
-        benchmark_id, job_manager, anonymize=True, skip_scenario_docs=True,
+        benchmark_id, job_manager, anonymize=True,
     )
 
     elapsed = time.monotonic() - start_time
@@ -196,7 +196,7 @@ async def run_contamination_test_multi(
 
         try:
             real_eval = await run_benchmark(
-                benchmark_id, job_manager, anonymize=False, skip_scenario_docs=True,
+                benchmark_id, job_manager, anonymize=False,
             )
             real_accuracies.append(real_eval.direction_accuracy)
         except Exception:
@@ -204,7 +204,7 @@ async def run_contamination_test_multi(
 
         try:
             anon_eval = await run_benchmark(
-                benchmark_id, job_manager, anonymize=True, skip_scenario_docs=True,
+                benchmark_id, job_manager, anonymize=True,
             )
             anon_accuracies.append(anon_eval.direction_accuracy)
         except Exception:
