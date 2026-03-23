@@ -133,13 +133,16 @@ class LLMRouter:
                     task_type=task_type,
                     prompt=prompt,
                     system_prompt=enhanced_system,
-                    json_mode=True,
+                    json_mode=False,  # json_mode=Trueはqwen3等のthinkingモデルで空JSON問題あり
                     temperature=max(0.1, temperature - attempt * 0.1),
                     round_number=round_number,
                     agent_name=agent_name,
                 )
                 # JSON内を抽出（前後にテキストがある場合に対応）
                 text = response.strip()
+                # qwen3等のthinking modelの<think>ブロックを除去
+                import re
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
                 # ```json ... ``` ブロックの中身を抽出
                 if "```json" in text:
                     text = text.split("```json")[-1].split("```")[0].strip()

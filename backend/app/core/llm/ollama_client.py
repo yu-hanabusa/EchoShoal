@@ -1,10 +1,18 @@
 """Ollama client for local LLM inference."""
 
+import re
 import httpx
 
 from app.config import settings
 from app.core.llm.base import BaseLLMClient
 from app.core.llm.token_tracker import TokenUsage
+
+_THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_think_tags(text: str) -> str:
+    """LLM応答から <think>...</think> タグを除去する."""
+    return _THINK_TAG_RE.sub("", text).strip()
 
 
 class OllamaClient(BaseLLMClient):
@@ -60,7 +68,7 @@ class OllamaClient(BaseLLMClient):
             )
             response.raise_for_status()
             data = response.json()
-            return data["message"]["content"]
+            return _strip_think_tags(data["message"]["content"])
 
     async def generate_with_usage(
         self,
@@ -79,7 +87,7 @@ class OllamaClient(BaseLLMClient):
             response.raise_for_status()
             data = response.json()
 
-            text = data["message"]["content"]
+            text = _strip_think_tags(data["message"]["content"])
             # Ollamaは prompt_eval_count (入力) と eval_count (出力) を返す
             usage = TokenUsage(
                 input_tokens=data.get("prompt_eval_count", 0),

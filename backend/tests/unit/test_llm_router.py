@@ -115,7 +115,8 @@ class TestLLMRouting:
         await router.generate_json(TaskType.AGENT_DECISION, "test")
         call_kwargs = mock_ollama.generate_with_usage.call_args[1]
         assert call_kwargs["temperature"] == 0.3
-        assert call_kwargs["json_mode"] is True
+        # json_mode=Falseでレスポンスから抽出（qwen3 thinking model対応）
+        assert call_kwargs["json_mode"] is False
 
     @pytest.mark.asyncio
     async def test_generate_json_raises_on_invalid_json(self, router, mock_ollama):

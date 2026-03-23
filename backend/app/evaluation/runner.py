@@ -1,4 +1,4 @@
-"""評価ランナー — ベンチマーク実行のオーケストレーション.
+"""評価ランナー -ベンチマーク実行のオーケストレーション.
 
 既存のシミュレーションインフラ（LLM, Neo4j, Redis）を使って
 ベンチマークシナリオを実行し、結果を期待値と比較する。
@@ -144,18 +144,14 @@ async def run_simulation_for_benchmark(
     job_manager: JobManager,
     collected_data: object | None = None,
     stakeholder_report: str = "",
-    anonymize: bool = False,
+    anon_map: AnonymizationMap | None = None,
     skip_scenario_docs: bool = False,
 ) -> _SimulationOutput:
-    """ベンチマーク用にシミュレーションを実行し、結果を返す."""
-    # 匿名化適用
-    anon_map: AnonymizationMap | None = None
-    if anonymize:
-        anon_map = ANONYMIZATION_MAPS.get(benchmark.id)
-        if anon_map:
-            benchmark = anonymize_scenario(benchmark, anon_map)
-            logger.info("匿名化適用: %s → %s", benchmark.id, anon_map.service_alias)
+    """ベンチマーク用にシミュレーションを実行し、結果を返す.
 
+    匿名化はこの関数の呼び出し元（run_benchmark等）で事前に適用すること。
+    anon_map はドキュメント匿名化のために使用される。
+    """
     scenario = benchmark.scenario_input
 
     await job_manager.set_running(job_id)
@@ -328,6 +324,14 @@ async def run_benchmark(
         msg = f"ベンチマーク '{benchmark_id}' が見つかりません"
         raise ValueError(msg)
 
+    # 匿名化をこのレベルで適用（保存・表示すべてに反映させるため）
+    anon_map: AnonymizationMap | None = None
+    if anonymize:
+        anon_map = ANONYMIZATION_MAPS.get(benchmark_id)
+        if anon_map:
+            benchmark = anonymize_scenario(benchmark, anon_map)
+            logger.info("匿名化適用: %s → %s", benchmark_id, anon_map.service_alias)
+
     label = "[匿名評価]" if anonymize else "[評価]"
     job_id = await job_manager.create_job(
         scenario_description=f"{label} {benchmark.name}",
@@ -338,7 +342,7 @@ async def run_benchmark(
 
     try:
         output = await run_simulation_for_benchmark(
-            benchmark, job_id, job_manager, anonymize=anonymize,
+            benchmark, job_id, job_manager, anon_map=anon_map,
             skip_scenario_docs=skip_scenario_docs,
         )
         results = output.rounds
@@ -385,7 +389,7 @@ async def run_benchmark(
         await job_manager.set_completed(job_id, result_data)
 
         logger.info(
-            "評価完了: %s — 方向精度=%.2f, 実行時間=%.1fs",
+            "評価完了: %s -方向精度=%.2f, 実行時間=%.1fs",
             benchmark.name,
             evaluation.direction_accuracy,
             elapsed,
@@ -672,7 +676,7 @@ async def run_benchmark_with_research(
         )
 
     logger.info(
-        "一連ベンチマーク完了: %s — 方向精度=%.2f, 調査=%.1fs, 合計=%.1fs",
+        "一連ベンチマーク完了: %s -方向精度=%.2f, 調査=%.1fs, 合計=%.1fs",
         benchmark.name, evaluation.direction_accuracy, research_time, total_time,
     )
 

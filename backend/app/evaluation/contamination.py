@@ -164,7 +164,7 @@ async def run_contamination_test(
     )
 
     logger.info(
-        "汚染テスト完了: %s — 実名=%.2f, 匿名=%.2f, 汚染=%+.1fpp (%s)",
+        "汚染テスト完了: %s -実名=%.2f, 匿名=%.2f, 汚染=%+.1fpp (%s)",
         benchmark.name,
         result.real_accuracy,
         result.anon_accuracy,

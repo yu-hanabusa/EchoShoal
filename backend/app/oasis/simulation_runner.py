@@ -1201,13 +1201,15 @@ class OASISSimulationEngine:
         # 財務データ（funding_climate判断材料）
         finance_text = self._finance_summary if self._finance_summary else ""
 
+        finance_line = f"{finance_text}\n" if finance_text else ""
+
         prompt = (
             f"Round {round_number}. Target service: {service_name}\n"
             f"Current dimensions: {current_dims}\n\n"
             f"Trend (開始→現在, 全体変化, 前回比):\n{trend_text}\n\n"
             f"=== SNS上の議論（このラウンドの投稿・コメント） ===\n"
             f"{discussions or '（このラウンドの新規投稿なし）'}\n\n"
-            f"{finance_text}\n" if finance_text else ""
+            f"{finance_line}"
             f"Action stats: {action_stats}\n"
             f"Engagement stats: {stats_text}\n\n"
             f"Boundary awareness (極端な値のディメンション):\n{boundary_text}\n\n"
@@ -1229,6 +1231,7 @@ class OASISSimulationEngine:
 
         try:
             import json
+            import sys as _sys
             response = await self.llm.generate_json(
                 task_type=TaskType.AGENT_DECISION,
                 prompt=prompt,
@@ -1266,7 +1269,7 @@ class OASISSimulationEngine:
                         pass
 
         except Exception:
-            logger.warning("OASIS市場更新失敗: round=%d", round_number)
+            logger.warning("OASIS市場更新失敗: round=%d", round_number, exc_info=True)
 
     def _get_interaction_stats(self) -> dict[str, int]:
         """OASISのSQLiteからインタラクション統計を取得する."""
