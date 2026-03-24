@@ -1,0 +1,1231 @@
+{
+  "generated_at": "2026-03-25T02:01:18.937607",
+  "num_runs": 3,
+  "phase1_time_seconds": 58163.0,
+  "phase2_time_seconds": 38633.0,
+  "total_time_seconds": 96796.0,
+  "benchmarks": {
+    "slack_2014": {
+      "name": "Slack Launch 2014",
+      "expected_outcome": "success",
+      "num_rounds": 12,
+      "mean_accuracy": 0.6667,
+      "median_accuracy": 0.75,
+      "stddev": 0.1443,
+      "min": 0.5,
+      "max": 0.75,
+      "ci_95": [
+        0.3081,
+        1.0252
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.market_awareness": 0.6666666666666666,
+        "dimensions.ecosystem_health": 0.3333333333333333
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 0.75,
+          "outcome_correct": true,
+          "predicted_verdict": "成功見込み",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 388.47
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 43.75
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 430.19
+            },
+            {
+              "metric": "dimensions.ecosystem_health",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -22.56
+            }
+          ]
+        },
+        {
+          "accuracy": 0.5,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -13.51
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 36.02
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            },
+            {
+              "metric": "dimensions.ecosystem_health",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 55.76
+            }
+          ]
+        },
+        {
+          "accuracy": 0.75,
+          "outcome_correct": true,
+          "predicted_verdict": "成功見込み",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 508.88
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 52.54
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 347.29
+            },
+            {
+              "metric": "dimensions.ecosystem_health",
+              "expected": "up",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    "notion_vs_confluence_2020": {
+      "name": "Notion vs Confluence 2020",
+      "expected_outcome": "success",
+      "num_rounds": 18,
+      "mean_accuracy": 0.5556,
+      "median_accuracy": 0.6667,
+      "stddev": 0.1925,
+      "min": 0.3333,
+      "max": 0.6667,
+      "ci_95": [
+        0.0774,
+        1.0338
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.revenue_potential": 0.0
+      },
+      "outcome_hit_rate": 0.6666666666666666,
+      "runs": [
+        {
+          "accuracy": 0.3333,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -9.75
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 30.56
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -14.26
+            }
+          ]
+        },
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": true,
+          "predicted_verdict": "成功見込み",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 587.37
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 54.15
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -16.82
+            }
+          ]
+        },
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": true,
+          "predicted_verdict": "成功見込み",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 127.21
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 49.31
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -70.89
+            }
+          ]
+        }
+      ]
+    },
+    "github_copilot_2022": {
+      "name": "GitHub Copilot 2022",
+      "expected_outcome": "success",
+      "num_rounds": 12,
+      "mean_accuracy": 0.9333,
+      "median_accuracy": 1.0,
+      "stddev": 0.1155,
+      "min": 0.8,
+      "max": 1.0,
+      "ci_95": [
+        0.6465,
+        1.2202
+      ],
+      "per_trend": {
+        "dimensions.tech_maturity": 1.0,
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.regulatory_risk": 1.0,
+        "ai_disruption_level": 1.0
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 24.85
+            },
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 76.11
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 52.31
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 217.27
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 23.38
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 29.8
+            },
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 35.0
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 47.62
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 89.19
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 14.35
+            }
+          ]
+        },
+        {
+          "accuracy": 0.8,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 64.75
+            },
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -9.75
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 28.56
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 39.0
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 43.14
+            }
+          ]
+        }
+      ]
+    },
+    "zoom_2020": {
+      "name": "Zoom COVID-19 2020",
+      "expected_outcome": "success",
+      "num_rounds": 12,
+      "mean_accuracy": 0.4444,
+      "median_accuracy": 0.3333,
+      "stddev": 0.1925,
+      "min": 0.3333,
+      "max": 0.6667,
+      "ci_95": [
+        -0.0338,
+        0.9226
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.3333333333333333,
+        "dimensions.competitive_pressure": 0.6666666666666666,
+        "dimensions.market_awareness": 0.3333333333333333
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 0.3333,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -9.7
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 45.6
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -9.62
+            }
+          ]
+        },
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 8.45
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 42.89
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -9.75
+            }
+          ]
+        },
+        {
+          "accuracy": 0.3333,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -5.06
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -21.11
+            },
+            {
+              "metric": "dimensions.market_awareness",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 22.93
+            }
+          ]
+        }
+      ]
+    },
+    "chatgpt_2022": {
+      "name": "ChatGPT Launch 2022",
+      "expected_outcome": "success",
+      "num_rounds": 12,
+      "mean_accuracy": 0.7222,
+      "median_accuracy": 0.6667,
+      "stddev": 0.0962,
+      "min": 0.6667,
+      "max": 0.8333,
+      "ci_95": [
+        0.4833,
+        0.9612
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.funding_climate": 0.0,
+        "dimensions.regulatory_risk": 1.0,
+        "dimensions.tech_maturity": 0.6666666666666666,
+        "ai_disruption_level": 1.0
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 171.0
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 80.75
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -79.15
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 182.98
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 24.86
+            }
+          ]
+        },
+        {
+          "accuracy": 0.8333,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 203.04
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 49.82
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -66.74
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 82.76
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 102.08
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 5.96
+            }
+          ]
+        },
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -19.0
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 46.56
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "up",
+              "actual": "down",
+              "correct": false,
+              "change_rate": -28.53
+            },
+            {
+              "metric": "dimensions.regulatory_risk",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 224.41
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 58.33
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 61.98
+            }
+          ]
+        }
+      ]
+    },
+    "google_wave_2009": {
+      "name": "Google Wave 2009",
+      "expected_outcome": "failure",
+      "num_rounds": 12,
+      "mean_accuracy": 0.3333,
+      "median_accuracy": 0.3333,
+      "stddev": 0.3334,
+      "min": 0.0,
+      "max": 0.6667,
+      "ci_95": [
+        -0.4948,
+        1.1615
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.3333333333333333,
+        "dimensions.revenue_potential": 0.3333333333333333,
+        "dimensions.tech_maturity": 0.3333333333333333
+      },
+      "outcome_hit_rate": 0.0,
+      "runs": [
+        {
+          "accuracy": 0.3333,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 135.0
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -31.85
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 52.64
+            }
+          ]
+        },
+        {
+          "accuracy": 0.6667,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -22.56
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 140.76
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -16.97
+            }
+          ]
+        },
+        {
+          "accuracy": 0.0,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 175.44
+            },
+            {
+              "metric": "dimensions.tech_maturity",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 22.75
+            }
+          ]
+        }
+      ]
+    },
+    "google_plus_2011": {
+      "name": "Google+ 2011",
+      "expected_outcome": "failure",
+      "num_rounds": 18,
+      "mean_accuracy": 0.7778,
+      "median_accuracy": 1.0,
+      "stddev": 0.3849,
+      "min": 0.3333,
+      "max": 1.0,
+      "ci_95": [
+        -0.1785,
+        1.734
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.revenue_potential": 0.6666666666666666
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 0.3333,
+          "outcome_correct": true,
+          "predicted_verdict": "困難",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 38.59
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -9.75
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 41.48
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -27.75
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -27.43
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 44.73
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -40.95
+            }
+          ]
+        }
+      ]
+    },
+    "quibi_2020": {
+      "name": "Quibi 2020",
+      "expected_outcome": "failure",
+      "num_rounds": 8,
+      "mean_accuracy": 0.9167,
+      "median_accuracy": 1.0,
+      "stddev": 0.1443,
+      "min": 0.75,
+      "max": 1.0,
+      "ci_95": [
+        0.5581,
+        1.2752
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 1.0,
+        "dimensions.revenue_potential": 1.0,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.funding_climate": 0.6666666666666666
+      },
+      "outcome_hit_rate": 1.0,
+      "runs": [
+        {
+          "accuracy": 0.75,
+          "outcome_correct": true,
+          "predicted_verdict": "困難",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -38.59
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -51.36
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 28.38
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "down",
+              "actual": "stable",
+              "correct": false,
+              "change_rate": 0.0
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "困難",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -55.0
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -66.59
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 63.76
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -27.75
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": true,
+          "predicted_verdict": "困難",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -43.75
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -53.76
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 48.16
+            },
+            {
+              "metric": "dimensions.funding_climate",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -36.0
+            }
+          ]
+        }
+      ]
+    },
+    "jasper_ai_2023": {
+      "name": "Jasper AI 2023",
+      "expected_outcome": "failure",
+      "num_rounds": 12,
+      "mean_accuracy": 0.9167,
+      "median_accuracy": 1.0,
+      "stddev": 0.1443,
+      "min": 0.75,
+      "max": 1.0,
+      "ci_95": [
+        0.5581,
+        1.2752
+      ],
+      "per_trend": {
+        "dimensions.user_adoption": 0.6666666666666666,
+        "dimensions.competitive_pressure": 1.0,
+        "dimensions.revenue_potential": 1.0,
+        "ai_disruption_level": 1.0
+      },
+      "outcome_hit_rate": 0.0,
+      "runs": [
+        {
+          "accuracy": 1.0,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -19.0
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 27.81
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -10.53
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 63.31
+            }
+          ]
+        },
+        {
+          "accuracy": 0.75,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "up",
+              "correct": false,
+              "change_rate": 189.3
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 64.93
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -41.54
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 32.67
+            }
+          ]
+        },
+        {
+          "accuracy": 1.0,
+          "outcome_correct": false,
+          "predicted_verdict": "要注意",
+          "trends": [
+            {
+              "metric": "dimensions.user_adoption",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -27.1
+            },
+            {
+              "metric": "dimensions.competitive_pressure",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 76.34
+            },
+            {
+              "metric": "dimensions.revenue_potential",
+              "expected": "down",
+              "actual": "down",
+              "correct": true,
+              "change_rate": -5.57
+            },
+            {
+              "metric": "ai_disruption_level",
+              "expected": "up",
+              "actual": "up",
+              "correct": true,
+              "change_rate": 51.44
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "contamination": {
+    "slack_2014": {
+      "name": "Slack Launch 2014",
+      "real_accuracy": 0.75,
+      "anon_accuracy": 1.0,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": -25.0,
+      "contamination_level": "negative",
+      "time": 4458.87
+    },
+    "notion_vs_confluence_2020": {
+      "name": "Notion vs Confluence 2020",
+      "real_accuracy": 1.0,
+      "anon_accuracy": 0.3333,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": 66.67,
+      "contamination_level": "high",
+      "time": 5494.48
+    },
+    "github_copilot_2022": {
+      "name": "GitHub Copilot 2022",
+      "real_accuracy": 0.6,
+      "anon_accuracy": 0.6,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": 0.0,
+      "contamination_level": "none",
+      "time": 3928.31
+    },
+    "zoom_2020": {
+      "name": "Zoom COVID-19 2020",
+      "real_accuracy": 0.6667,
+      "anon_accuracy": 0.6667,
+      "real_outcome": true,
+      "anon_outcome": false,
+      "contamination_score": 0.0,
+      "contamination_level": "none",
+      "time": 3927.24
+    },
+    "chatgpt_2022": {
+      "name": "ChatGPT Launch 2022",
+      "real_accuracy": 0.6667,
+      "anon_accuracy": 0.8333,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": -16.66,
+      "contamination_level": "negative",
+      "time": 3952.52
+    },
+    "google_wave_2009": {
+      "name": "Google Wave 2009",
+      "real_accuracy": 1.0,
+      "anon_accuracy": 0.6667,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": 33.33,
+      "contamination_level": "high",
+      "time": 3897.34
+    },
+    "google_plus_2011": {
+      "name": "Google+ 2011",
+      "real_accuracy": 0.6667,
+      "anon_accuracy": 1.0,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": -33.33,
+      "contamination_level": "negative",
+      "time": 4606.22
+    },
+    "quibi_2020": {
+      "name": "Quibi 2020",
+      "real_accuracy": 0.75,
+      "anon_accuracy": 0.75,
+      "real_outcome": true,
+      "anon_outcome": true,
+      "contamination_score": 0.0,
+      "contamination_level": "none",
+      "time": 3875.61
+    },
+    "jasper_ai_2023": {
+      "name": "Jasper AI 2023",
+      "real_accuracy": 0.5,
+      "anon_accuracy": 1.0,
+      "real_outcome": false,
+      "anon_outcome": true,
+      "contamination_score": -50.0,
+      "contamination_level": "negative",
+      "time": 4492.38
+    }
+  }
+}

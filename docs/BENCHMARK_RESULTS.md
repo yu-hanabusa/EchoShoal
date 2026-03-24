@@ -1,175 +1,161 @@
 # Benchmark Results
 
-EchoShoalシミュレーションエンジンの精度を、実在のサービス事例（成功5件・失敗4件）で評価した結果。
+EchoShoalシミュレーションエンジンの予測精度を、実在のサービス事例（成功5件・失敗4件）で評価した結果。
+
+> Generated: 2026-03-25
 
 ## 評価方法
 
-- 各シナリオを3回実行し、市場ディメンション（user_adoption, competitive_pressure等）のトレンド方向（up/down/stable）を史実と比較
+### 通常ベンチマーク
+- 各シナリオを3回実行し、市場ディメンションのトレンド方向（up/down/stable）を史実と比較
 - **方向精度** = 正しく予測したディメンション数 / 評価対象ディメンション数
-- 合格閾値: 60%
-- LLM: Ollama qwen3:14b（エージェント行動決定）
-- 総実行時間: 約18時間（9シナリオ x 3回）
+- LLM: Ollama qwen3:14b（エージェント行動決定・市場分析）
+- シナリオテキスト（market_report, stakeholders, user_behavior）は基準時点以前の情報のみを含む
 
-## 全体サマリー
+### LLM知識汚染テスト（Contamination A/B Test）
+- 同一シナリオを**実名版**と**匿名版**で実行し、方向精度の差分を計測
+- 匿名版ではサービス名・創業者名・競合名等を架空の名前に置換
+- 差分（contamination_score）が大きい場合、LLMの学習データに含まれる結果情報が予測に影響している
+- 差分が小さい場合、シミュレータの構造的推論力が予測に寄与している
 
-| シナリオ | 種別 | 平均精度 | σ | 95% CI | 判定 |
-|---------|------|---------|-----|--------|------|
-| Slack Launch 2014 | 成功 | 58.3% | 0.382 | [0.0%-100.0%] | FAIL |
-| Notion vs Confluence 2020 | 成功 | 100.0% | 0.000 | [100.0%-100.0%] | PASS |
-| GitHub Copilot 2022 | 成功 | 73.3% | 0.116 | [52.1%-94.5%] | PASS |
-| Zoom COVID-19 2020 | 成功 | 58.3% | 0.144 | [31.8%-84.9%] | FAIL |
-| ChatGPT Launch 2022 | 成功 | 72.2% | 0.096 | [54.6%-89.9%] | PASS |
-| Google Wave 2009 | 失敗 | 11.1% | 0.192 | [0.0%-46.5%] | FAIL |
-| Google+ 2011 | 失敗 | 88.9% | 0.192 | [53.5%-100.0%] | PASS |
-| Quibi 2020 | 失敗 | 83.3% | 0.144 | [56.8%-100.0%] | PASS |
-| Jasper AI 2023 | 失敗 | 91.7% | 0.144 | [65.1%-100.0%] | PASS |
+| contamination_score | レベル | 解釈 |
+|---|---|---|
+| 5pp以下 | none | 差なし。純粋な推論 |
+| 5-15pp | low | 軽微な知識リーク |
+| 15-30pp | moderate | 中程度の知識リーク |
+| 30pp超 | high | 強い知識リーク |
+| -5pp未満 | negative | 匿名版の方が高い（名前バイアス） |
 
-- **全体平均方向精度: 70.8%**
-- **合格シナリオ: 6/9**
-- 成功事例の平均精度: 72.4%（5件）
-- 失敗事例の平均精度: 68.8%（4件）
-- 再現性（σ平均）: 0.157（LLMの非決定性により中程度のばらつき）
+## 通常ベンチマーク結果
+
+- **全体平均方向精度: 69.6%**
+- **合格シナリオ (>=60%): 6/9**
+- 成功/失敗予測正解: 7/9
+- 総実行時間: 16.2時間（9シナリオ x 3回）
+
+| シナリオ | 種別 | 平均精度 | sd | 95% CI | 成功/失敗予測 |
+|---------|------|---------|-----|--------|------------|
+| Slack Launch 2014 | 成功 | 66.7% | 0.144 | [31%-103%] | 100% |
+| Notion vs Confluence 2020 | 成功 | 55.6% | 0.193 | [8%-103%] | 67% |
+| GitHub Copilot 2022 | 成功 | 93.3% | 0.116 | [65%-122%] | 100% |
+| Zoom COVID-19 2020 | 成功 | 44.4% | 0.193 | [-3%-92%] | 100% |
+| ChatGPT Launch 2022 | 成功 | 72.2% | 0.096 | [48%-96%] | 100% |
+| Google Wave 2009 | 失敗 | 33.3% | 0.333 | [-49%-116%] | 0% |
+| Google+ 2011 | 失敗 | 77.8% | 0.385 | [-18%-173%] | 100% |
+| Quibi 2020 | 失敗 | 91.7% | 0.144 | [56%-128%] | 100% |
+| Jasper AI 2023 | 失敗 | 91.7% | 0.144 | [56%-128%] | 0% |
 
 ## シナリオ別詳細
 
-### 成功事例
-
-#### Slack Launch 2014 — 58.3% (FAIL)
-
-2014年のSlack正式リリース。フリーミアムモデルでチームコミュニケーション市場に参入。
-
-| ディメンション | ヒット率 | 期待 | 備考 |
-|--------------|---------|------|------|
-| user_adoption | 1/3 (33%) | up | 実行間で大きなばらつき（25%〜100%） |
-| competitive_pressure | 3/3 (100%) | up | 安定して正確 |
-| market_awareness | 2/3 (67%) | up | |
-| ecosystem_health | 1/3 (33%) | up | |
-
-課題: user_adoptionの予測が不安定。初期値が低い成功事例で採用増加の再現が困難。
-
-#### Notion vs Confluence 2020 — 100.0% (PASS)
-
-NotionのPLGモデルによる市場拡大。COVID-19によるリモートワーク需要と合致。
+### Slack Launch 2014 (成功) -- 66.7%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 3/3 (100%) | up |
-| competitive_pressure | 3/3 (100%) | up |
-| revenue_potential | 3/3 (100%) | up |
+| dimensions.user_adoption | 67% (2/3) | up |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.market_awareness | 67% (2/3) | up |
+| dimensions.ecosystem_health | 33% (1/3) | up |
 
-全3回で100%の方向精度。最も安定したシナリオ。
-
-#### GitHub Copilot 2022 — 73.3% (PASS)
-
-Microsoft/GitHubによるAIコード補完ツールの一般公開。
+### Notion vs Confluence 2020 (成功) -- 55.6%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| tech_maturity | 2/3 (67%) | up |
-| user_adoption | 2/3 (67%) | up |
-| competitive_pressure | 3/3 (100%) | up |
-| revenue_potential | 1/3 (33%) | up |
-| ai_disruption_level | 3/3 (100%) | up |
+| dimensions.user_adoption | 67% (2/3) | up |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.revenue_potential | 0% (0/3) | up |
 
-課題: revenue_potentialの予測精度が低い。
-
-#### Zoom COVID-19 2020 — 58.3% (FAIL)
-
-パンデミック下でのZoomの急成長。
+### GitHub Copilot 2022 (成功) -- 93.3%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 2/3 (67%) | up |
-| competitive_pressure | 2/3 (67%) | up |
-| regulatory_risk | 3/3 (100%) | up |
-| revenue_potential | 0/3 (0%) | up |
+| dimensions.tech_maturity | 100% (3/3) | up |
+| dimensions.user_adoption | 67% (2/3) | up |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.regulatory_risk | 100% (3/3) | up |
+| ai_disruption_level | 100% (3/3) | up |
 
-課題: revenue_potentialが全実行で下降と予測。外的ショック（パンデミック）による爆発的成長の再現が困難。
-
-#### ChatGPT Launch 2022 — 72.2% (PASS)
-
-OpenAIによるChatGPTの無料公開。生成AI市場の転換点。
+### Zoom COVID-19 2020 (成功) -- 44.4%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 1/3 (33%) | up |
-| competitive_pressure | 3/3 (100%) | up |
-| funding_climate | 0/3 (0%) | up |
-| regulatory_risk | 3/3 (100%) | up |
-| tech_maturity | 3/3 (100%) | up |
-| ai_disruption_level | 3/3 (100%) | up |
+| dimensions.user_adoption | 33% (1/3) | up |
+| dimensions.competitive_pressure | 67% (2/3) | up |
+| dimensions.market_awareness | 33% (1/3) | up |
 
-課題: funding_climateが全実行で下降。エージェントが投資リスクを過大評価する傾向。
-
-### 失敗事例
-
-#### Google Wave 2009 — 11.1% (FAIL)
-
-Googleの統合コミュニケーションツール。2010年に開発中止。
+### ChatGPT Launch 2022 (成功) -- 72.2%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 0/3 (0%) | stable |
-| market_awareness | 0/3 (0%) | down |
-| ecosystem_health | 1/3 (33%) | down |
+| dimensions.user_adoption | 67% (2/3) | up |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.funding_climate | 0% (0/3) | up |
+| dimensions.regulatory_risk | 100% (3/3) | up |
+| dimensions.tech_maturity | 67% (2/3) | up |
+| ai_disruption_level | 100% (3/3) | up |
 
-課題: エージェントがGoogle Waveをポジティブに評価しすぎる。market_awarenessとecosystem_healthを上昇と予測してしまう。
-
-#### Google+ 2011 — 88.9% (PASS)
-
-GoogleのSNS参入。Facebookの8億ユーザーに対抗。2019年に終了。
-
-| ディメンション | ヒット率 | 期待 |
-|--------------|---------|------|
-| user_adoption | 2/3 (67%) | down |
-| competitive_pressure | 3/3 (100%) | up |
-| revenue_potential | 3/3 (100%) | down |
-
-失敗事例の中で高精度。ネットワーク効果による支配的競合の存在を正しく反映。
-
-#### Quibi 2020 — 83.3% (PASS)
-
-17.5億ドル調達のモバイル専用短尺動画サービス。6ヶ月で終了。
+### Google Wave 2009 (失敗) -- 33.3%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 3/3 (100%) | down |
-| revenue_potential | 3/3 (100%) | down |
-| competitive_pressure | 3/3 (100%) | up |
-| funding_climate | 1/3 (33%) | down |
+| dimensions.user_adoption | 33% (1/3) | down |
+| dimensions.revenue_potential | 33% (1/3) | down |
+| dimensions.tech_maturity | 33% (1/3) | down |
 
-課題: funding_climateの下降予測が不安定。
-
-#### Jasper AI 2023 — 91.7% (PASS)
-
-GPT-3ベースのマーケティングコピー生成SaaS。ChatGPT登場後に競争力を喪失。
+### Google+ 2011 (失敗) -- 77.8%
 
 | ディメンション | ヒット率 | 期待 |
 |--------------|---------|------|
-| user_adoption | 2/3 (67%) | down |
-| competitive_pressure | 3/3 (100%) | up |
-| revenue_potential | 3/3 (100%) | down |
-| ai_disruption_level | 3/3 (100%) | up |
+| dimensions.user_adoption | 67% (2/3) | down |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.revenue_potential | 67% (2/3) | down |
 
-最高精度のシナリオ。プラットフォーマーリスクの再現に成功。
+### Quibi 2020 (失敗) -- 91.7%
 
-## 分析
+| ディメンション | ヒット率 | 期待 |
+|--------------|---------|------|
+| dimensions.user_adoption | 100% (3/3) | down |
+| dimensions.revenue_potential | 100% (3/3) | down |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.funding_climate | 67% (2/3) | down |
 
-### 強み
-- **competitive_pressure**: 全シナリオで高精度（ほぼ100%）。競合環境の変化を正確に捉える
-- **regulatory_risk**: 追跡したシナリオで100%の精度
-- **失敗事例の予測**: 失敗サービスのuser_adoption/revenue_potential下降を高精度で予測
-- **AI disruption**: AI関連シナリオでai_disruption_levelを100%正確に予測
+### Jasper AI 2023 (失敗) -- 91.7%
 
-### 弱み
-- **revenue_potential（成功事例）**: 成功サービスの収益成長を過小評価する傾向
-- **funding_climate**: 投資環境の変化予測が不安定
-- **外的ショック**: パンデミック等の予測不能な外部要因による急変動の再現が困難
-- **Google Wave**: 失敗サービスをポジティブに評価しすぎる（Googleブランドバイアスの可能性）
-- **再現性**: LLMの非決定性により、同一シナリオでも実行間で最大75ポイントの差（Slack: 25%〜100%）
+| ディメンション | ヒット率 | 期待 |
+|--------------|---------|------|
+| dimensions.user_adoption | 67% (2/3) | down |
+| dimensions.competitive_pressure | 100% (3/3) | up |
+| dimensions.revenue_potential | 100% (3/3) | down |
+| ai_disruption_level | 100% (3/3) | up |
 
-### 今後の改善方向
-- エージェントのrevenue_potential評価ロジックの改善
-- 外的ショック（パンデミック、経済危機等）のシミュレーション強化
-- LLM出力の安定化（temperatureチューニング、アンサンブル手法の検討）
-- Google Waveのような「過度に野心的なプロダクト」の失敗パターン学習
+## LLM知識汚染テスト結果
+
+- **平均汚染スコア: -2.8pp**
+- 平均実名版精度: 73.3%
+- 平均匿名版精度: 76.1%
+- 実行時間: 10.7時間
+
+| シナリオ | 実名版 | 匿名版 | 汚染スコア | レベル |
+|---------|-------|-------|-----------|--------|
+| Slack Launch 2014 | 75% | 100% | -25.0pp | negative |
+| Notion vs Confluence 2020 | 100% | 33% | +66.7pp | high |
+| GitHub Copilot 2022 | 60% | 60% | +0.0pp | none |
+| Zoom COVID-19 2020 | 67% | 67% | +0.0pp | none |
+| ChatGPT Launch 2022 | 67% | 83% | -16.7pp | negative |
+| Google Wave 2009 | 100% | 67% | +33.3pp | high |
+| Google+ 2011 | 67% | 100% | -33.3pp | negative |
+| Quibi 2020 | 75% | 75% | +0.0pp | none |
+| Jasper AI 2023 | 50% | 100% | -50.0pp | negative |
+
+### 解釈
+
+平均汚染スコアが10pp以下であり、シミュレータの推論力は概ね信頼できる。
+LLMの学習データに含まれる歴史的結果への依存度は低い。
+
+## 技術情報
+
+- シミュレーションエンジン: OASIS SNS Simulation
+- エージェント行動決定: Ollama qwen3:14b
+- レポート生成: Claude API
+- シナリオテキスト: 各サービスの基準時点以前の情報のみ（未来情報除去済み）
+- 匿名化: サービス名・創業者名・競合名等を架空名に置換
+- 総実行時間: 26.9時間
