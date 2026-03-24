@@ -199,25 +199,61 @@ cd frontend && pnpm build
 
 ## ベンチマーク評価
 
-過去のサービスリリース事例（成功5件・失敗4件）を使い、シミュレーターの予測精度を検証できます。フロントエンドの `/benchmarks` ページから実行するか、APIを直接呼び出します。
+過去のサービスリリース事例（成功5件・失敗4件）を使い、シミュレーターの予測精度を検証しています。各シナリオの補足資料は**基準時点以前の情報のみ**に限定し、LLMが「答え合わせ」ではなく「予測」を行える環境を整備しています。
 
-**実行時間の目安**（Ollama qwen3:14b / RTX 4070 Ti SUPER環境）:
-- 1シナリオ（12ラウンド）: 約10〜15分
-- 市場調査付き: 約20〜25分
-- 全9シナリオ一括: 約2〜3時間
+### 現時点の結果
+
+| 評価指標 | 結果 |
+|---------|------|
+| 全体平均方向精度 | **69.6%** (各3回実行) |
+| 合格シナリオ (>=60%) | **6/9** |
+| 成功/失敗予測正解 | **7/9** |
+| LLM知識汚染スコア | **-2.8pp** (事前知識バイアスなし) |
+
+| シナリオ | 種別 | 精度 | 汚染テスト |
+|---------|------|------|----------|
+| Slack 2014 | 成功 | 66.7% | -25.0pp (negative) |
+| Notion vs Confluence 2020 | 成功 | 55.6% | +66.7pp (high) |
+| GitHub Copilot 2022 | 成功 | 93.3% | 0.0pp (none) |
+| Zoom COVID-19 2020 | 成功 | 44.4% | 0.0pp (none) |
+| ChatGPT 2022 | 成功 | 72.2% | -16.7pp (negative) |
+| Google Wave 2009 | 失敗 | 33.3% | +33.3pp (high) |
+| Google+ 2011 | 失敗 | 77.8% | -33.3pp (negative) |
+| Quibi 2020 | 失敗 | 91.7% | 0.0pp (none) |
+| Jasper AI 2023 | 失敗 | 91.7% | -50.0pp (negative) |
+
+### LLM知識汚染テスト（Contamination A/B Test）
+
+LLMの学習データに過去のサービス結果が含まれている可能性があるため、同一シナリオを**実名版**と**匿名版**（サービス名・競合名等を架空名に置換）で実行し、精度の差分を計測しています。
+
+- 平均汚染スコア **-2.8pp** — LLMの事前知識への系統的依存はなし
+- 匿名版の平均精度 **76.1%** — 名前を隠しても予測力は維持される
+- 4/9シナリオで匿名版の方が高精度（negativeパターン） — LLMの名前に対する先入観がノイズとして作用するケースがある
+
+詳細は [docs/BENCHMARK_RESULTS.md](docs/BENCHMARK_RESULTS.md) を参照してください。
+
+### 実行方法
 
 ```bash
 # API経由で単発実行（例: Slack 2014）
 curl -X POST http://localhost:8000/api/evaluation/run/slack_2014
 
-# 統計評価（5回実行して再現性を検証）
-curl -X POST http://localhost:8000/api/evaluation/run/slack_2014/multi?num_runs=5
+# 統計評価（3回実行して再現性を検証）
+curl -X POST "http://localhost:8000/api/evaluation/run/slack_2014/multi?num_runs=3"
 
 # 全ベンチマーク一括実行
 curl -X POST http://localhost:8000/api/evaluation/run-all
+
+# LLM知識汚染テスト（実名 vs 匿名）
+curl -X POST http://localhost:8000/api/evaluation/contamination/run/slack_2014
+
+# 通常ベンチマーク + 汚染テスト一括（結果ドキュメント自動生成）
+cd backend && uv run python scripts/run_full_evaluation.py
 ```
 
-詳細な評価手法・シナリオ一覧は [backend/app/evaluation/README.md](backend/app/evaluation/README.md)、過去の評価結果は [docs/BENCHMARK_RESULTS.md](docs/BENCHMARK_RESULTS.md) を参照してください。
+**実行時間の目安**（Ollama qwen3:14b / RTX 4070 Ti SUPER環境）:
+- 1シナリオ: 約20〜30分
+- 全9シナリオ x 3回 + 汚染テスト: 約27時間
 
 ## ライセンス
 
